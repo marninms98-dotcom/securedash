@@ -867,6 +867,12 @@ function unlockReport() {
 // ════════════════════════════════════════════════════════════
 
 let reportData = null;
+const _charts = {};  // Chart instance registry — destroy before re-render
+function makeChart(canvasId, config) {
+  if (_charts[canvasId]) { _charts[canvasId].destroy(); }
+  _charts[canvasId] = new Chart(document.getElementById(canvasId), config);
+  return _charts[canvasId];
+}
 
 async function loadReport() {
   try {
@@ -1152,7 +1158,7 @@ function renderFinancials() {
   const revTarget = s.targets?.revenue || 180000;
 
   // P&L Trend Chart — combo: revenue bars + cost bars + margin line
-  new Chart(document.getElementById('plTrendChart'), {
+  makeChart('plTrendChart', {
     type: 'bar',
     data: {
       labels: t.months,
@@ -1235,7 +1241,7 @@ function renderFinancials() {
   const segValues = segLabels.map(k => rbt[k].revenue);
   const segColors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.purple, CHART_COLORS.teal, CHART_COLORS.yellow];
 
-  new Chart(document.getElementById('segmentChart'), {
+  makeChart('segmentChart', {
     type: 'bar',
     data: {
       labels: segLabels,
@@ -1267,7 +1273,7 @@ function renderFinancials() {
     { label: 'Other', data: sr.other || [], backgroundColor: CHART_COLORS.mid + '80' },
   ].filter(ds => ds.data.some(v => v > 0));
 
-  new Chart(document.getElementById('segmentTrendChart'), {
+  makeChart('segmentTrendChart', {
     type: 'bar',
     data: {
       labels: sr.months || [],
@@ -1409,7 +1415,7 @@ function renderCosts() {
 
   // Top 10 Suppliers — horizontal bar
   const suppliers = (c.top_suppliers || []).slice(0, 10);
-  new Chart(document.getElementById('supplierChart'), {
+  makeChart('supplierChart', {
     type: 'bar',
     data: {
       labels: suppliers.map(s => s.name.length > 25 ? s.name.substring(0, 25) + '...' : s.name),
@@ -1432,7 +1438,7 @@ function renderCosts() {
   // Cost Category — doughnut
   const cats = c.categories || [];
   const catColors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.purple, CHART_COLORS.yellow, CHART_COLORS.mid];
-  new Chart(document.getElementById('categoryChart'), {
+  makeChart('categoryChart', {
     type: 'doughnut',
     data: {
       labels: cats.map(c => c.category),
@@ -1458,7 +1464,7 @@ function renderCosts() {
 
   // Cost Trend — revenue vs costs with gross profit band
   const ct = c.cost_trend || [];
-  new Chart(document.getElementById('costTrendChart'), {
+  makeChart('costTrendChart', {
     type: 'bar',
     data: {
       labels: ct.map(m => m.month),
@@ -1582,7 +1588,7 @@ function renderOperations() {
   // Pipeline Velocity Funnel removed — GHL doesn't set quoted_at/accepted_at consistently (shows 0d)
 
   // Win Rate + Deal Size Trend — dual axis
-  new Chart(document.getElementById('winRateChart'), {
+  makeChart('winRateChart', {
     type: 'bar',
     data: {
       labels: t.months,
@@ -1632,7 +1638,7 @@ function renderOperations() {
   });
 
   // Marketing Efficiency Trend
-  new Chart(document.getElementById('marketingTrendChart'), {
+  makeChart('marketingTrendChart', {
     type: 'bar',
     data: {
       labels: t.months,
@@ -1721,7 +1727,7 @@ function renderCustomers(d) {
   // Top 10 Customers — horizontal bar chart
   const topC = (clv.top_customers || []).slice(0, 10);
   if (topC.length > 0) {
-    new Chart(document.getElementById('topCustomersChart'), {
+    makeChart('topCustomersChart', {
       type: 'bar',
       data: {
         labels: topC.map(c => (c.contact_name || '?').substring(0, 20)),
@@ -1751,7 +1757,7 @@ function renderCustomers(d) {
   const byChannel = clv.by_channel || [];
   if (byChannel.length > 0) {
     const colors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.red, '#9966FF', '#AAAAAA'];
-    new Chart(document.getElementById('channelChart'), {
+    makeChart('channelChart', {
       type: 'doughnut',
       data: {
         labels: byChannel.map(c => c.channel),
