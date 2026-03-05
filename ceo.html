@@ -621,6 +621,35 @@
         <canvas id="plTrendChart"></canvas>
       </div>
 
+      <!-- Division P&L Breakdown -->
+      <div class="card" id="divisionPLCard" style="display:none;">
+        <div class="card-title">Division P&L Breakdown</div>
+        <div class="data-caveat">From Xero P&L by tracking category — your most reliable data source</div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="divisionPLTable">
+            <thead>
+              <tr>
+                <th>Division</th>
+                <th class="text-right">Revenue</th>
+                <th class="text-right">COGS</th>
+                <th class="text-right">Gross Profit</th>
+                <th class="text-right">Margin %</th>
+                <th class="text-right">Prev Month</th>
+                <th class="text-right">Trend</th>
+              </tr>
+            </thead>
+            <tbody id="divisionPLBody"></tbody>
+          </table>
+        </div>
+        <div id="divisionPLAlert" style="display:none; margin-top:12px;"></div>
+      </div>
+
+      <!-- Division Margin Trend Chart -->
+      <div class="chart-wrap" id="divMarginChartWrap" style="display:none;">
+        <div class="card-title">Margin % by Division — 6 Month Trend</div>
+        <canvas id="divMarginTrendChart"></canvas>
+      </div>
+
       <div class="chart-row">
         <!-- P&L by Segment -->
         <div class="chart-wrap">
@@ -892,6 +921,7 @@ async function loadReport() {
     const sections = [
       ['overview', renderOverview],
       ['financials', renderFinancials],
+      ['divisionPL', renderDivisionPL],
       ['costs', renderCosts],
       ['operations', renderOperations],
       ['customers', () => renderCustomers(reportData)],
@@ -1383,6 +1413,143 @@ function renderFinancials() {
       '</tr>';
     }).join('');
   }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// RENDER: DIVISION P&L
+// ════════════════════════════════════════════════════════════
+
+function renderDivisionPL() {
+  const dp = reportData.division_pl;
+  if (!dp || !dp.divisions) return;
+
+  const card = document.getElementById('divisionPLCard');
+  card.style.display = 'block';
+
+  const divColors = { patios: CHART_COLORS.orange, fencing: CHART_COLORS.blue, decking: CHART_COLORS.green, other: CHART_COLORS.mid };
+  const divLabels = { patios: 'Patios', fencing: 'Fencing', decking: 'Decking', other: 'Other' };
+
+  // Build table rows
+  let rows = '';
+  let worstDiv = null, worstMargin = 999;
+
+  dp.divisions.forEach(function(div) {
+    const c = div.current;
+    const p = div.previous;
+    const marginDelta = c.margin_pct - p.margin_pct;
+    const marginClass = ragClass(c.margin_pct, 28, 20);
+    const trendIcon = marginDelta > 2 ? '<span style="color:var(--sw-green)">&#9650; ' + marginDelta + 'pp</span>'
+      : marginDelta < -2 ? '<span style="color:var(--sw-red)">&#9660; ' + Math.abs(marginDelta) + 'pp</span>'
+      : '<span style="color:var(--sw-text-sec)">&#8212; flat</span>';
+    const revenueShare = dp.totals.current.revenue > 0 ? Math.round((c.revenue / dp.totals.current.revenue) * 100) : 0;
+
+    if (c.revenue > 0 && c.margin_pct < worstMargin) {
+      worstMargin = c.margin_pct;
+      worstDiv = divLabels[div.division];
+    }
+
+    rows += '<tr>' +
+      '<td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + divColors[div.division] + ';margin-right:6px;"></span>' + divLabels[div.division] + ' <span style="color:var(--sw-text-sec);font-size:11px;">(' + revenueShare + '%)</span></td>' +
+      '<td class="text-right">' + fmtDollar(c.revenue) + '</td>' +
+      '<td class="text-right">' + fmtDollar(c.costs) + '</td>' +
+      '<td class="text-right">' + fmtDollar(c.gross_profit) + '</td>' +
+      '<td class="text-right ' + marginClass + '" style="font-weight:600;">' + c.margin_pct + '%</td>' +
+      '<td class="text-right" style="color:var(--sw-text-sec);">' + p.margin_pct + '%</td>' +
+      '<td class="text-right">' + trendIcon + '</td>' +
+    '</tr>';
+  });
+
+  // Totals row
+  const tc = dp.totals.current;
+  const tp = dp.totals.previous;
+  const totalDelta = tc.margin_pct - tp.margin_pct;
+  const totalTrend = totalDelta > 2 ? '<span style="color:var(--sw-green)">&#9650; ' + totalDelta + 'pp</span>'
+    : totalDelta < -2 ? '<span style="color:var(--sw-red)">&#9660; ' + Math.abs(totalDelta) + 'pp</span>'
+    : '<span style="color:var(--sw-text-sec)">&#8212; flat</span>';
+
+  rows += '<tr style="font-weight:600;border-top:2px solid var(--sw-border);">' +
+    '<td>Total</td>' +
+    '<td class="text-right">' + fmtDollar(tc.revenue) + '</td>' +
+    '<td class="text-right">' + fmtDollar(tc.costs) + '</td>' +
+    '<td class="text-right">' + fmtDollar(tc.gross_profit) + '</td>' +
+    '<td class="text-right ' + ragClass(tc.margin_pct, 28, 20) + '">' + tc.margin_pct + '%</td>' +
+    '<td class="text-right" style="color:var(--sw-text-sec);">' + tp.margin_pct + '%</td>' +
+    '<td class="text-right">' + totalTrend + '</td>' +
+  '</tr>';
+
+  document.getElementById('divisionPLBody').innerHTML = rows;
+
+  // Unallocated costs warning
+  if (dp.unallocated_costs > 500) {
+    document.getElementById('divisionPLAlert').style.display = 'block';
+    document.getElementById('divisionPLAlert').innerHTML =
+      '<div class="alert-card warning"><div class="alert-title">Unallocated Costs: ' + fmtDollar(dp.unallocated_costs) + '</div>' +
+      '<div>These costs appear in the total P&L but aren\'t tagged to any division in Xero. ' +
+      'Could be wages, overheads, or receipts missing a tracking category. ' +
+      'This gap makes individual division margins look better than reality.</div></div>';
+  }
+
+  // Worst division callout
+  if (worstDiv && worstMargin < 25) {
+    const alertEl = document.getElementById('divisionPLAlert');
+    alertEl.style.display = 'block';
+    alertEl.innerHTML += '<div class="alert-card ' + (worstMargin < 15 ? 'critical' : 'warning') + '">' +
+      '<div class="alert-title">' + worstDiv + ' is your weakest margin at ' + worstMargin + '%</div>' +
+      '<div>Check if this is a data issue (missing receipts, timing) or a real pricing/cost problem.</div></div>';
+  }
+
+  // Division Margin Trend Chart — 6 months
+  document.getElementById('divMarginChartWrap').style.display = 'block';
+  const trendDatasets = dp.divisions.filter(function(div) {
+    return div.trend.revenue.some(function(v) { return v > 0; });
+  }).map(function(div) {
+    return {
+      label: divLabels[div.division],
+      data: div.trend.margin_pct,
+      borderColor: divColors[div.division],
+      backgroundColor: divColors[div.division] + '20',
+      fill: false,
+      tension: 0.3,
+      borderWidth: 2.5,
+      pointRadius: 4,
+      pointBackgroundColor: divColors[div.division],
+    };
+  });
+
+  makeChart('divMarginTrendChart', {
+    type: 'line',
+    data: {
+      labels: dp.months,
+      datasets: trendDatasets,
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          min: 0, max: 60,
+          ticks: { callback: function(v) { return v + '%'; } },
+        },
+      },
+      plugins: {
+        annotation: {
+          annotations: {
+            target: {
+              type: 'line', yMin: 30, yMax: 30,
+              borderColor: CHART_COLORS.green + '80',
+              borderDash: [6, 4], borderWidth: 2,
+              label: { display: true, content: '30% target', position: 'start', font: { size: 10 } },
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ctx.dataset.label + ': ' + ctx.raw + '%'; },
+          },
+        },
+      },
+    },
+  });
 }
 
 
