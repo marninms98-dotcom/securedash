@@ -1,0 +1,4007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SecureWorks — Trade</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#293C46">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SW Trade">
+  <link rel="apple-touch-icon" href="../assets/logo/png/SecureWorks Icon Main@4x.png">
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
+  </script>
+  <script src="../tools/shared/brand.js"></script>
+  <script src="../tools/shared/cloud.js"></script>
+
+  <style>
+    /* ══════════════════════════════════════════════════
+       CSS VARIABLES — matches main dashboard
+       ══════════════════════════════════════════════════ */
+    :root {
+      --sw-orange: #F15A29;
+      --sw-dark: #293C46;
+      --sw-mid: #4C6A7C;
+      --sw-light: #F0F4F7;
+      --sw-bg: #F7F8FA;
+      --sw-border: #EAEDF0;
+      --sw-text: #1A2332;
+      --sw-text-sec: #7C8898;
+      --sw-green: #27AE60;
+      --sw-red: #E74C3C;
+      --sw-yellow: #E67E22;
+      --sw-blue: #3498DB;
+      --sw-card: #FFFFFF;
+      --sw-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+      --sw-shadow-hover: 0 10px 40px rgba(0,0,0,0.08);
+      --sw-radius: 12px;
+      --sw-font: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif;
+    }
+
+    /* ══════════════════════════════════════════════════
+       RESET + BASE
+       ══════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sw-font);
+      background: var(--sw-bg);
+      color: var(--sw-text);
+      line-height: 1.5;
+      padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); /* room for bottom nav + safe area */
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ══════════════════════════════════════════════════
+       HEADER
+       ══════════════════════════════════════════════════ */
+    .header {
+      background: var(--sw-dark);
+      color: #fff;
+      padding: 12px 16px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-brand {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .header-brand span { font-weight: 400; opacity: 0.7; }
+    .header-user {
+      font-size: 13px;
+      opacity: 0.8;
+    }
+    .header-back {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 22px;
+      padding: 4px 8px;
+      cursor: pointer;
+      display: none; /* shown via JS when in sub-view */
+      margin-right: 8px;
+    }
+    .header-left { display: flex; align-items: center; gap: 4px; }
+
+    /* ══════════════════════════════════════════════════
+       BOTTOM NAV
+       ══════════════════════════════════════════════════ */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--sw-dark);
+      display: flex;
+      z-index: 100;
+      padding: 6px 4px;
+      padding-bottom: max(6px, env(safe-area-inset-bottom));
+      gap: 4px;
+    }
+    .bottom-nav button {
+      flex: 1;
+      padding: 8px 4px;
+      min-height: 48px;
+      background: rgba(255,255,255,0.08);
+      border: none;
+      border-radius: 8px;
+      color: rgba(255,255,255,0.5);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      transition: all 0.15s;
+    }
+    .bottom-nav button.active {
+      background: var(--sw-orange);
+      color: #fff;
+    }
+    .bottom-nav button:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    .bottom-nav button svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* ══════════════════════════════════════════════════
+       VIEWS — toggle with .active
+       ══════════════════════════════════════════════════ */
+    .view { display: none; opacity: 0; transition: opacity 0.15s ease; }
+    .view.active { display: block; opacity: 1; }
+
+    .container { padding: 12px 16px; max-width: 600px; margin: 0 auto; }
+
+    /* ══════════════════════════════════════════════════
+       LOGIN
+       ══════════════════════════════════════════════════ */
+    .login-box {
+      max-width: 360px;
+      margin: 60px auto;
+      padding: 32px 24px;
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+      text-align: center;
+    }
+    .login-box h2 {
+      font-size: 20px;
+      color: var(--sw-dark);
+      margin-bottom: 4px;
+    }
+    .login-box p {
+      font-size: 13px;
+      color: var(--sw-text-sec);
+      margin-bottom: 20px;
+    }
+    .login-box input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--sw-border);
+      border-radius: 8px;
+      font-size: 16px; /* prevents zoom on iOS */
+      margin-bottom: 12px;
+      outline: none;
+    }
+    .login-box input:focus { border-color: var(--sw-orange); }
+    .login-sent {
+      padding: 16px;
+      background: #eafaf1;
+      border-radius: 8px;
+      color: var(--sw-green);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* ══════════════════════════════════════════════════
+       BUTTONS
+       ══════════════════════════════════════════════════ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      width: 100%;
+    }
+    .btn-primary {
+      background: var(--sw-orange);
+      color: #fff;
+    }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-primary:disabled {
+      background: var(--sw-border);
+      color: var(--sw-text-sec);
+      cursor: default;
+    }
+    .btn-secondary {
+      background: var(--sw-light);
+      color: var(--sw-dark);
+    }
+    .btn-danger {
+      background: #fdeaea;
+      color: var(--sw-red);
+    }
+    .btn-small {
+      padding: 8px 14px;
+      font-size: 13px;
+      width: auto;
+    }
+
+    /* ══════════════════════════════════════════════════
+       JOB CARDS (My Jobs list)
+       ══════════════════════════════════════════════════ */
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--sw-text-sec);
+      margin: 20px 0 8px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    .job-card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+      border-left: 4px solid var(--sw-mid);
+    }
+    .job-card:active { box-shadow: var(--sw-shadow-hover); }
+    .job-card[data-type="fencing"] { border-left-color: var(--sw-orange); }
+    .job-card[data-type="patio"] { border-left-color: var(--sw-blue); }
+
+    .job-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .job-card-client {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--sw-dark);
+    }
+    .job-card-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .badge-fencing { background: #fff0eb; color: var(--sw-orange); }
+    .badge-patio { background: #ebf4ff; color: var(--sw-blue); }
+    .badge-combo { background: #f3ebff; color: #8E44AD; }
+    .job-card-address {
+      font-size: 13px;
+      color: var(--sw-text-sec);
+      margin-top: 2px;
+    }
+    .job-card-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--sw-text-sec);
+    }
+    .job-card-meta span { display: flex; align-items: center; gap: 3px; }
+
+    .status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    .status-scheduled { background: #ebf4ff; color: var(--sw-blue); }
+    .status-confirmed { background: #eafaf1; color: var(--sw-green); }
+    .status-in_progress { background: #fff7eb; color: var(--sw-yellow); }
+    .status-complete { background: #eafaf1; color: var(--sw-green); }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--sw-text-sec);
+      font-size: 14px;
+    }
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      fill: var(--sw-border);
+      margin-bottom: 12px;
+    }
+
+    /* ══════════════════════════════════════════════════
+       JOB DETAIL VIEW
+       ══════════════════════════════════════════════════ */
+    .detail-section {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .detail-section h3 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: var(--sw-text-sec);
+      margin-bottom: 12px;
+    }
+
+    /* Client info */
+    .client-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--sw-dark);
+      margin-bottom: 4px;
+    }
+    .client-address {
+      font-size: 14px;
+      color: var(--sw-text-sec);
+      margin-bottom: 12px;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+    }
+    .action-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px;
+      background: var(--sw-light);
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sw-dark);
+      cursor: pointer;
+      text-decoration: none;
+      min-height: 48px;
+    }
+    .action-btn:active { background: var(--sw-border); }
+    .action-btn svg { width: 18px; height: 18px; fill: var(--sw-mid); }
+
+    /* Status bar (assignment status buttons) */
+    .status-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .status-bar button {
+      flex: 1;
+      padding: 10px 8px;
+      border: 2px solid var(--sw-border);
+      border-radius: 8px;
+      background: var(--sw-card);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sw-text-sec);
+      cursor: pointer;
+      transition: all 0.15s;
+      min-height: 44px;
+    }
+    .status-bar button.active {
+      border-color: var(--sw-green);
+      background: #eafaf1;
+      color: var(--sw-green);
+    }
+    .status-bar button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    /* Crew list */
+    .crew-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--sw-border);
+      font-size: 14px;
+    }
+    .crew-item:last-child { border-bottom: none; }
+    .crew-item-name { font-weight: 600; color: var(--sw-dark); }
+    .crew-item-role { font-size: 12px; color: var(--sw-text-sec); }
+
+    /* Work order scope items */
+    .scope-item {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--sw-border);
+      font-size: 14px;
+    }
+    .scope-item:last-child { border-bottom: none; }
+
+    /* Photo grid */
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .photo-grid img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    /* Notes timeline */
+    .note-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .note-item:last-child { border-bottom: none; }
+    .note-author {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--sw-mid);
+    }
+    .note-time {
+      font-size: 11px;
+      color: var(--sw-text-sec);
+      margin-left: 8px;
+    }
+    .note-text {
+      font-size: 14px;
+      margin-top: 2px;
+      white-space: pre-wrap;
+    }
+    .note-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .note-input-row textarea {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--sw-border);
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: var(--sw-font);
+      outline: none;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
+    }
+    .note-input-row textarea:focus { border-color: var(--sw-orange); }
+
+    /* Upload area */
+    .upload-area {
+      border: 2px dashed var(--sw-border);
+      border-radius: var(--sw-radius);
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .upload-area:active { border-color: var(--sw-orange); }
+    .upload-area svg { width: 32px; height: 32px; fill: var(--sw-text-sec); margin-bottom: 8px; }
+    .upload-area p { font-size: 13px; color: var(--sw-text-sec); }
+
+    /* Upload progress */
+    .upload-progress {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--sw-text-sec);
+    }
+    .upload-progress-bar {
+      height: 4px;
+      background: var(--sw-border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .upload-progress-fill {
+      height: 100%;
+      background: var(--sw-green);
+      transition: width 0.3s;
+      width: 0;
+    }
+
+    /* ══════════════════════════════════════════════════
+       SERVICE REPORT
+       ══════════════════════════════════════════════════ */
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .checklist-item:last-child { border-bottom: none; }
+    .checklist-item input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      accent-color: var(--sw-green);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .checklist-item label {
+      font-size: 14px;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+
+    .report-textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--sw-border);
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: var(--sw-font);
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+    }
+    .report-textarea:focus { border-color: var(--sw-orange); }
+
+    /* Signature pad */
+    .sig-pad-wrap {
+      border: 2px solid var(--sw-border);
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      background: #fff;
+    }
+    .sig-pad-wrap canvas {
+      display: block;
+      width: 100%;
+      height: 200px;
+      touch-action: none; /* prevent scroll while signing */
+    }
+    .sig-clear {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.06);
+      border: none;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--sw-text-sec);
+      cursor: pointer;
+    }
+    .sig-name-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--sw-border);
+      border-radius: 8px;
+      font-size: 16px;
+      margin-top: 8px;
+      outline: none;
+    }
+    .sig-name-input:focus { border-color: var(--sw-orange); }
+
+    .report-submitted {
+      text-align: center;
+      padding: 32px 16px;
+    }
+    .report-submitted svg {
+      width: 56px;
+      height: 56px;
+      fill: var(--sw-green);
+      margin-bottom: 12px;
+    }
+    .report-submitted h3 {
+      font-size: 18px;
+      color: var(--sw-dark);
+      margin-bottom: 4px;
+    }
+    .report-submitted p {
+      font-size: 14px;
+      color: var(--sw-text-sec);
+    }
+
+    /* ══════════════════════════════════════════════════
+       LIGHTBOX (full-screen photo viewer)
+       ══════════════════════════════════════════════════ */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox.active { display: flex; }
+    .lightbox img {
+      max-width: 95%;
+      max-height: 90vh;
+      border-radius: 8px;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: #fff;
+      font-size: 28px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+    }
+    .lightbox.active .lightbox-nav { display: block; }
+    .lightbox-prev { left: 12px; }
+    .lightbox-next { right: 12px; }
+    .lightbox-counter {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+    }
+
+    /* ══════════════════════════════════════════════════
+       LOADING / TOAST
+       ══════════════════════════════════════════════════ */
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--sw-border);
+      border-top-color: var(--sw-orange);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 24px;
+      gap: 12px;
+      color: var(--sw-text-sec);
+      font-size: 14px;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 88px; /* clears bottom nav (72px) + gap */
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--sw-dark);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      max-width: 90%;
+      text-align: center;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: var(--sw-red); }
+
+    /* Pull-to-refresh indicator */
+    .pull-indicator {
+      text-align: center;
+      padding: 0;
+      overflow: hidden;
+      height: 0;
+      transition: height 0.2s;
+      color: var(--sw-text-sec);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .pull-indicator.pulling { color: var(--sw-orange); }
+    .pull-indicator .spinner { width: 16px; height: 16px; }
+
+    /* PWA install banner */
+    .install-banner {
+      display: none;
+      position: fixed;
+      bottom: 80px;
+      left: 12px;
+      right: 12px;
+      background: var(--sw-dark);
+      color: #fff;
+      padding: 14px 16px;
+      border-radius: var(--sw-radius);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      z-index: 150;
+      align-items: center;
+      gap: 12px;
+    }
+    .install-banner.show { display: flex; }
+    .install-banner-text {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .install-banner-text small {
+      display: block;
+      font-weight: 400;
+      font-size: 12px;
+      opacity: 0.7;
+      margin-top: 2px;
+    }
+    .install-banner-btn {
+      background: var(--sw-orange);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .install-banner-close {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.5);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    /* Offline indicator */
+    .offline-bar {
+      display: none;
+      position: fixed;
+      top: 56px;
+      left: 0;
+      right: 0;
+      background: #E74C3C;
+      color: #fff;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px;
+      z-index: 200;
+      letter-spacing: 0.5px;
+    }
+    .offline-bar.show { display: block; }
+
+    /* Last updated */
+    .last-updated {
+      font-size: 11px;
+      color: var(--sw-text-sec);
+      text-align: center;
+      padding: 4px 0 0;
+    }
+
+    /* Focus indicators for keyboard / accessibility */
+    .job-card:focus-visible,
+    .action-btn:focus-visible,
+    .btn:focus-visible {
+      outline: 2px solid var(--sw-orange);
+      outline-offset: 2px;
+    }
+
+    /* Custom confirmation dialog */
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .confirm-overlay.active { display: flex; }
+    .confirm-box {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 320px;
+      width: 100%;
+      text-align: center;
+    }
+    .confirm-box h3 {
+      font-size: 17px;
+      margin-bottom: 8px;
+      color: var(--sw-dark);
+    }
+    .confirm-box p {
+      font-size: 14px;
+      color: var(--sw-text-sec);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .confirm-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .confirm-actions button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: var(--sw-font);
+      cursor: pointer;
+      border: none;
+    }
+    .confirm-cancel {
+      background: var(--sw-light);
+      color: var(--sw-text);
+    }
+    .confirm-ok {
+      background: var(--sw-orange);
+      color: #fff;
+    }
+
+    /* Photo grid collapse for large galleries */
+    .photo-grid.collapsed img:nth-child(n+7) { display: none; }
+    .photo-grid-more {
+      text-align: center;
+      padding: 8px;
+      font-size: 13px;
+      color: var(--sw-mid);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    /* Weather widget */
+    .weather-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.9);
+    }
+    .weather-bar .weather-icon { font-size: 22px; }
+    .weather-bar .weather-temp { font-size: 20px; font-weight: 700; }
+    .weather-bar .weather-detail { opacity: 0.75; font-size: 12px; }
+    .weather-bar .weather-rain { color: #5DADE2; font-weight: 600; }
+
+    /* Today's job card accent */
+    .job-card.today-card { border-left: 3px solid var(--sw-orange); }
+
+    /* Broken image fallback */
+    .photo-grid img {
+      background: var(--sw-light);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════
+     HEADER
+     ══════════════════════════════════════════════════ -->
+<div class="header">
+  <div class="header-left">
+    <button class="header-back" id="btnBack" onclick="goBack()">&#8592;</button>
+    <div class="header-brand">SecureWorks <span>Trade</span></div>
+  </div>
+  <div class="header-user" id="headerUser" onclick="toggleUserMenu()"></div>
+</div>
+<div class="offline-bar" id="offlineBar">No internet connection — working offline</div>
+<!-- User menu (tap name to show) -->
+<div id="userMenu" style="display:none;position:fixed;top:56px;right:8px;background:#fff;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:200;min-width:140px;overflow:hidden">
+  <button onclick="doLogout()" style="display:block;width:100%;padding:14px 16px;border:none;background:none;text-align:left;font-size:14px;font-family:var(--sw-font);color:var(--sw-text);cursor:pointer">Sign out</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     LOGIN VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewLogin" class="view active">
+  <div class="login-box">
+    <h2>Trade Login</h2>
+    <label for="loginEmail" style="font-size:14px;color:var(--sw-text-sec);display:block;margin-bottom:8px">Sign in with your email and password</label>
+    <input type="email" id="loginEmail" placeholder="you@email.com" autocomplete="email">
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" style="margin-bottom:12px">
+    <button class="btn btn-primary" id="btnLogin" onclick="doLogin()">Log In</button>
+    <div id="loginError" style="display:none;padding:12px;background:#fdeaea;border-radius:8px;color:var(--sw-red);font-size:14px;font-weight:600;margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- PWA Home Screen Onboarding (iOS) -->
+<div id="pwaOnboarding" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;padding:24px;display:none">
+  <div style="max-width:360px;margin:60px auto;background:#fff;border-radius:16px;padding:28px 24px;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">📲</div>
+    <h3 style="font-size:18px;color:var(--sw-dark);margin-bottom:8px">Add to Home Screen</h3>
+    <p style="font-size:14px;color:var(--sw-text-sec);margin-bottom:20px">Install SW Trade for quick access — works like a real app</p>
+    <div style="text-align:left;font-size:14px;color:var(--sw-text);line-height:2">
+      <div>1. Tap the <strong>Share</strong> button <span style="font-size:18px;vertical-align:middle">⬆</span></div>
+      <div>2. Scroll down and tap <strong>"Add to Home Screen"</strong></div>
+      <div>3. Tap <strong>"Add"</strong> in the top right</div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:20px" onclick="dismissPwaOnboarding()">Got it</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MY JOBS VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewMyJobs" class="view">
+  <div class="pull-indicator" id="pullIndicator">
+    <span id="pullText">Pull to refresh</span>
+  </div>
+  <div class="container" id="myJobsList">
+    <div class="loading-screen"><div class="spinner"></div>Loading your jobs...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     JOB DETAIL VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewJob" class="view">
+  <div class="container" id="jobDetailContent">
+    <div class="loading-screen"><div class="spinner"></div>Loading job...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SERVICE REPORT VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewReport" class="view">
+  <div class="container" id="reportContent">
+    <div class="loading-screen"><div class="spinner"></div>Loading report...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     CAMERA VIEW (Quick Photo)
+     ══════════════════════════════════════════════════ -->
+<div id="viewCamera" class="view">
+  <div class="container" id="cameraContent">
+    <div class="loading-screen"><div class="spinner"></div>Loading...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     SCHEDULE VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewSchedule" class="view">
+  <div class="container" id="scheduleContent">
+    <div class="loading-screen"><div class="spinner"></div>Loading schedule...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     PROFILE VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewProfile" class="view">
+  <div class="container" id="profileContent"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     BOTTOM NAV — 4 tabs
+     ══════════════════════════════════════════════════ -->
+<div class="bottom-nav" id="bottomNav" style="display:none">
+  <button class="active" data-view="myJobs" onclick="showView('myJobs')">
+    <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+    Jobs
+  </button>
+  <button data-view="camera" onclick="showView('camera')">
+    <svg viewBox="0 0 24 24"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
+    Camera
+  </button>
+  <button data-view="schedule" onclick="showView('schedule')">
+    <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+    Schedule
+  </button>
+  <button data-view="profile" onclick="showView('profile')">
+    <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+    Profile
+  </button>
+</div>
+
+<!-- Lightbox — stop propagation on image so tapping image doesn't close -->
+<!-- Custom Confirmation Dialog -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMsg"></p>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" id="confirmCancel">Cancel</button>
+      <button class="confirm-ok" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close">&times;</button>
+  <button class="lightbox-nav lightbox-prev" onclick="event.stopPropagation();lightboxNav(-1)">&#8249;</button>
+  <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()">
+  <button class="lightbox-nav lightbox-next" onclick="event.stopPropagation();lightboxNav(1)">&#8250;</button>
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+<!-- PWA Install Banner -->
+<div class="install-banner" id="installBanner">
+  <div class="install-banner-text">
+    Install SW Trade
+    <small>Add to home screen for quick access</small>
+  </div>
+  <button class="install-banner-btn" id="installBtn" onclick="installPWA()">Install</button>
+  <button class="install-banner-close" onclick="dismissInstall()">&times;</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT — Phase 1 (v0.2)
+     - JWT auth on all API calls
+     - 20s request timeout
+     - Friendly error messages
+     - Client-side image compression
+     - Signed URL photo uploads (sequential)
+     - Assignment status buttons
+     - Crew display
+     - Work order scope items
+     - GPS coordinates for maps
+     - Confirmation dialog before report submit
+     - Notes as textarea
+     ══════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  // ── State ──
+  var cloud = null;
+  var _user = null;          // { id, name, email, role, org_id }
+  var _currentJobId = null;
+  var _currentJob = null;    // full job detail response
+  var _currentAssignment = null; // the assignment for this user on current job
+  var _currentJobLoaded = null;  // last loaded jobId (cache key)
+  var _reportLoadedForJob = null; // prevent report form reload when switching tabs
+  var _reportDirty = false;       // unsaved changes in report form
+  var _opsApiBase = '';
+  var _cachedMyJobs = [];    // flat array of all assignments for Camera/Schedule views
+
+  // ── Signature pad state ──
+  var _sigCanvas = null;
+  var _sigCtx = null;
+  var _sigDrawing = false;
+
+  // ══════════════════════════════════════════════════
+  // ERROR MESSAGES — friendly for trades
+  // ══════════════════════════════════════════════════
+  var ERROR_MAP = {
+    'Login required': 'You need to log in first',
+    'Session expired': 'Your session expired — please log in again',
+    'Failed to fetch': 'No internet connection — check your signal',
+    'NetworkError': 'No internet connection — check your signal',
+    'AbortError': 'Request timed out — try again when you have better signal',
+    'The operation was aborted': 'Request timed out — try again when you have better signal',
+  };
+
+  function friendlyError(err) {
+    var msg = err.message || String(err);
+    // Check each key as a substring match
+    var keys = Object.keys(ERROR_MAP);
+    for (var i = 0; i < keys.length; i++) {
+      if (msg.indexOf(keys[i]) !== -1) return ERROR_MAP[keys[i]];
+    }
+    return msg;
+  }
+
+  // ══════════════════════════════════════════════════
+  // OFFLINE DRAFTS — localStorage persistence
+  // ══════════════════════════════════════════════════
+  var drafts = {
+    _key: function(jobId, type) { return 'sw_draft_' + jobId + '_' + type; },
+
+    save: function(jobId, type, data) {
+      try {
+        localStorage.setItem(this._key(jobId, type), JSON.stringify(data));
+      } catch(e) { /* quota exceeded — ignore */ }
+    },
+
+    load: function(jobId, type) {
+      try {
+        var raw = localStorage.getItem(this._key(jobId, type));
+        return raw ? JSON.parse(raw) : null;
+      } catch(e) { return null; }
+    },
+
+    clear: function(jobId, type) {
+      try { localStorage.removeItem(this._key(jobId, type)); } catch(e) {}
+    },
+
+    // Save unsent notes for later sync
+    queueNote: function(jobId, text) {
+      var key = 'sw_pending_notes';
+      var pending = [];
+      try { pending = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+      pending.push({ jobId: jobId, text: text, queuedAt: new Date().toISOString() });
+      try { localStorage.setItem(key, JSON.stringify(pending)); } catch(e) {}
+    },
+
+    getPendingNotes: function() {
+      try { return JSON.parse(localStorage.getItem('sw_pending_notes') || '[]'); } catch(e) { return []; }
+    },
+
+    clearPendingNotes: function() {
+      try { localStorage.removeItem('sw_pending_notes'); } catch(e) {}
+    }
+  };
+
+  // ── Upload lock — prevents duplicate uploads from double-tap ──
+  var _uploading = false;
+
+  // ── Auto-grow textarea helper ──
+  function autoGrow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  // ══════════════════════════════════════════════════
+  // AUTH TOKEN — from Supabase session
+  // ══════════════════════════════════════════════════
+
+  var _sessionExpired = false;
+
+  function handleSessionExpiry() {
+    if (_sessionExpired) return; // prevent multiple triggers
+    _sessionExpired = true;
+    toast('Session expired — please log in again', true);
+
+    // Sign out and show login
+    if (cloud && cloud.supabase) {
+      cloud.supabase.auth.signOut().catch(function() {});
+    }
+
+    setTimeout(function() {
+      _user = null;
+      _currentJobId = null;
+      _currentJob = null;
+      _currentJobLoaded = null;
+      _reportLoadedForJob = null;
+      document.getElementById('bottomNav').style.display = 'none';
+      document.querySelectorAll('.view').forEach(function(el) { el.classList.remove('active'); });
+      document.getElementById('viewLogin').classList.add('active');
+      document.getElementById('btnBack').style.display = 'none';
+      _sessionExpired = false;
+    }, 1500);
+  }
+
+  function getAuthToken() {
+    if (!cloud || !cloud.supabase) return Promise.resolve(null);
+    return cloud.supabase.auth.getSession().then(function(res) {
+      return (res.data && res.data.session && res.data.session.access_token) || null;
+    }).catch(function() { return null; });
+  }
+
+  // ══════════════════════════════════════════════════
+  // API HELPER — JWT auth + timeout
+  // ══════════════════════════════════════════════════
+
+  function api(action, params, postBody) {
+    return getAuthToken().then(function(token) {
+      var url = _opsApiBase + '?action=' + action;
+      if (params) {
+        Object.keys(params).forEach(function(k) {
+          if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
+        });
+      }
+
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      var opts = { headers: headers };
+      if (postBody) {
+        opts.method = 'POST';
+        opts.body = JSON.stringify(postBody);
+      }
+
+      // 20-second timeout for weak mobile signal
+      var controller = new AbortController();
+      opts.signal = controller.signal;
+      var timeoutId = setTimeout(function() { controller.abort(); }, 20000);
+
+      return fetch(url, opts).then(function(r) {
+        clearTimeout(timeoutId);
+        // Detect expired session
+        if (r.status === 401 || r.status === 403) {
+          return r.json().catch(function() { return {}; }).then(function(e) {
+            var msg = e.error || '';
+            if (msg.indexOf('Login required') !== -1 || msg.indexOf('expired') !== -1 || msg.indexOf('Invalid') !== -1 || r.status === 401) {
+              handleSessionExpiry();
+            }
+            throw new Error(msg || 'Session expired — please log in again');
+          });
+        }
+        if (!r.ok) return r.json().catch(function() { throw new Error(r.statusText || 'Request failed'); }).then(function(e) { throw new Error(e.error || r.statusText); });
+        return r.json();
+      }).catch(function(err) {
+        clearTimeout(timeoutId);
+        throw err;
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // IMAGE COMPRESSION — client-side before upload
+  // ══════════════════════════════════════════════════
+
+  function compressImage(file) {
+    return new Promise(function(resolve, reject) {
+      // Skip compression for small files (< 500KB)
+      if (file.size < 500 * 1024) {
+        resolve(file);
+        return;
+      }
+
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        URL.revokeObjectURL(url);
+
+        // Scale down to max 1600px on longest side
+        var maxDim = 1600;
+        var w = img.width;
+        var h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round(h * maxDim / w);
+            w = maxDim;
+          } else {
+            w = Math.round(w * maxDim / h);
+            h = maxDim;
+          }
+        }
+
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        canvas.toBlob(function(blob) {
+          if (!blob) { resolve(file); return; }
+          // Create a new File with the compressed blob
+          var compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          resolve(compressed);
+        }, 'image/jpeg', 0.7);
+      };
+      img.onerror = function() {
+        URL.revokeObjectURL(url);
+        resolve(file); // fallback to original
+      };
+      img.src = url;
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // SIGNED URL UPLOAD — 3-step flow
+  // 1. get_upload_url → signed URL from server
+  // 2. PUT binary to Supabase Storage
+  // 3. confirm_upload → register media record
+  // ══════════════════════════════════════════════════
+
+  function uploadOnePhoto(file, jobId, phase, label) {
+    var compressed;
+    return compressImage(file).then(function(f) {
+      compressed = f;
+      // Step 1: get signed upload URL
+      return api('get_upload_url', null, {
+        jobId: jobId,
+        fileName: compressed.name,
+        contentType: compressed.type || 'image/jpeg'
+      });
+    }).then(function(urlData) {
+      // Step 2: PUT binary directly to storage
+      return fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': compressed.type || 'image/jpeg',
+          'Authorization': 'Bearer ' + urlData.token
+        },
+        body: compressed
+      }).then(function(r) {
+        if (!r.ok) throw new Error('Upload failed (status ' + r.status + ')');
+        return urlData;
+      });
+    }).then(function(urlData) {
+      // Step 3: confirm upload and register media
+      return api('confirm_upload', null, {
+        jobId: jobId,
+        publicUrl: urlData.publicUrl,
+        path: urlData.path,
+        label: label || '',
+        phase: phase || 'completion'
+      });
+    });
+  }
+
+  // Sequential upload — one at a time for weak signal
+  function uploadPhotosSequential(files, jobId, phase, onProgress) {
+    var results = [];
+    var idx = 0;
+    function next() {
+      if (idx >= files.length) return Promise.resolve(results);
+      var file = files[idx];
+      idx++;
+      if (onProgress) onProgress(idx, files.length);
+      return uploadOnePhoto(file, jobId, phase, '').then(function(res) {
+        results.push(res);
+        return next();
+      });
+    }
+    return next();
+  }
+
+  // ══════════════════════════════════════════════════
+  // AUTH
+  // ══════════════════════════════════════════════════
+
+  window.doLogin = function() {
+    var email = document.getElementById('loginEmail').value.trim();
+    var password = document.getElementById('loginPassword').value;
+    if (!email || !password) {
+      showLoginError('Please enter your email and password');
+      return;
+    }
+    var btn = document.getElementById('btnLogin');
+    btn.disabled = true;
+    btn.textContent = 'Logging in...';
+    hideLoginError();
+
+    cloud.auth.signInWithPassword(email, password).then(function() {
+      // onLogin handler fires via auth:login event
+    }).catch(function(err) {
+      var msg = (err && err.message) || String(err);
+      if (msg.indexOf('Invalid login') !== -1 || msg.indexOf('invalid') !== -1) {
+        showLoginError('Wrong email or password — try again');
+      } else {
+        showLoginError(friendlyError(err));
+      }
+      btn.disabled = false;
+      btn.textContent = 'Log In';
+    });
+  };
+
+  function showLoginError(msg) {
+    var el = document.getElementById('loginError');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  }
+  function hideLoginError() {
+    var el = document.getElementById('loginError');
+    if (el) el.style.display = 'none';
+  }
+
+  // Enter key on login fields
+  document.getElementById('loginEmail').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { document.getElementById('loginPassword').focus(); }
+  });
+  document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  function onLogin(profile) {
+    _user = profile;
+    if (!_user) { console.error('[trade] onLogin: profile is null!'); return; }
+    _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+    document.getElementById('headerUser').textContent = _user.name || _user.email;
+    document.getElementById('bottomNav').style.display = 'flex';
+    document.getElementById('viewLogin').classList.remove('active');
+
+    // Sync any pending offline notes
+    syncPendingNotes();
+
+    // Show PWA home screen onboarding for iOS users (delayed)
+    setTimeout(checkPwaOnboarding, 2000);
+
+    // Check for deep link ?jobId=xxx
+    var params = new URLSearchParams(window.location.search);
+    var deepJobId = params.get('jobId');
+    if (deepJobId) {
+      openJob(deepJobId);
+    } else {
+      showView('myJobs');
+      loadMyJobs();
+    }
+  }
+
+  // Sync pending notes that were saved while offline
+  function syncPendingNotes() {
+    var pending = drafts.getPendingNotes();
+    if (pending.length === 0) return;
+
+    var synced = 0;
+    var failed = [];
+    pending.forEach(function(note) {
+      api('add_note', null, { jobId: note.jobId, text: note.text }).then(function() {
+        synced++;
+        if (synced + failed.length === pending.length) finishSync();
+      }).catch(function() {
+        failed.push(note);
+        if (synced + failed.length === pending.length) finishSync();
+      });
+    });
+
+    function finishSync() {
+      if (failed.length > 0) {
+        // Re-queue failed notes
+        try { localStorage.setItem('sw_pending_notes', JSON.stringify(failed)); } catch(e) {}
+      } else {
+        drafts.clearPendingNotes();
+      }
+      if (synced > 0) toast(synced + ' offline note(s) synced');
+    }
+  }
+
+  // Also sync when coming back online
+  window.addEventListener('online', function() {
+    if (_user) syncPendingNotes();
+  });
+
+  // ══════════════════════════════════════════════════
+  // VIEW SWITCHING
+  // ══════════════════════════════════════════════════
+
+  var _currentView = 'myJobs';
+  var _skipPopState = false; // avoid infinite loop when handling popstate
+
+  // Main tabs (show in bottom nav) vs sub-views (accessed from job cards)
+  var _mainTabs = ['myJobs', 'camera', 'schedule', 'profile'];
+
+  window.showView = function(view, skipHistory) {
+    // Warn if leaving report with unsaved changes
+    if (_currentView === 'report' && view !== 'report' && _reportDirty) {
+      showConfirm('Unsaved Changes', 'You have unsaved changes on the report. Leave anyway?', 'Leave').then(function(ok) {
+        if (ok) { _reportDirty = false; showView(view, skipHistory); }
+      });
+      return;
+    }
+    _currentView = view;
+    document.querySelectorAll('.view').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.bottom-nav button').forEach(function(el) { el.classList.remove('active'); });
+
+    var viewEl = document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1));
+    if (viewEl) viewEl.classList.add('active');
+
+    var navBtn = document.querySelector('[data-view="' + view + '"]');
+    if (navBtn) navBtn.classList.add('active');
+
+    // Back button: hide on main tabs, show on sub-views (job, report)
+    var isMainTab = _mainTabs.indexOf(view) !== -1;
+    document.getElementById('btnBack').style.display = isMainTab ? 'none' : 'block';
+
+    // Push state for Android back button support
+    if (!skipHistory) {
+      history.pushState({ view: view, jobId: _currentJobId }, '', '');
+    }
+
+    // Lazy-load data (skip reload if same job already loaded)
+    if (view === 'myJobs') loadMyJobs();
+    if (view === 'camera') renderCameraView();
+    if (view === 'schedule') renderScheduleView();
+    if (view === 'profile') renderProfileView();
+    if (view === 'job' && _currentJobId) {
+      if (_currentJobLoaded !== _currentJobId) loadJobDetail(_currentJobId);
+    }
+    // Only load report if switching to a different job — preserve in-progress form
+    if (view === 'report' && _currentJobId) {
+      if (_reportLoadedForJob !== _currentJobId) loadServiceReport(_currentJobId);
+    }
+  };
+
+  // Android hardware back button / browser back gesture
+  window.addEventListener('popstate', function(e) {
+    if (_skipPopState) { _skipPopState = false; return; }
+    if (_currentView === 'report') {
+      _skipPopState = true;
+      showView('job', true);
+    } else if (_currentView === 'job') {
+      _skipPopState = true;
+      showView('myJobs', true);
+    }
+    // If on a main tab, let the browser handle it (close PWA or go back)
+  });
+
+  window.goBack = function() {
+    if (_currentView === 'report') {
+      showView('job');
+    } else {
+      showView('myJobs');
+    }
+  };
+
+  // ══════════════════════════════════════════════════
+  // MY JOBS
+  // ══════════════════════════════════════════════════
+
+  window.loadMyJobs = function loadMyJobs() {
+    if (!_user) return;
+    var container = document.getElementById('myJobsList');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div><span id="myJobsLoadMsg">Loading your jobs...</span></div>';
+
+    // Slow connection hint after 8 seconds
+    var slowTimer = setTimeout(function() {
+      var msg = document.getElementById('myJobsLoadMsg');
+      if (msg) msg.textContent = 'Still loading... check your connection';
+    }, 8000);
+
+    api('my_jobs').then(function(data) {
+      clearTimeout(slowTimer);
+      renderMyJobs(data);
+    }).catch(function(err) {
+      clearTimeout(slowTimer);
+      console.error('[trade] my_jobs error:', err);
+      container.innerHTML = '<div class="empty-state">Error loading jobs: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="loadMyJobs()">Retry</button></div>';
+    });
+  };
+
+  // Detect iOS for Apple Maps links
+  var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  function getMapsUrl(address, suburb, lat, lng) {
+    if (_isIOS) {
+      if (lat && lng) return 'https://maps.apple.com/?daddr=' + lat + ',' + lng;
+      var dest = encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
+      return 'https://maps.apple.com/?daddr=' + dest;
+    }
+    if (lat && lng) return 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
+    var dest = encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
+    return 'https://www.google.com/maps/dir/?api=1&destination=' + dest;
+  }
+
+  function renderMyJobs(data) {
+    var container = document.getElementById('myJobsList');
+    var html = '';
+
+    // Cache all assignments for Camera/Schedule views
+    _cachedMyJobs = [];
+    ['today', 'thisWeek', 'upcoming', 'recent'].forEach(function(k) {
+      (data[k] || []).forEach(function(a) { _cachedMyJobs.push(a); });
+    });
+
+    // ── Today's Summary Card ──
+    var todayJobs = data.today || [];
+    if (todayJobs.length > 0) {
+      var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var now = new Date();
+      var dateStr = days[now.getDay()] + ' ' + now.getDate() + ' ' + months[now.getMonth()];
+
+      // Find earliest start time
+      var earliest = null;
+      todayJobs.forEach(function(a) {
+        if (a.start_time && (!earliest || a.start_time < earliest)) earliest = a.start_time;
+      });
+
+      html += '<div style="background:var(--sw-dark);color:#fff;border-radius:var(--sw-radius);padding:16px;margin-bottom:16px">';
+      html += '  <div id="weatherBar"></div>'; // Weather loads async
+      html += '  <div style="font-size:13px;opacity:0.7">' + dateStr + '</div>';
+      html += '  <div style="font-size:22px;font-weight:700;margin:4px 0">' + todayJobs.length + ' job' + (todayJobs.length > 1 ? 's' : '') + ' today</div>';
+      html += '  <div style="display:flex;gap:16px;font-size:13px;opacity:0.85">';
+      if (earliest) html += '<span>First: ' + earliest.slice(0, 5) + '</span>';
+      // Count pending notes
+      var pendingCount = drafts.getPendingNotes().length;
+      if (pendingCount > 0) html += '<span style="color:var(--sw-yellow)">' + pendingCount + ' note(s) pending sync</span>';
+      html += '  </div>';
+      html += '</div>';
+    }
+
+    var sections = [
+      { key: 'today', label: 'Today' },
+      { key: 'thisWeek', label: 'This Week' },
+      { key: 'upcoming', label: 'Upcoming' },
+      { key: 'recent', label: 'Recent' },
+    ];
+
+    var hasAny = false;
+    sections.forEach(function(sec) {
+      var items = data[sec.key] || [];
+      if (items.length === 0) return;
+      hasAny = true;
+      html += '<div class="section-label">' + sec.label + '</div>';
+      items.forEach(function(a) {
+        var job = a.jobs || {};
+        var type = job.type || 'patio';
+        var statusClass = 'status-' + (a.status || 'scheduled');
+        var todayClass = sec.key === 'today' ? ' today-card' : '';
+        html += '<div class="job-card' + todayClass + '" data-type="' + type + '" onclick="openJob(\'' + job.id + '\', \'' + a.id + '\')">';
+        html += '  <div class="job-card-top">';
+        html += '    <div>';
+        html += '      <div class="job-card-client">' + esc(job.client_name || 'Unknown') + '</div>';
+        html += '      <div class="job-card-address">' + esc(job.site_suburb || job.site_address || '');
+        if (job.job_number) html += ' <span style="color:var(--sw-mid);font-size:12px">' + esc(job.job_number) + '</span>';
+        html += '</div>';
+        html += '    </div>';
+        html += '    <span class="job-card-badge badge-' + type + '">' + type + '</span>';
+        html += '  </div>';
+        // Scope summary line
+        var scopeSummary = buildScopeSummary(job.scope_json, type);
+        if (scopeSummary) {
+          html += '  <div style="font-size:12px;color:var(--sw-mid);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(scopeSummary) + '</div>';
+        }
+        html += '  <div class="job-card-meta">';
+        html += '    <span>' + formatDate(a.scheduled_date) + '</span>';
+        if (a.start_time) html += '<span>' + a.start_time.slice(0, 5) + '</span>';
+        if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
+        html += '    <span class="status-pill ' + statusClass + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+        html += '  </div>';
+        // Quick action icons
+        html += '  <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">';
+        if (job.client_phone) {
+          html += '    <a href="tel:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--sw-light);border-radius:8px;text-decoration:none">';
+          html += '      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+          html += '    </a>';
+        }
+        if (job.site_address) {
+          var navUrl = getMapsUrl(job.site_address, job.site_suburb);
+          html += '    <a href="' + navUrl + '" target="_blank" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--sw-light);border-radius:8px;text-decoration:none">';
+          html += '      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+          html += '    </a>';
+        }
+        html += '  </div>';
+        html += '</div>';
+      });
+    });
+
+    if (!hasAny) {
+      html = '<div class="empty-state">';
+      html += '  <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>';
+      html += '  <p>No jobs assigned to you yet</p>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+
+    // Load weather async (non-blocking)
+    loadWeather();
+  }
+
+  // ══════════════════════════════════════════════════
+  // OPEN JOB (from card or deep link)
+  // ══════════════════════════════════════════════════
+
+  window.openJob = function(jobId, assignmentId) {
+    _currentJobId = jobId;
+    _currentJobLoaded = null; // force reload
+    _reportLoadedForJob = null; // force report reload for new job
+    _currentAssignment = assignmentId || null;
+    showView('job');
+  };
+
+  // ══════════════════════════════════════════════════
+  // JOB DETAIL
+  // ══════════════════════════════════════════════════
+
+  window.loadJobDetail = function loadJobDetail(jobId) {
+    var container = document.getElementById('jobDetailContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div><span id="jobLoadMsg">Loading job...</span></div>';
+
+    var slowTimer = setTimeout(function() {
+      var msg = document.getElementById('jobLoadMsg');
+      if (msg) msg.textContent = 'Still loading... check your connection';
+    }, 8000);
+
+    api('trade_job_detail', { jobId: jobId }).then(function(data) {
+      clearTimeout(slowTimer);
+      _currentJob = data;
+      _currentJobLoaded = jobId;
+      renderJobDetail(data);
+    }).catch(function(err) {
+      clearTimeout(slowTimer);
+      container.innerHTML = '<div class="empty-state">Error: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="loadJobDetail(\'' + jobId + '\')">Retry</button></div>';
+    });
+  };
+
+  function renderJobDetail(data) {
+    var container = document.getElementById('jobDetailContent');
+    var job = data.job;
+    var docs = data.documents || [];
+    var media = data.media || [];
+    var notes = data.notes || [];
+    var wo = data.workOrder;
+    var crew = data.crew || [];
+
+    var scopePhotos = media.filter(function(m) { return m.phase === 'scope'; });
+    var completionPhotos = media.filter(function(m) { return m.phase === 'completion'; });
+    var receiptPhotos = media.filter(function(m) { return m.phase === 'receipt'; });
+
+    // Find current user's assignment for status buttons
+    var myAssignment = null;
+    if (_user) {
+      for (var i = 0; i < crew.length; i++) {
+        if (crew[i].user_id === _user.id) {
+          myAssignment = crew[i];
+          break;
+        }
+      }
+    }
+
+    var html = '';
+
+    // ── Assignment Status Bar + Time Tracking ──
+    if (myAssignment) {
+      var curStatus = myAssignment.status || 'scheduled';
+      var statusSteps = [
+        { key: 'confirmed', label: 'Confirm' },
+        { key: 'in_progress', label: 'On Site' },
+        { key: 'complete', label: 'Done' },
+      ];
+      html += '<div class="status-bar" id="statusBar">';
+      statusSteps.forEach(function(step) {
+        var isPast = statusOrder(step.key) <= statusOrder(curStatus);
+        html += '<button data-status="' + step.key + '"';
+        html += ' class="' + (isPast ? 'active' : '') + '"';
+        html += ' onclick="updateMyStatus(\'' + myAssignment.id + '\', \'' + step.key + '\')"';
+        html += '>' + step.label + '</button>';
+      });
+      html += '</div>';
+
+      // Time tracking display
+      if (myAssignment.started_at) {
+        var timeHtml = '<div style="text-align:center;font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">';
+        if (myAssignment.completed_at) {
+          // Show total duration
+          var durationMins = Math.round((new Date(myAssignment.completed_at) - new Date(myAssignment.started_at)) / 60000);
+          var hrs = Math.floor(durationMins / 60);
+          var mins = durationMins % 60;
+          timeHtml += 'Time on site: <strong style="color:var(--sw-dark)">' + (hrs > 0 ? hrs + 'h ' : '') + mins + 'm</strong>';
+        } else {
+          // Show live timer (started_at stored, use data attribute for JS update)
+          timeHtml += 'On site since ' + new Date(myAssignment.started_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+          timeHtml += ' &mdash; <strong id="liveTimer" data-start="' + myAssignment.started_at + '" style="color:var(--sw-orange)"></strong>';
+        }
+        timeHtml += '</div>';
+        html += timeHtml;
+      }
+    }
+
+    // ── Client Card ──
+    html += '<div class="detail-section">';
+    html += '  <div class="client-name">' + esc(job.client_name || 'Unknown') + '</div>';
+    html += '  <div class="client-address">' + esc(job.site_address || '') + (job.site_suburb ? ', ' + esc(job.site_suburb) : '') + '</div>';
+    if (job.client_email) {
+      html += '  <div style="color:var(--sw-mid);font-size:13px;margin:4px 0">' + esc(job.client_email) + '</div>';
+    }
+    html += '  <div class="action-row">';
+    if (job.client_phone) {
+      html += '    <a href="tel:' + esc(job.client_phone) + '" class="action-btn">';
+      html += '      <svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+      html += '      Call';
+      html += '    </a>';
+    }
+    // Navigation link — Apple Maps on iOS, Google Maps elsewhere
+    var navUrl;
+    if (job.site_address || (job.site_lat && job.site_lng)) {
+      navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
+    }
+    if (navUrl) {
+      html += '    <a href="' + navUrl + '" target="_blank" class="action-btn">';
+      html += '      <svg viewBox="0 0 24 24"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+      html += '      Navigate';
+      html += '    </a>';
+    }
+    html += '  </div>';
+    html += '</div>';
+
+    // ── Scope of Work ──
+    if (job.scope_json) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Scope of Work</h3>';
+      if (job.job_number) html += '<div style="font-size:12px;color:var(--sw-mid);margin-bottom:8px">' + esc(job.job_number) + '</div>';
+      html += renderScopeReadable(job.scope_json, job.type);
+      html += '</div>';
+    }
+
+    // ── Crew ──
+    if (crew.length > 0) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Crew</h3>';
+      crew.forEach(function(c) {
+        var userName = (c.users && c.users.name) || 'TBA';
+        var role = c.crew_name || c.role || '';
+        html += '<div class="crew-item">';
+        html += '  <div>';
+        html += '    <div class="crew-item-name">' + esc(userName) + '</div>';
+        if (role) html += '<div class="crew-item-role">' + esc(role) + '</div>';
+        html += '  </div>';
+        html += '  <span class="status-pill status-' + (c.status || 'scheduled') + '">' + (c.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Work Order (structured data from work_orders table) ──
+    if (wo) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Work Order — ' + esc(wo.wo_number || '') + '</h3>';
+      if (wo.scope_items && wo.scope_items.length > 0) {
+        wo.scope_items.forEach(function(item) {
+          if (typeof item === 'string') {
+            html += '<div class="scope-item">' + esc(item) + '</div>';
+          } else if (item.description) {
+            html += '<div class="scope-item">';
+            html += '<strong>' + esc(item.description) + '</strong>';
+            if (item.quantity) html += ' <span style="color:var(--sw-text-sec)">x' + item.quantity + '</span>';
+            html += '</div>';
+          }
+        });
+      }
+      if (wo.special_instructions) {
+        html += '<div style="margin-top:10px;padding:10px;background:var(--sw-light);border-radius:8px;font-size:13px">';
+        html += '  <strong>Special Instructions:</strong><br>' + esc(wo.special_instructions);
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    // ── Work Order PDF (from documents) ──
+    var workOrderDoc = docs.find(function(d) { return d.type === 'work_order'; });
+    if (workOrderDoc) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Work Order PDF</h3>';
+      html += '  <a href="' + esc(workOrderDoc.pdf_url) + '" target="_blank" class="btn btn-secondary">View Work Order (v' + workOrderDoc.version + ')</a>';
+      html += '</div>';
+    }
+
+    // ── Materials / Purchase Orders ──
+    var pos = data.purchaseOrders || [];
+    if (pos.length > 0) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Materials &amp; Receipts</h3>';
+      pos.forEach(function(po) {
+        var isApproved = po.status === 'authorised' || po.status === 'billed';
+        var isDraft = po.status === 'draft';
+        var statusColor = isApproved ? 'var(--sw-green)' : isDraft ? 'var(--sw-text-sec)' : 'var(--sw-yellow)';
+        var statusLabel = isDraft ? 'awaiting approval' : po.status;
+
+        // Receipts for this PO
+        var poReceipts = receiptPhotos.filter(function(r) { return r.po_id === po.id; });
+
+        html += '<div class="po-card" style="padding:10px;margin-bottom:10px;background:var(--sw-light);border-radius:10px;border-left:3px solid ' + statusColor + '">';
+
+        // Header row: supplier + status + PO number
+        html += '  <div style="display:flex;justify-content:space-between;align-items:center">';
+        html += '    <div>';
+        html += '      <strong style="font-size:14px">' + esc(po.supplier_name) + '</strong>';
+        html += '      <div style="font-size:11px;color:var(--sw-text-sec)">' + esc(po.po_number || '') + '</div>';
+        html += '    </div>';
+        html += '    <span class="status-pill" style="background:' + statusColor + '20;color:' + statusColor + ';font-size:11px">' + esc(statusLabel) + '</span>';
+        html += '  </div>';
+
+        // Delivery date
+        if (po.delivery_date) {
+          html += '  <div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px">';
+          html += '    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:3px"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>';
+          html += '    Delivery: ' + formatDate(po.delivery_date);
+          html += '  </div>';
+        }
+
+        // Line items (materials list)
+        if (po.line_items && po.line_items.length > 0) {
+          html += '  <div style="margin-top:8px">';
+          po.line_items.forEach(function(li) {
+            if (li.description) {
+              html += '<div style="padding:3px 0;font-size:13px;display:flex;justify-content:space-between">';
+              html += '  <span>' + esc(li.description) + '</span>';
+              if (li.quantity) html += '<span style="color:var(--sw-text-sec);white-space:nowrap;margin-left:8px">x' + li.quantity + '</span>';
+              html += '</div>';
+            }
+          });
+          html += '  </div>';
+        }
+
+        // Existing receipts for this PO
+        if (poReceipts.length > 0) {
+          html += '  <div style="margin-top:8px">';
+          html += '    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:4px">Receipts (' + poReceipts.length + ')</div>';
+          html += '    <div style="display:flex;gap:6px;overflow-x:auto;padding:2px 0">';
+          poReceipts.forEach(function(r) {
+            var src = r.thumbnail_url || r.storage_url;
+            html += '<img src="' + esc(src) + '" alt="Receipt" style="width:60px;height:60px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;border:1px solid var(--sw-border)" onclick="openLightbox(\'' + esc(r.storage_url) + '\')">';
+          });
+          html += '    </div>';
+          html += '  </div>';
+        }
+
+        // Receipt upload button — only for approved POs
+        if (isApproved) {
+          html += '  <div style="margin-top:8px">';
+          html += '    <button class="btn btn-secondary btn-small" onclick="startReceiptCapture(\'' + po.id + '\', \'' + esc(po.supplier_name) + '\')" style="width:100%;font-size:12px;padding:8px">';
+          html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3zM5 19l3-4 2 3 3-4 4 5H5z"/></svg>';
+          html += '      Add Receipt Photo';
+          html += '    </button>';
+          html += '  </div>';
+        } else if (isDraft) {
+          html += '  <div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec);text-align:center;padding:6px;background:var(--sw-bg);border-radius:6px">';
+          html += '    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>';
+          html += '    PO not yet approved — do not purchase';
+          html += '  </div>';
+        }
+
+        html += '</div>'; // end po-card
+      });
+
+      // Unlinked receipts (receipt photos with no po_id)
+      var unlinkedReceipts = receiptPhotos.filter(function(r) { return !r.po_id; });
+      if (unlinkedReceipts.length > 0) {
+        html += '<div style="margin-top:6px;font-size:12px;color:var(--sw-text-sec)">' + unlinkedReceipts.length + ' receipt(s) not linked to a PO</div>';
+      }
+
+      // Quick Expense button (small on-site purchases under $200)
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--sw-border)">';
+      html += '  <button class="btn btn-secondary btn-small" onclick="openQuickExpense(\'' + job.id + '\')" style="width:100%;font-size:12px;padding:8px">';
+      html += '    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>';
+      html += '    Quick Expense (under $200)';
+      html += '  </button>';
+      html += '</div>';
+
+      html += '</div>';
+    }
+
+    // ── Photos — Before/After comparison when both exist ──
+    if (scopePhotos.length > 0 && completionPhotos.length > 0) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Before / After</h3>';
+      var maxPairs = Math.min(scopePhotos.length, completionPhotos.length, 6);
+      for (var pi = 0; pi < maxPairs; pi++) {
+        var bSrc = scopePhotos[pi].thumbnail_url || scopePhotos[pi].storage_url;
+        var aSrc = completionPhotos[pi].thumbnail_url || completionPhotos[pi].storage_url;
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">';
+        html += '  <div>';
+        html += '    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:2px">Before</div>';
+        html += '    <img src="' + esc(bSrc) + '" alt="Before" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(\'' + esc(scopePhotos[pi].storage_url) + '\')">';
+        html += '  </div>';
+        html += '  <div>';
+        html += '    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:2px">After</div>';
+        html += '    <img src="' + esc(aSrc) + '" alt="After" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(\'' + esc(completionPhotos[pi].storage_url) + '\')">';
+        html += '  </div>';
+        html += '</div>';
+      }
+      // Show remaining scope photos not paired
+      if (scopePhotos.length > maxPairs) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">+ ' + (scopePhotos.length - maxPairs) + ' more scope photo(s)</div>';
+      }
+      html += '</div>';
+    } else if (scopePhotos.length > 0) {
+      // Only scope photos (no completion yet)
+      html += '<div class="detail-section">';
+      html += '  <h3>Scope Photos</h3>';
+      var scopeCollapsed = scopePhotos.length > 6 ? ' collapsed' : '';
+      html += '  <div class="photo-grid' + scopeCollapsed + '" id="scopeGrid">';
+      scopePhotos.forEach(function(p) {
+        var src = p.thumbnail_url || p.storage_url;
+        html += '<img src="' + esc(src) + '" alt="' + esc(p.label || 'Scope') + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\', \'#scopeGrid\')">';
+      });
+      html += '  </div>';
+      if (scopePhotos.length > 6) html += '<div class="photo-grid-more" onclick="togglePhotoGrid(\'scopeGrid\', this)">Show all ' + scopePhotos.length + ' photos</div>';
+      html += '</div>';
+    }
+
+    // ── Completion Photos ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Completion Photos</h3>';
+    if (completionPhotos.length > 0) {
+      var compCollapsed = completionPhotos.length > 6 ? ' collapsed' : '';
+      html += '  <div class="photo-grid' + compCollapsed + '" id="completionGrid">';
+      completionPhotos.forEach(function(p) {
+        var src = p.thumbnail_url || p.storage_url;
+        html += '<img src="' + esc(src) + '" alt="' + esc(p.label || 'Completion') + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\', \'#completionGrid\')">';
+      });
+      html += '  </div>';
+      if (completionPhotos.length > 6) html += '<div class="photo-grid-more" onclick="togglePhotoGrid(\'completionGrid\', this)">Show all ' + completionPhotos.length + ' photos</div>';
+    }
+    html += '  <div style="margin-top:10px">';
+    html += '    <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap">';
+    html += '      <select id="photoPhase" style="height:38px;border-radius:8px;border:1px solid var(--sw-mid);padding:0 10px;font-size:14px;background:#fff">';
+    html += '        <option value="completion">After (Completion)</option>';
+    html += '        <option value="scope">Before (Site)</option>';
+    html += '        <option value="in_progress">During (Progress)</option>';
+    html += '        <option value="issue">Issue</option>';
+    html += '      </select>';
+    html += '    </div>';
+    html += '    <div class="upload-area" id="uploadArea" onclick="document.getElementById(\'photoInput\').click()">';
+    html += '      <svg viewBox="0 0 24 24"><path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3zM5 19l3-4 2 3 3-4 4 5H5z"/></svg>';
+    html += '      <p>Tap to add photos</p>';
+    html += '    </div>';
+    html += '    <input type="file" id="photoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handlePhotoUpload(this)">';
+    html += '    <div class="upload-progress" id="uploadProgress" style="display:none">';
+    html += '      <span id="uploadProgressText">Uploading...</span>';
+    html += '      <div class="upload-progress-bar"><div class="upload-progress-fill" id="uploadProgressFill"></div></div>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+
+    // ── Notes Timeline ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Notes</h3>';
+    html += '  <div id="notesList">';
+    // Show pending offline notes at the top
+    var pendingNotes = [];
+    try { pendingNotes = JSON.parse(localStorage.getItem('sw_pending_notes') || '[]'); } catch(e) {}
+    var jobPending = pendingNotes.filter(function(n) { return n.jobId === _currentJobId; });
+    if (jobPending.length > 0) {
+      jobPending.forEach(function(pn) {
+        html += '<div class="note-item" style="opacity:0.6;border-left:2px solid var(--sw-yellow);padding-left:8px">';
+        html += '  <div class="note-text">' + esc(pn.text) + '</div>';
+        html += '  <div class="note-meta">Pending sync</div>';
+        html += '</div>';
+      });
+    }
+    if (notes.length > 0) {
+      notes.forEach(function(n) {
+        html += renderNote(n);
+      });
+    } else if (jobPending.length === 0) {
+      html += '<div style="font-size:13px;color:var(--sw-text-sec)">No notes yet</div>';
+    }
+    html += '  </div>';
+    html += '  <div class="note-input-row">';
+    html += '    <textarea id="noteInput" placeholder="Add a note..." rows="1" maxlength="2000" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,120)+\'px\'" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();addNote()}"></textarea>';
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+      html += '    <button class="btn btn-secondary btn-small" id="btnVoiceNote" onclick="toggleVoiceNote()" title="Voice note" style="padding:8px 10px;min-width:auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></button>';
+    }
+    html += '    <button class="btn btn-primary btn-small" id="btnSendNote" onclick="addNote()">Send</button>';
+    html += '  </div>';
+    html += '</div>';
+
+    // ── Service Report Button ──
+    html += '<div style="padding:8px 0 24px">';
+    html += '  <button class="btn btn-primary" onclick="showView(\'report\')">';
+    html += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>';
+    html += '    Service Report';
+    html += '  </button>';
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Start live timer if trade is currently on site
+    startLiveTimer();
+  }
+
+  // Live timer updater — ticks every 30s while on job detail
+  var _timerInterval = null;
+  function startLiveTimer() {
+    clearInterval(_timerInterval);
+    _timerInterval = setInterval(function() {
+      var el = document.getElementById('liveTimer');
+      if (!el) { clearInterval(_timerInterval); return; }
+      var start = new Date(el.dataset.start).getTime();
+      var elapsed = Math.round((Date.now() - start) / 60000);
+      var hrs = Math.floor(elapsed / 60);
+      var mins = elapsed % 60;
+      el.textContent = (hrs > 0 ? hrs + 'h ' : '') + mins + 'm';
+    }, 30000);
+    // Run immediately once
+    var el = document.getElementById('liveTimer');
+    if (el) {
+      var start = new Date(el.dataset.start).getTime();
+      var elapsed = Math.round((Date.now() - start) / 60000);
+      var hrs = Math.floor(elapsed / 60);
+      var mins = elapsed % 60;
+      el.textContent = (hrs > 0 ? hrs + 'h ' : '') + mins + 'm';
+    }
+  }
+
+  // Status ordering for the status bar
+  function statusOrder(s) {
+    var order = { scheduled: 0, confirmed: 1, in_progress: 2, complete: 3 };
+    return order[s] != null ? order[s] : -1;
+  }
+
+  // ── Update My Assignment Status ──
+  window.updateMyStatus = function(assignmentId, newStatus) {
+    // Haptic feedback on tap
+    if (navigator.vibrate) navigator.vibrate(10);
+
+    // Disable all status buttons while updating
+    var buttons = document.querySelectorAll('#statusBar button');
+    buttons.forEach(function(b) { b.disabled = true; });
+
+    // Capture GPS for on-site and complete statuses
+    var payload = { assignmentId: assignmentId, status: newStatus };
+
+    function sendUpdate(loc) {
+      if (loc) {
+        payload.latitude = loc.coords.latitude;
+        payload.longitude = loc.coords.longitude;
+        payload.accuracy = Math.round(loc.coords.accuracy);
+      }
+      api('update_my_assignment', null, payload).then(function(data) {
+        var statusMsg = 'Status updated';
+        if (loc) statusMsg += ' (location recorded)';
+        toast(statusMsg);
+        if (navigator.vibrate) navigator.vibrate([10, 40, 10]);
+        buttons.forEach(function(b) {
+          var btnStatus = b.getAttribute('data-status');
+          if (statusOrder(btnStatus) <= statusOrder(newStatus)) {
+            b.classList.add('active');
+          } else {
+            b.classList.remove('active');
+          }
+          b.disabled = false;
+        });
+        // Start live timer if going on site
+        if (newStatus === 'in_progress') startLiveTimer();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+        buttons.forEach(function(b) { b.disabled = false; });
+      });
+    }
+
+    // Try to get GPS for in_progress (on site) and complete
+    if ((newStatus === 'in_progress' || newStatus === 'complete') && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) { sendUpdate(pos); },
+        function() { sendUpdate(null); }, // GPS denied — proceed without
+        { timeout: 5000, maximumAge: 60000 }
+      );
+    } else {
+      sendUpdate(null);
+    }
+  };
+
+  function renderNote(n) {
+    var author = (n.users && n.users.name) || 'System';
+    var text = (n.detail_json && n.detail_json.text) || '';
+    var time = timeAgo(n.created_at);
+    return '<div class="note-item">' +
+           '  <span class="note-author">' + esc(author) + '</span>' +
+           '  <span class="note-time">' + time + '</span>' +
+           '  <div class="note-text">' + esc(text) + '</div>' +
+           '</div>';
+  }
+
+  // ── Voice-to-Text Notes ──
+  var _voiceRecognition = null;
+  var _voiceListening = false;
+
+  window.toggleVoiceNote = function() {
+    if (_voiceListening) {
+      if (_voiceRecognition) _voiceRecognition.stop();
+      return;
+    }
+
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { toast('Voice input not supported on this device', true); return; }
+
+    _voiceRecognition = new SpeechRecognition();
+    _voiceRecognition.lang = 'en-AU';
+    _voiceRecognition.continuous = true;
+    _voiceRecognition.interimResults = true;
+
+    var btn = document.getElementById('btnVoiceNote');
+    var input = document.getElementById('noteInput');
+    var startText = input.value;
+
+    _voiceRecognition.onstart = function() {
+      _voiceListening = true;
+      btn.style.background = 'var(--sw-orange)';
+      btn.style.color = '#fff';
+      toast('Listening... speak now');
+    };
+
+    _voiceRecognition.onresult = function(e) {
+      var transcript = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      input.value = startText + (startText ? ' ' : '') + transcript;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    };
+
+    _voiceRecognition.onerror = function(e) {
+      if (e.error === 'not-allowed') {
+        toast('Microphone access denied — check permissions', true);
+      } else if (e.error !== 'aborted') {
+        toast('Voice error: ' + e.error, true);
+      }
+      stopVoice();
+    };
+
+    _voiceRecognition.onend = function() {
+      stopVoice();
+    };
+
+    function stopVoice() {
+      _voiceListening = false;
+      if (btn) {
+        btn.style.background = '';
+        btn.style.color = '';
+      }
+    }
+
+    _voiceRecognition.start();
+  };
+
+  // ── Add Note ──
+  window.addNote = function() {
+    var input = document.getElementById('noteInput');
+    var btn = document.getElementById('btnSendNote');
+    var text = input.value.trim();
+    if (!text || !_currentJobId) return;
+    input.value = '';
+    input.disabled = true;
+    if (btn) btn.disabled = true;
+
+    // Show optimistically in UI immediately
+    var list = document.getElementById('notesList');
+    var emptyMsg = list.querySelector('div[style]');
+    if (emptyMsg && emptyMsg.textContent.indexOf('No notes') !== -1) emptyMsg.remove();
+    var tmp = document.createElement('div');
+    tmp.innerHTML = renderNote({
+      users: { name: _user.name },
+      detail_json: { text: text },
+      created_at: new Date().toISOString()
+    });
+    list.insertBefore(tmp.firstChild, list.firstChild);
+
+    api('add_note', null, { jobId: _currentJobId, text: text }).then(function(data) {
+      input.disabled = false;
+      if (btn) btn.disabled = false;
+      toast('Note added');
+    }).catch(function(err) {
+      input.disabled = false;
+      if (btn) btn.disabled = false;
+      // Save to pending queue for later sync
+      drafts.queueNote(_currentJobId, text);
+      toast('Saved offline — will sync when connected');
+    });
+  };
+
+  // ── Photo Upload — signed URL flow ──
+  window.handlePhotoUpload = function(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0 || _uploading) return;
+    _uploading = true;
+
+    // Show progress indicator
+    var progressEl = document.getElementById('uploadProgress');
+    var progressText = document.getElementById('uploadProgressText');
+    var progressFill = document.getElementById('uploadProgressFill');
+    if (progressEl) progressEl.style.display = 'block';
+
+    // Disable upload area
+    var uploadArea = document.getElementById('uploadArea');
+    if (uploadArea) uploadArea.style.pointerEvents = 'none';
+
+    var phase = (document.getElementById('photoPhase') || {}).value || 'completion';
+    uploadPhotosSequential(files, _currentJobId, phase, function(current, total) {
+      if (progressText) progressText.textContent = 'Uploading ' + current + ' of ' + total + '...';
+      if (progressFill) progressFill.style.width = Math.round(current / total * 100) + '%';
+    }).then(function(results) {
+      // Add uploaded photos to grid
+      results.forEach(function(res) {
+        var grid = document.getElementById('completionGrid');
+        if (!grid) {
+          // Create grid if it doesn't exist
+          var section = document.getElementById('uploadArea');
+          if (section) {
+            var parent = section.parentElement.parentElement;
+            var h3 = parent.querySelector('h3');
+            var g = document.createElement('div');
+            g.className = 'photo-grid';
+            g.id = 'completionGrid';
+            if (h3 && h3.nextSibling) {
+              parent.insertBefore(g, h3.nextSibling);
+            }
+            grid = g;
+          }
+        }
+        if (grid && res.url) {
+          var img = document.createElement('img');
+          img.src = res.url;
+          img.alt = 'Completion';
+          img.onclick = function() { openLightbox(res.url); };
+          grid.appendChild(img);
+        }
+      });
+
+      toast(results.length + ' photo(s) uploaded');
+    }).catch(function(err) {
+      toast('Upload error: ' + friendlyError(err), true);
+    }).finally(function() {
+      _uploading = false;
+      if (progressEl) progressEl.style.display = 'none';
+      if (progressFill) progressFill.style.width = '0';
+      if (uploadArea) uploadArea.style.pointerEvents = '';
+      input.value = '';
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // RECEIPT CAPTURE (PO-linked)
+  // ══════════════════════════════════════════════════
+
+  var _receiptPoId = null;
+  var _receiptSupplier = '';
+
+  window.startReceiptCapture = function(poId, supplierName) {
+    _receiptPoId = poId;
+    _receiptSupplier = supplierName;
+    // Create a receipt-specific file input (reuse or create)
+    var input = document.getElementById('receiptInput');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'receiptInput';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.style.display = 'none';
+      input.onchange = function() { handleReceiptUpload(this); };
+      document.body.appendChild(input);
+    }
+    input.value = '';
+    input.click();
+  };
+
+  function handleReceiptUpload(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0 || _uploading || !_receiptPoId) return;
+    _uploading = true;
+
+    toast('Uploading receipt for ' + _receiptSupplier + '...');
+
+    // Upload sequentially, same as completion photos but with phase='receipt' and po_id
+    var results = [];
+    var idx = 0;
+
+    function uploadNext() {
+      if (idx >= files.length) return Promise.resolve(results);
+      var file = files[idx++];
+      var compressed;
+      return compressImage(file).then(function(c) {
+        compressed = c;
+        return api('get_upload_url', null, {
+          jobId: _currentJobId,
+          fileName: compressed.name,
+          contentType: compressed.type || 'image/jpeg'
+        });
+      }).then(function(urlData) {
+        return fetch(urlData.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': compressed.type || 'image/jpeg',
+            'Authorization': 'Bearer ' + urlData.token
+          },
+          body: compressed
+        }).then(function(r) {
+          if (!r.ok) throw new Error('Upload failed');
+          return urlData;
+        });
+      }).then(function(urlData) {
+        return api('confirm_upload', null, {
+          jobId: _currentJobId,
+          publicUrl: urlData.publicUrl,
+          path: urlData.path,
+          label: 'Receipt — ' + _receiptSupplier,
+          phase: 'receipt',
+          po_id: _receiptPoId
+        });
+      }).then(function(res) {
+        results.push(res);
+        return uploadNext();
+      });
+    }
+
+    uploadNext().then(function(res) {
+      toast(res.length + ' receipt(s) uploaded for ' + _receiptSupplier);
+      if (navigator.vibrate) navigator.vibrate(50);
+      // Reload job detail to show new receipts
+      window.loadJobDetail(_currentJobId);
+    }).catch(function(err) {
+      toast('Receipt upload error: ' + friendlyError(err), true);
+    }).finally(function() {
+      _uploading = false;
+      _receiptPoId = null;
+      input.value = '';
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // QUICK EXPENSE (under $200 on-site purchases)
+  // ══════════════════════════════════════════════════
+
+  var _qeJobId = null;
+
+  window.openQuickExpense = function(jobId) {
+    _qeJobId = jobId;
+    // Build modal HTML
+    var modal = document.getElementById('qeModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'qeModal';
+      modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px';
+      modal.innerHTML =
+        '<div style="background:#fff;border-radius:12px;max-width:400px;width:100%;padding:20px;position:relative">' +
+        '  <h3 style="margin-bottom:16px;color:var(--sw-dark)">Quick Expense</h3>' +
+        '  <div style="margin-bottom:12px">' +
+        '    <label style="font-size:13px;color:var(--sw-text-sec);margin-bottom:4px;display:block">Description</label>' +
+        '    <input type="text" id="qeDesc" placeholder="e.g. Bunnings screws, concrete bags" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px">' +
+        '  </div>' +
+        '  <div style="margin-bottom:12px">' +
+        '    <label style="font-size:13px;color:var(--sw-text-sec);margin-bottom:4px;display:block">Amount (ex GST)</label>' +
+        '    <input type="number" id="qeAmount" placeholder="0.00" step="0.01" max="200" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px">' +
+        '  </div>' +
+        '  <div style="margin-bottom:16px">' +
+        '    <label style="font-size:13px;color:var(--sw-text-sec);margin-bottom:4px;display:block">Receipt Photo (optional)</label>' +
+        '    <input type="file" id="qePhoto" accept="image/*" style="font-size:13px">' +
+        '  </div>' +
+        '  <div style="display:flex;gap:8px">' +
+        '    <button class="btn btn-secondary" onclick="closeQuickExpense()" style="flex:1;padding:10px">Cancel</button>' +
+        '    <button class="btn btn-primary" id="qeSubmitBtn" onclick="submitQuickExpense()" style="flex:1;padding:10px">Submit</button>' +
+        '  </div>' +
+        '</div>';
+      document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+    document.getElementById('qeDesc').value = '';
+    document.getElementById('qeAmount').value = '';
+    document.getElementById('qePhoto').value = '';
+    document.getElementById('qeSubmitBtn').disabled = false;
+    document.getElementById('qeDesc').focus();
+  };
+
+  window.closeQuickExpense = function() {
+    var modal = document.getElementById('qeModal');
+    if (modal) modal.style.display = 'none';
+    _qeJobId = null;
+  };
+
+  window.submitQuickExpense = function() {
+    var desc = document.getElementById('qeDesc').value.trim();
+    var amount = parseFloat(document.getElementById('qeAmount').value);
+    var photoFile = document.getElementById('qePhoto').files[0] || null;
+
+    if (!desc) { toast('Description required', true); return; }
+    if (!amount || amount <= 0) { toast('Amount required', true); return; }
+    if (amount > 200) { toast('Quick expenses must be under $200', true); return; }
+
+    document.getElementById('qeSubmitBtn').disabled = true;
+    toast('Saving expense...');
+
+    // Upload photo first if provided
+    var photoPromise = Promise.resolve(null);
+    if (photoFile) {
+      photoPromise = compressImage(photoFile).then(function(compressed) {
+        return api('get_upload_url', null, {
+          jobId: _qeJobId,
+          fileName: compressed.name,
+          contentType: compressed.type || 'image/jpeg'
+        }).then(function(urlData) {
+          return fetch(urlData.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': compressed.type || 'image/jpeg', 'Authorization': 'Bearer ' + urlData.token },
+            body: compressed
+          }).then(function() { return urlData.publicUrl; });
+        });
+      });
+    }
+
+    photoPromise.then(function(photoUrl) {
+      // Save quick expense via direct Supabase insert (through ops-api or direct)
+      return api('create_quick_expense', null, {
+        jobId: _qeJobId,
+        description: desc,
+        amount: amount,
+        photoUrl: photoUrl
+      });
+    }).then(function() {
+      toast('Expense saved: $' + amount.toFixed(2));
+      if (navigator.vibrate) navigator.vibrate(50);
+      closeQuickExpense();
+      window.loadJobDetail(_qeJobId);
+    }).catch(function(err) {
+      toast('Error: ' + friendlyError(err), true);
+      document.getElementById('qeSubmitBtn').disabled = false;
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // SERVICE REPORT
+  // ══════════════════════════════════════════════════
+
+  window.loadServiceReport = function loadServiceReport(jobId) {
+    var container = document.getElementById('reportContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading report...</div>';
+
+    api('get_service_report', { jobId: jobId }).then(function(data) {
+      renderServiceReport(data);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="empty-state">Error: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="loadServiceReport(\'' + jobId + '\')">Retry</button></div>';
+    });
+  };
+
+  function renderServiceReport(data) {
+    var container = document.getElementById('reportContent');
+    var report = data.report;
+    var template = data.checklistTemplate || [];
+
+    // Mark this job's report as loaded (prevents reload on tab switch)
+    _reportLoadedForJob = _currentJobId;
+    _reportDirty = false;
+
+    // Store report for print/share functions
+    if (report) _currentJob.serviceReport = report;
+
+    // If already submitted, show success state
+    if (report && (report.status === 'submitted' || report.status === 'approved')) {
+      container.innerHTML = renderSubmittedReport(report);
+      return;
+    }
+
+    // Check for local draft (offline edits)
+    var localDraft = _currentJobId ? drafts.load(_currentJobId, 'report') : null;
+
+    // Build checklist from template, merge with: local draft > server report > defaults
+    var existingChecklist = (localDraft && localDraft.checklist) || (report && report.checklist_json) || [];
+    var checklist = template.map(function(label, i) {
+      var existing = existingChecklist.find(function(c) { return c.label === label; });
+      return { label: label, checked: existing ? existing.checked : false };
+    });
+
+    // Use local draft notes/name if available
+    var notesValue = (localDraft && localDraft.notes) || (report && report.notes) || '';
+    var sigNameValue = (localDraft && localDraft.signatureName) || (report && report.signature_name) || '';
+
+    if (localDraft) {
+      // Show subtle indicator that a local draft was restored
+      toast('Draft restored from last session');
+    }
+
+    var html = '';
+
+    // ── Checklist ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Completion Checklist</h3>';
+    checklist.forEach(function(item, i) {
+      html += '<div class="checklist-item">';
+      html += '  <input type="checkbox" id="chk' + i + '"' + (item.checked ? ' checked' : '') + '>';
+      html += '  <label for="chk' + i + '">' + esc(item.label) + '</label>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // ── Weather ──
+    var weatherValue = (localDraft && localDraft.weather) || (report && report.weather) || '';
+    html += '<div class="detail-section">';
+    html += '  <h3>Weather</h3>';
+    html += '  <div style="display:flex;gap:6px;flex-wrap:wrap" id="weatherBtns">';
+    var weatherOpts = [
+      { key: 'sunny', label: '☀️ Sunny' },
+      { key: 'overcast', label: '☁️ Overcast' },
+      { key: 'rain', label: '🌧️ Rain' },
+      { key: 'hot', label: '🔥 Hot' },
+      { key: 'windy', label: '💨 Windy' },
+    ];
+    weatherOpts.forEach(function(w) {
+      var active = weatherValue === w.key ? 'background:var(--sw-orange);color:#fff;' : '';
+      html += '<button class="btn btn-secondary btn-small" data-weather="' + w.key + '" onclick="selectReportWeather(\'' + w.key + '\')" style="' + active + 'width:auto;font-size:13px;padding:8px 12px">' + w.label + '</button>';
+    });
+    html += '  </div>';
+    html += '  <input type="hidden" id="reportWeather" value="' + esc(weatherValue) + '">';
+    html += '</div>';
+
+    // ── Hours Worked ──
+    var startTimeValue = (localDraft && localDraft.startTime) || (report && report.start_time) || '';
+    var endTimeValue = (localDraft && localDraft.endTime) || (report && report.end_time) || '';
+    html += '<div class="detail-section">';
+    html += '  <h3>Hours Worked</h3>';
+    html += '  <div style="display:flex;gap:12px">';
+    html += '    <div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">Start</label><input type="time" id="reportStartTime" value="' + esc(startTimeValue) + '" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px"></div>';
+    html += '    <div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">End</label><input type="time" id="reportEndTime" value="' + esc(endTimeValue) + '" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px"></div>';
+    html += '  </div>';
+    html += '</div>';
+
+    // ── Notes ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Completion Notes</h3>';
+    html += '  <textarea class="report-textarea" id="reportNotes" placeholder="Any notes about the job...">' + esc(notesValue) + '</textarea>';
+    html += '</div>';
+
+    // ── Variations / Issues ──
+    var variationsValue = (localDraft && localDraft.variations) || (report && report.variations) || '';
+    html += '<div class="detail-section">';
+    html += '  <h3>Variations / Issues</h3>';
+    html += '  <textarea class="report-textarea" id="reportVariations" placeholder="Any variations, extras, or issues...">' + esc(variationsValue) + '</textarea>';
+    html += '</div>';
+
+    // ── Completion Photos ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Completion Photos</h3>';
+    html += '  <div class="upload-area" onclick="document.getElementById(\'reportPhotoInput\').click()">';
+    html += '    <svg viewBox="0 0 24 24"><path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3zM5 19l3-4 2 3 3-4 4 5H5z"/></svg>';
+    html += '    <p>Tap to add completion photos</p>';
+    html += '  </div>';
+    html += '  <input type="file" id="reportPhotoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handleReportPhotoUpload(this)">';
+    html += '  <div class="photo-grid" id="reportPhotoGrid" style="margin-top:8px"></div>';
+    html += '</div>';
+
+    // ── Signature ──
+    html += '<div class="detail-section">';
+    html += '  <h3>Homeowner Sign-Off</h3>';
+    html += '  <div class="sig-pad-wrap">';
+    html += '    <canvas id="sigCanvas"></canvas>';
+    html += '    <button class="sig-clear" onclick="clearSignature()">Clear</button>';
+    html += '  </div>';
+    html += '  <input type="text" class="sig-name-input" id="sigName" placeholder="Homeowner full name" value="' + esc(sigNameValue) + '">';
+    html += '</div>';
+
+    // ── Submit ──
+    html += '<div style="padding:4px 0 24px">';
+    html += '  <button class="btn btn-primary" id="btnSubmitReport" onclick="submitReport()">Submit Service Report</button>';
+    html += '  <button class="btn btn-secondary" style="margin-top:8px" onclick="saveDraft()">Save Draft</button>';
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Init signature pad after DOM is ready
+    setTimeout(initSignaturePad, 50);
+
+    // Attach auto-save listeners
+    setTimeout(attachReportAutoSave, 100);
+  }
+
+  // Report photo upload handler (same signed URL flow)
+  window.handleReportPhotoUpload = function(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0 || _uploading) return;
+    _uploading = true;
+
+    toast('Uploading ' + files.length + ' photo(s)...');
+
+    uploadPhotosSequential(files, _currentJobId, 'completion', null).then(function(results) {
+      var grid = document.getElementById('reportPhotoGrid');
+      results.forEach(function(res) {
+        if (grid && res.url) {
+          var img = document.createElement('img');
+          img.src = res.url;
+          img.alt = 'Completion';
+          img.style.borderRadius = '6px';
+          img.onclick = function() { openLightbox(res.url); };
+          grid.appendChild(img);
+        }
+      });
+      toast(results.length + ' photo(s) uploaded');
+    }).catch(function(err) {
+      toast('Upload error: ' + friendlyError(err), true);
+    }).finally(function() {
+      _uploading = false;
+      input.value = '';
+    });
+  };
+
+  function renderSubmittedReport(report) {
+    var html = '<div class="report-submitted">';
+    html += '  <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+    html += '  <h3>Report ' + (report.status === 'approved' ? 'Approved' : 'Submitted') + '</h3>';
+    html += '  <p>Signed by ' + esc(report.signature_name || 'homeowner') + '</p>';
+    html += '  <p style="margin-top:4px;font-size:12px;color:var(--sw-text-sec)">' + formatDateTime(report.submitted_at) + '</p>';
+    html += '  <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap">';
+    html += '    <button class="btn btn-secondary btn-small" style="width:auto" onclick="printReport()">Print Report</button>';
+    if (report.share_token) {
+      html += '    <button class="btn btn-secondary btn-small" style="width:auto" onclick="shareReport(\'' + report.share_token + '\')">Share with Client</button>';
+    }
+    html += '  </div>';
+    html += '</div>';
+
+    // Show summary
+    html += '<div class="detail-section">';
+    html += '  <h3>Checklist</h3>';
+    (report.checklist_json || []).forEach(function(item) {
+      html += '<div class="checklist-item">';
+      html += '  <input type="checkbox" ' + (item.checked ? 'checked' : '') + ' disabled>';
+      html += '  <label>' + esc(item.label) + '</label>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    if (report.notes) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Notes</h3>';
+      html += '  <p style="font-size:14px;white-space:pre-wrap">' + esc(report.notes) + '</p>';
+      html += '</div>';
+    }
+
+    if (report.signature_data) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Signature</h3>';
+      html += '  <img src="' + report.signature_data + '" alt="Signature" style="max-width:100%;border-radius:8px;border:1px solid var(--sw-border)">';
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  // ── Print Service Report — opens clean printable view in new window ──
+  window.printReport = function() {
+    if (!_currentJob || !_currentJob.job) { toast('Job data not loaded', true); return; }
+    var job = _currentJob.job;
+
+    // Build a clean, branded HTML document for printing
+    var printHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    printHtml += '<title>Service Report — ' + esc(job.client_name || '') + '</title>';
+    printHtml += '<style>';
+    printHtml += 'body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#1A2332;max-width:700px;margin:0 auto;padding:24px;line-height:1.6}';
+    printHtml += '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #F15A29}';
+    printHtml += '.header h1{font-size:20px;color:#293C46;margin:0}';
+    printHtml += '.header .brand{font-size:14px;color:#4C6A7C}';
+    printHtml += '.section{margin-bottom:20px}';
+    printHtml += '.section h3{font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:#4C6A7C;margin:0 0 8px}';
+    printHtml += '.info-row{display:flex;gap:24px;font-size:14px;margin:4px 0}';
+    printHtml += '.info-label{font-weight:700;min-width:80px;color:#4C6A7C}';
+    printHtml += '.checklist{list-style:none;padding:0;margin:0}';
+    printHtml += '.checklist li{padding:6px 0;border-bottom:1px solid #eee;font-size:14px}';
+    printHtml += '.checklist li:before{content:"\\2713";color:#27AE60;font-weight:700;margin-right:8px}';
+    printHtml += '.checklist li.unchecked:before{content:"\\2717";color:#E74C3C}';
+    printHtml += '.notes{font-size:14px;white-space:pre-wrap;background:#f7f8fa;padding:12px;border-radius:8px}';
+    printHtml += '.sig-block{margin-top:16px}';
+    printHtml += '.sig-block img{max-width:300px;border:1px solid #eee;border-radius:4px}';
+    printHtml += '.sig-name{font-size:14px;margin-top:4px;color:#4C6A7C}';
+    printHtml += '.footer{margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#7C8898;text-align:center}';
+    printHtml += '@media print{body{padding:0}.header{border-bottom-color:#000}}';
+    printHtml += '</style></head><body>';
+
+    // Header
+    printHtml += '<div class="header">';
+    printHtml += '  <div><h1>Service Report</h1><div class="brand">SecureWorks WA</div></div>';
+    printHtml += '  <div style="text-align:right;font-size:12px;color:#4C6A7C">';
+    // Get report from service report view data
+    var report = _currentJob.serviceReport;
+    if (report && report.submitted_at) printHtml += formatDateTime(report.submitted_at);
+    printHtml += '</div></div>';
+
+    // Job info
+    printHtml += '<div class="section"><h3>Job Details</h3>';
+    printHtml += '<div class="info-row"><span class="info-label">Client</span><span>' + esc(job.client_name || '') + '</span></div>';
+    if (job.client_phone) printHtml += '<div class="info-row"><span class="info-label">Phone</span><span>' + esc(job.client_phone) + '</span></div>';
+    if (job.site_address) printHtml += '<div class="info-row"><span class="info-label">Address</span><span>' + esc(job.site_address + (job.site_suburb ? ', ' + job.site_suburb : '')) + '</span></div>';
+    printHtml += '<div class="info-row"><span class="info-label">Type</span><span style="text-transform:capitalize">' + esc(job.type || 'patio') + '</span></div>';
+    printHtml += '</div>';
+
+    // Checklist
+    if (report && report.checklist_json && report.checklist_json.length > 0) {
+      printHtml += '<div class="section"><h3>Completion Checklist</h3><ul class="checklist">';
+      report.checklist_json.forEach(function(item) {
+        printHtml += '<li class="' + (item.checked ? '' : 'unchecked') + '">' + esc(item.label) + '</li>';
+      });
+      printHtml += '</ul></div>';
+    }
+
+    // Notes
+    if (report && report.notes) {
+      printHtml += '<div class="section"><h3>Notes</h3><div class="notes">' + esc(report.notes) + '</div></div>';
+    }
+
+    // Signature
+    if (report && report.signature_data) {
+      printHtml += '<div class="section"><h3>Homeowner Sign-Off</h3>';
+      printHtml += '<div class="sig-block"><img src="' + report.signature_data + '" alt="Signature">';
+      if (report.signature_name) printHtml += '<div class="sig-name">' + esc(report.signature_name) + '</div>';
+      printHtml += '</div></div>';
+    }
+
+    // Footer
+    printHtml += '<div class="footer">SecureWorks WA Pty Ltd &mdash; ABN 64689223416 &mdash; Perth, Western Australia</div>';
+    printHtml += '</body></html>';
+
+    // Open in new window and trigger print
+    var printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(printHtml);
+      printWin.document.close();
+      setTimeout(function() { printWin.print(); }, 300);
+    } else {
+      toast('Pop-up blocked — allow pop-ups for this site', true);
+    }
+  };
+
+  // ── Share Report Link ──
+  window.shareReport = function(shareToken) {
+    var shareUrl = _opsApiBase + '?action=view_shared_report&token=' + shareToken;
+
+    // Use Web Share API on mobile if available
+    if (navigator.share) {
+      navigator.share({
+        title: 'Service Report — SecureWorks WA',
+        text: 'Your service report is ready to view',
+        url: shareUrl,
+      }).catch(function() {
+        // User cancelled or share failed — fall back to clipboard
+        copyToClipboard(shareUrl);
+      });
+    } else {
+      copyToClipboard(shareUrl);
+    }
+  };
+
+  function copyToClipboard(url) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(function() {
+        toast('Link copied to clipboard');
+      }).catch(function() {
+        fallbackCopy(url);
+      });
+    } else {
+      fallbackCopy(url);
+    }
+  }
+
+  function fallbackCopy(text) {
+    var input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    toast('Link copied to clipboard');
+  }
+
+  // ── Signature Pad ──
+  function initSignaturePad() {
+    _sigCanvas = document.getElementById('sigCanvas');
+    if (!_sigCanvas) return;
+
+    // Set actual pixel dimensions (match CSS display size)
+    var rect = _sigCanvas.getBoundingClientRect();
+    _sigCanvas.width = rect.width * 2;  // 2x for retina
+    _sigCanvas.height = rect.height * 2;
+
+    _sigCtx = _sigCanvas.getContext('2d');
+    _sigCtx.scale(2, 2);
+    _sigCtx.strokeStyle = '#1A2332';
+    _sigCtx.lineWidth = 2;
+    _sigCtx.lineCap = 'round';
+    _sigCtx.lineJoin = 'round';
+
+    // Draw "Sign here" placeholder
+    _sigCtx.save();
+    _sigCtx.fillStyle = '#ccc';
+    _sigCtx.font = '14px ' + getComputedStyle(document.body).fontFamily;
+    _sigCtx.textAlign = 'center';
+    _sigCtx.fillText('Sign here', rect.width / 2, rect.height / 2);
+    _sigCtx.restore();
+
+    // Event handlers
+    _sigCanvas.addEventListener('pointerdown', sigStart);
+    _sigCanvas.addEventListener('pointermove', sigMove);
+    _sigCanvas.addEventListener('pointerup', sigEnd);
+    _sigCanvas.addEventListener('pointerleave', sigEnd);
+  }
+
+  function sigStart(e) {
+    _sigDrawing = true;
+    // Clear placeholder on first stroke
+    if (!_sigCanvas._hasStrokes) {
+      _sigCtx.clearRect(0, 0, _sigCanvas.width, _sigCanvas.height);
+      _sigCanvas._hasStrokes = true;
+    }
+    var pos = getSigPos(e);
+    _sigCtx.beginPath();
+    _sigCtx.moveTo(pos.x, pos.y);
+    e.preventDefault();
+  }
+
+  function sigMove(e) {
+    if (!_sigDrawing) return;
+    var pos = getSigPos(e);
+    _sigCtx.lineTo(pos.x, pos.y);
+    _sigCtx.stroke();
+    e.preventDefault();
+  }
+
+  function sigEnd(e) {
+    _sigDrawing = false;
+  }
+
+  function getSigPos(e) {
+    var rect = _sigCanvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  }
+
+  window.clearSignature = function() {
+    if (!_sigCtx) return;
+    // Confirm if there are actual strokes
+    if (_sigCanvas._hasStrokes) {
+      showConfirm('Clear Signature', 'Are you sure you want to clear the signature?', 'Clear').then(function(ok) {
+        if (ok) doClearSignature();
+      });
+    } else {
+      doClearSignature();
+    }
+  };
+
+  function doClearSignature() {
+    _sigCtx.clearRect(0, 0, _sigCanvas.width, _sigCanvas.height);
+    _sigCanvas._hasStrokes = false;
+    // Redraw placeholder
+    var rect = _sigCanvas.getBoundingClientRect();
+    _sigCtx.save();
+    _sigCtx.fillStyle = '#ccc';
+    _sigCtx.font = '14px ' + getComputedStyle(document.body).fontFamily;
+    _sigCtx.textAlign = 'center';
+    _sigCtx.fillText('Sign here', rect.width / 2, rect.height / 2);
+    _sigCtx.restore();
+  }
+
+  function getSignatureData() {
+    if (!_sigCanvas || !_sigCanvas._hasStrokes) return null;
+    return _sigCanvas.toDataURL('image/png');
+  }
+
+  // ── Weather selector for report ──
+  window.selectReportWeather = function(key) {
+    document.getElementById('reportWeather').value = key;
+    var btns = document.querySelectorAll('#weatherBtns button');
+    btns.forEach(function(b) {
+      if (b.dataset.weather === key) {
+        b.style.background = 'var(--sw-orange)';
+        b.style.color = '#fff';
+      } else {
+        b.style.background = '';
+        b.style.color = '';
+      }
+    });
+    _reportDirty = true;
+    scheduleAutoSave();
+  };
+
+  // ── Gather report data ──
+  function gatherReportData() {
+    var checklist = [];
+    var checkboxes = document.querySelectorAll('#reportContent .checklist-item');
+    checkboxes.forEach(function(item) {
+      var cb = item.querySelector('input[type="checkbox"]');
+      var label = item.querySelector('label');
+      if (cb && label) {
+        checklist.push({ label: label.textContent, checked: cb.checked });
+      }
+    });
+
+    return {
+      jobId: _currentJobId,
+      checklist: checklist,
+      notes: (document.getElementById('reportNotes') || {}).value || '',
+      signatureData: getSignatureData(),
+      signatureName: (document.getElementById('sigName') || {}).value || '',
+      weather: (document.getElementById('reportWeather') || {}).value || '',
+      start_time: (document.getElementById('reportStartTime') || {}).value || '',
+      end_time: (document.getElementById('reportEndTime') || {}).value || '',
+      variations: (document.getElementById('reportVariations') || {}).value || '',
+    };
+  }
+
+  // ── Auto-save draft on changes ──
+  function autoSaveDraft() {
+    if (!_currentJobId) return;
+    var data = gatherReportData();
+    // Don't save signature data to localStorage (too large)
+    data.signatureData = null;
+    // Save weather/times/variations for draft restore
+    data.startTime = data.start_time;
+    data.endTime = data.end_time;
+    drafts.save(_currentJobId, 'report', data);
+  }
+
+  // Debounced auto-save — fires 1s after last change
+  var _autoSaveTimer = null;
+  function scheduleAutoSave() {
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = setTimeout(autoSaveDraft, 1000);
+  }
+
+  // Wire up auto-save listeners after report renders
+  function attachReportAutoSave() {
+    var container = document.getElementById('reportContent');
+    if (!container) return;
+    container.addEventListener('change', function() { _reportDirty = true; scheduleAutoSave(); });
+    container.addEventListener('input', function() { _reportDirty = true; scheduleAutoSave(); });
+  }
+
+  // ── Submit Report ──
+  window.submitReport = function() {
+    var data = gatherReportData();
+
+    // Validate
+    if (!data.signatureData) {
+      toast('Please get the homeowner signature', true);
+      return;
+    }
+    if (!data.signatureName.trim()) {
+      toast('Please enter the homeowner name', true);
+      document.getElementById('sigName').focus();
+      return;
+    }
+
+    // Custom confirmation dialog
+    showConfirm(
+      'Submit Service Report?',
+      'This will be sent to the office and cannot be changed.',
+      'Submit'
+    ).then(function(confirmed) {
+      if (!confirmed) return;
+
+      var btn = document.getElementById('btnSubmitReport');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Submitting...';
+
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(15);
+
+      data.status = 'submitted';
+      api('submit_service_report', null, data).then(function(res) {
+        // Clear local draft and dirty flag on successful submit
+        _reportDirty = false;
+        if (_currentJobId) drafts.clear(_currentJobId, 'report');
+        toast('Report submitted');
+        if (navigator.vibrate) navigator.vibrate([15, 50, 15]); // success pattern
+        // Show success state
+        renderServiceReport({ report: res.report, checklistTemplate: [] });
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+        btn.disabled = false;
+        btn.textContent = 'Submit Service Report';
+      });
+    });
+  };
+
+  // ── Save Draft (offline-first — always saves locally, syncs to server if online) ──
+  window.saveDraft = function() {
+    var data = gatherReportData();
+    data.status = 'draft';
+
+    // Always save locally first
+    if (_currentJobId) {
+      autoSaveDraft();
+      toast('Draft saved locally');
+    }
+
+    // Try to sync to server (non-blocking)
+    if (navigator.onLine) {
+      api('submit_service_report', null, data).then(function() {
+        toast('Draft synced to server');
+      }).catch(function() {
+        // Silent fail — local draft is safe
+      });
+    }
+  };
+
+  // ══════════════════════════════════════════════════
+  // CAMERA VIEW — Quick Photo Capture
+  // ══════════════════════════════════════════════════
+
+  var _cameraPhase = null;
+  var _cameraJobId = null;
+
+  function renderCameraView() {
+    var container = document.getElementById('cameraContent');
+    var jobs = _cachedMyJobs || [];
+
+    var html = '<h3 style="margin-bottom:12px;color:var(--sw-dark)">Quick Photo</h3>';
+
+    // Phase selector — mandatory
+    html += '<div class="section-label">Photo Category</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px" id="cameraPhaseBtns">';
+    var phases = [
+      { key: 'scope', label: 'Before', icon: '📷' },
+      { key: 'in_progress', label: 'During', icon: '🔨' },
+      { key: 'completion', label: 'After', icon: '✅' },
+      { key: 'issue', label: 'Issue', icon: '⚠️' },
+    ];
+    phases.forEach(function(p) {
+      html += '<button class="btn btn-secondary" data-phase="' + p.key + '" onclick="selectCameraPhase(\'' + p.key + '\')" style="font-size:14px;padding:14px 12px">' + p.icon + ' ' + p.label + '</button>';
+    });
+    html += '</div>';
+
+    // Job picker
+    html += '<div class="section-label">Select Job</div>';
+    html += '<select id="cameraJobSelect" style="width:100%;padding:12px 14px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px;margin-bottom:16px;background:#fff" onchange="_cameraJobId=this.value">';
+    html += '<option value="">Choose a job...</option>';
+    jobs.forEach(function(a) {
+      var job = a.jobs || {};
+      html += '<option value="' + (job.id || '') + '">' + esc(job.client_name || 'Unknown') + ' — ' + esc(job.site_suburb || '') + '</option>';
+    });
+    html += '</select>';
+
+    // Caption
+    html += '<input type="text" id="cameraCaption" placeholder="Caption (optional)" style="width:100%;padding:12px 14px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px;margin-bottom:16px">';
+
+    // Upload area
+    html += '<div class="upload-area" id="cameraUploadArea" onclick="triggerCameraUpload()" style="min-height:120px">';
+    html += '  <svg viewBox="0 0 24 24" style="width:40px;height:40px;fill:var(--sw-mid)"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>';
+    html += '  <p style="font-size:15px;font-weight:600;margin-top:8px">Tap to take photo</p>';
+    html += '</div>';
+    html += '<input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none" onchange="handleCameraCapture(this)">';
+    html += '<div class="upload-progress" id="cameraProgress" style="display:none">';
+    html += '  <span id="cameraProgressText">Uploading...</span>';
+    html += '  <div class="upload-progress-bar"><div class="upload-progress-fill" id="cameraProgressFill"></div></div>';
+    html += '</div>';
+
+    container.innerHTML = html;
+    _cameraPhase = null;
+    _cameraJobId = null;
+  }
+
+  window.selectCameraPhase = function(phase) {
+    _cameraPhase = phase;
+    var btns = document.querySelectorAll('#cameraPhaseBtns button');
+    btns.forEach(function(b) {
+      if (b.dataset.phase === phase) {
+        b.style.background = 'var(--sw-orange)';
+        b.style.color = '#fff';
+      } else {
+        b.style.background = '';
+        b.style.color = '';
+      }
+    });
+  };
+
+  window.triggerCameraUpload = function() {
+    if (!_cameraPhase) { toast('Select a photo category first', true); return; }
+    var jobSelect = document.getElementById('cameraJobSelect');
+    if (!jobSelect || !jobSelect.value) { toast('Select a job first', true); return; }
+    _cameraJobId = jobSelect.value;
+    document.getElementById('cameraFileInput').click();
+  };
+
+  window.handleCameraCapture = function(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0 || _uploading || !_cameraJobId || !_cameraPhase) return;
+    _uploading = true;
+
+    var progressEl = document.getElementById('cameraProgress');
+    var progressText = document.getElementById('cameraProgressText');
+    var progressFill = document.getElementById('cameraProgressFill');
+    if (progressEl) progressEl.style.display = 'block';
+
+    var caption = (document.getElementById('cameraCaption') || {}).value || '';
+
+    uploadOnePhoto(files[0], _cameraJobId, _cameraPhase, caption).then(function(res) {
+      toast('Photo uploaded');
+      if (navigator.vibrate) navigator.vibrate(50);
+      // Reset form
+      var captionInput = document.getElementById('cameraCaption');
+      if (captionInput) captionInput.value = '';
+    }).catch(function(err) {
+      toast('Upload error: ' + friendlyError(err), true);
+    }).finally(function() {
+      _uploading = false;
+      if (progressEl) progressEl.style.display = 'none';
+      if (progressFill) progressFill.style.width = '0';
+      input.value = '';
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // SCHEDULE VIEW — Chronological assignment list
+  // ══════════════════════════════════════════════════
+
+  function renderScheduleView() {
+    var container = document.getElementById('scheduleContent');
+    var jobs = _cachedMyJobs || [];
+
+    if (jobs.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>No upcoming jobs scheduled</p></div>';
+      return;
+    }
+
+    // Sort by date
+    var sorted = jobs.slice().sort(function(a, b) {
+      return (a.scheduled_date || '').localeCompare(b.scheduled_date || '');
+    });
+
+    // Group by date
+    var grouped = {};
+    sorted.forEach(function(a) {
+      var d = a.scheduled_date || 'Unscheduled';
+      if (!grouped[d]) grouped[d] = [];
+      grouped[d].push(a);
+    });
+
+    var html = '<h3 style="margin-bottom:12px;color:var(--sw-dark)">My Schedule</h3>';
+
+    Object.keys(grouped).forEach(function(date) {
+      html += '<div class="section-label">' + formatDate(date) + '</div>';
+      grouped[date].forEach(function(a) {
+        var job = a.jobs || {};
+        var type = job.type || 'patio';
+        html += '<div class="job-card" data-type="' + type + '" onclick="openJob(\'' + job.id + '\', \'' + a.id + '\')">';
+        html += '  <div class="job-card-top">';
+        html += '    <div>';
+        html += '      <div class="job-card-client">' + esc(job.client_name || 'Unknown') + '</div>';
+        html += '      <div class="job-card-address">' + esc(job.site_suburb || job.site_address || '');
+        if (job.job_number) html += ' <span style="color:var(--sw-mid);font-size:12px">' + esc(job.job_number) + '</span>';
+        html += '</div>';
+        html += '    </div>';
+        html += '    <span class="job-card-badge badge-' + type + '">' + type + '</span>';
+        html += '  </div>';
+        html += '  <div class="job-card-meta">';
+        if (a.start_time) html += '<span>' + a.start_time.slice(0, 5) + '</span>';
+        if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
+        html += '    <span class="status-pill status-' + (a.status || 'scheduled') + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+        html += '  </div>';
+        html += '</div>';
+      });
+    });
+
+    container.innerHTML = html;
+  }
+
+  // ══════════════════════════════════════════════════
+  // PROFILE VIEW — User info + sign out
+  // ══════════════════════════════════════════════════
+
+  function renderProfileView() {
+    var container = document.getElementById('profileContent');
+    if (!_user) { container.innerHTML = ''; return; }
+
+    var initial = (_user.name || _user.email || '?').charAt(0).toUpperCase();
+    var html = '';
+
+    // Avatar
+    html += '<div style="text-align:center;padding:24px 0">';
+    html += '  <div style="width:72px;height:72px;border-radius:50%;background:var(--sw-orange);color:#fff;font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">' + initial + '</div>';
+    html += '  <div style="font-size:18px;font-weight:700;color:var(--sw-dark)">' + esc(_user.name || 'Trade User') + '</div>';
+    html += '  <div style="font-size:14px;color:var(--sw-text-sec)">' + esc(_user.email || '') + '</div>';
+    if (_user.phone) html += '<div style="font-size:14px;color:var(--sw-text-sec)">' + esc(_user.phone) + '</div>';
+    if (_user.role) html += '<div style="font-size:12px;color:var(--sw-mid);text-transform:capitalize;margin-top:4px">' + esc(_user.role.replace(/_/g, ' ')) + '</div>';
+    html += '</div>';
+
+    // Sign out
+    html += '<button class="btn btn-danger" style="margin-top:24px" onclick="doLogout()">Sign Out</button>';
+
+    // App version
+    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.1 · Phase 1</div>';
+
+    container.innerHTML = html;
+  }
+
+  // ══════════════════════════════════════════════════
+  // PWA HOME SCREEN ONBOARDING (iOS Safari)
+  // ══════════════════════════════════════════════════
+
+  function checkPwaOnboarding() {
+    // Only show on iOS Safari, not standalone, and not dismissed
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    var isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    var dismissed = localStorage.getItem('sw_pwa_onboarding_dismissed');
+
+    if (isIOS && !isStandalone && !dismissed) {
+      document.getElementById('pwaOnboarding').style.display = 'block';
+    }
+  }
+
+  window.dismissPwaOnboarding = function() {
+    document.getElementById('pwaOnboarding').style.display = 'none';
+    localStorage.setItem('sw_pwa_onboarding_dismissed', '1');
+  };
+
+  // ══════════════════════════════════════════════════
+  // SCOPE SUMMARY HELPERS
+  // ══════════════════════════════════════════════════
+
+  // Build a short one-line scope summary for job cards
+  function buildScopeSummary(scopeJson, type) {
+    if (!scopeJson) return '';
+    try {
+      var config = scopeJson.config || scopeJson;
+      var parts = [];
+
+      if (type === 'fencing') {
+        if (config.totalLength || config.length) parts.push((config.totalLength || config.length) + 'm');
+        if (config.material) parts.push(config.material);
+        if (config.height) parts.push(config.height + 'mm');
+        if (config.colour || config.color) parts.push(config.colour || config.color);
+        // Count gates
+        var gates = config.gates || config.gateCount || 0;
+        if (typeof gates === 'object' && Array.isArray(gates)) gates = gates.length;
+        if (gates > 0) parts.push(gates + ' gate' + (gates > 1 ? 's' : ''));
+      } else {
+        // Patio / decking
+        if (config.length && config.projection) parts.push(config.length + 'x' + config.projection + 'm');
+        if (config.roofStyle) parts.push(config.roofStyle);
+        if (config.roofing) parts.push(config.roofing);
+        if (config.sheetColor || config.colour) parts.push(config.sheetColor || config.colour);
+      }
+
+      return parts.length > 0 ? parts.join(' · ') : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // Render full scope-of-work as readable HTML for job detail view
+  function renderScopeReadable(scopeJson, type) {
+    if (!scopeJson) return '<div style="font-size:13px;color:var(--sw-text-sec)">No scope data available</div>';
+    try {
+      var config = scopeJson.config || scopeJson;
+      var html = '<div style="font-size:14px;line-height:1.8">';
+
+      if (type === 'fencing') {
+        if (config.totalLength || config.length) html += '<div><strong>Length:</strong> ' + esc(String(config.totalLength || config.length)) + 'm</div>';
+        if (config.material) html += '<div><strong>Material:</strong> ' + esc(config.material) + '</div>';
+        if (config.height) html += '<div><strong>Height:</strong> ' + esc(String(config.height)) + 'mm</div>';
+        if (config.colour || config.color) html += '<div><strong>Colour:</strong> ' + esc(config.colour || config.color) + '</div>';
+        // Gates
+        var gates = config.gates;
+        if (gates && Array.isArray(gates) && gates.length > 0) {
+          html += '<div><strong>Gates:</strong></div>';
+          gates.forEach(function(g) {
+            html += '<div style="padding-left:16px">• ' + esc(g.type || 'Gate') + ' ' + esc(String(g.width || '')) + 'mm' + (g.colour ? ' (' + esc(g.colour) + ')' : '') + '</div>';
+          });
+        } else if (config.gateCount) {
+          html += '<div><strong>Gates:</strong> ' + config.gateCount + '</div>';
+        }
+        if (config.plinths) html += '<div><strong>Plinths:</strong> ' + esc(String(config.plinths)) + '</div>';
+        if (config.retaining) html += '<div><strong>Retaining:</strong> ' + esc(String(config.retaining)) + '</div>';
+        // Boundaries
+        if (config.boundaries && Array.isArray(config.boundaries)) {
+          html += '<div><strong>Boundaries:</strong></div>';
+          config.boundaries.forEach(function(b) {
+            html += '<div style="padding-left:16px">• ' + esc(b.description || b.side || String(b.length || '') + 'm') + '</div>';
+          });
+        }
+      } else {
+        // Patio / decking
+        if (config.length && config.projection) html += '<div><strong>Dimensions:</strong> ' + esc(String(config.length)) + 'm × ' + esc(String(config.projection)) + 'm</div>';
+        if (config.roofStyle) html += '<div><strong>Roof Style:</strong> ' + esc(config.roofStyle) + '</div>';
+        if (config.roofing) html += '<div><strong>Panel Type:</strong> ' + esc(config.roofing) + '</div>';
+        if (config.sheetColor || config.colour) html += '<div><strong>Sheet Colour:</strong> ' + esc(config.sheetColor || config.colour) + '</div>';
+        if (config.steelColor) html += '<div><strong>Steel Colour:</strong> ' + esc(config.steelColor) + '</div>';
+        if (config.connection) html += '<div><strong>Attachment:</strong> ' + esc(config.connection) + '</div>';
+        if (config.posts) html += '<div><strong>Posts:</strong> ' + esc(String(config.posts)) + '</div>';
+        if (config.beams) html += '<div><strong>Beams:</strong> ' + esc(String(config.beams)) + '</div>';
+      }
+
+      // Notes from scope
+      var client = scopeJson.client || {};
+      if (client.notes) html += '<div style="margin-top:8px;padding:8px 10px;background:var(--sw-light);border-radius:6px;font-size:13px"><strong>Notes:</strong> ' + esc(client.notes) + '</div>';
+
+      html += '</div>';
+      return html;
+    } catch (e) {
+      return '<div style="font-size:13px;color:var(--sw-text-sec)">Error reading scope data</div>';
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  // LIGHTBOX (with swipe + prev/next navigation)
+  // ══════════════════════════════════════════════════
+
+  // ── Custom Confirm Dialog (replaces native confirm()) ──
+  var _confirmResolve = null;
+  function showConfirm(title, msg, okLabel) {
+    return new Promise(function(resolve) {
+      _confirmResolve = resolve;
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmMsg').textContent = msg;
+      document.getElementById('confirmOk').textContent = okLabel || 'Confirm';
+      document.getElementById('confirmOverlay').classList.add('active');
+    });
+  }
+  document.getElementById('confirmCancel').onclick = function() {
+    document.getElementById('confirmOverlay').classList.remove('active');
+    if (_confirmResolve) _confirmResolve(false);
+    _confirmResolve = null;
+  };
+  document.getElementById('confirmOk').onclick = function() {
+    document.getElementById('confirmOverlay').classList.remove('active');
+    if (_confirmResolve) _confirmResolve(true);
+    _confirmResolve = null;
+  };
+  // Close on overlay click
+  document.getElementById('confirmOverlay').onclick = function(e) {
+    if (e.target === this) {
+      this.classList.remove('active');
+      if (_confirmResolve) _confirmResolve(false);
+      _confirmResolve = null;
+    }
+  };
+
+  window.togglePhotoGrid = function(gridId, toggleEl) {
+    var grid = document.getElementById(gridId);
+    if (!grid) return;
+    var isCollapsed = grid.classList.toggle('collapsed');
+    toggleEl.textContent = isCollapsed ? 'Show all ' + grid.querySelectorAll('img').length + ' photos' : 'Show less';
+  };
+
+  var _lightboxPhotos = []; // urls of all photos in current gallery
+  var _lightboxIndex = 0;
+
+  window.openLightbox = function(url, gallerySelector) {
+    // Build gallery from sibling images if selector provided
+    _lightboxPhotos = [];
+    _lightboxIndex = 0;
+    if (gallerySelector) {
+      var imgs = document.querySelectorAll(gallerySelector + ' img');
+      imgs.forEach(function(img) { if (img.src) _lightboxPhotos.push(img.src); });
+      _lightboxIndex = _lightboxPhotos.indexOf(url);
+      if (_lightboxIndex === -1) _lightboxIndex = 0;
+    }
+    if (_lightboxPhotos.length === 0) _lightboxPhotos = [url];
+
+    showLightboxPhoto();
+    document.getElementById('lightbox').classList.add('active');
+  };
+
+  function showLightboxPhoto() {
+    document.getElementById('lightboxImg').src = _lightboxPhotos[_lightboxIndex];
+    var counter = document.getElementById('lightboxCounter');
+    if (_lightboxPhotos.length > 1) {
+      counter.textContent = (_lightboxIndex + 1) + ' / ' + _lightboxPhotos.length;
+    } else {
+      counter.textContent = '';
+    }
+  }
+
+  window.lightboxNav = function(dir) {
+    _lightboxIndex = (_lightboxIndex + dir + _lightboxPhotos.length) % _lightboxPhotos.length;
+    showLightboxPhoto();
+  };
+
+  window.closeLightbox = function() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.getElementById('lightboxImg').src = '';
+  };
+
+  // Lightbox swipe gesture
+  (function() {
+    var lb = document.getElementById('lightbox');
+    var startX = 0;
+    lb.addEventListener('touchstart', function(e) {
+      startX = e.touches[0].clientX;
+    }, { passive: true });
+    lb.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 50) {
+        lightboxNav(dx > 0 ? -1 : 1); // swipe right = prev, left = next
+      }
+    }, { passive: true });
+  })();
+
+  // Close lightbox with Escape key, navigate with arrows
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') lightboxNav(-1);
+    if (e.key === 'ArrowRight') lightboxNav(1);
+  });
+
+  // ══════════════════════════════════════════════════
+  // PULL-TO-REFRESH (My Jobs)
+  // ══════════════════════════════════════════════════
+  (function initPullToRefresh() {
+    var startY = 0;
+    var pulling = false;
+    var threshold = 60; // px to trigger refresh
+    var indicator = document.getElementById('pullIndicator');
+    var pullText = document.getElementById('pullText');
+    var myJobsView = document.getElementById('viewMyJobs');
+
+    myJobsView.addEventListener('touchstart', function(e) {
+      // Only activate when scrolled to top and on My Jobs view
+      if (window.scrollY > 5 || !myJobsView.classList.contains('active')) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }, { passive: true });
+
+    myJobsView.addEventListener('touchmove', function(e) {
+      if (!pulling) return;
+      var dy = e.touches[0].clientY - startY;
+      if (dy < 0) { dy = 0; pulling = false; }
+      var progress = Math.min(dy / threshold, 1);
+      var h = Math.min(dy * 0.5, 50);
+      indicator.style.height = h + 'px';
+      if (progress >= 1) {
+        pullText.textContent = 'Release to refresh';
+        indicator.classList.add('pulling');
+      } else {
+        pullText.textContent = 'Pull to refresh';
+        indicator.classList.remove('pulling');
+      }
+    }, { passive: true });
+
+    var _lastRefreshTime = 0;
+    myJobsView.addEventListener('touchend', function(e) {
+      if (!pulling) return;
+      pulling = false;
+      var triggered = indicator.classList.contains('pulling');
+      var now = Date.now();
+      if (triggered && now - _lastRefreshTime > 2000) {
+        _lastRefreshTime = now;
+        pullText.innerHTML = '<span class="spinner"></span> Refreshing...';
+        indicator.style.height = '36px';
+        loadMyJobs();
+        // Collapse after a short delay
+        setTimeout(function() {
+          indicator.style.height = '0';
+          indicator.classList.remove('pulling');
+        }, 1200);
+      } else {
+        indicator.style.height = '0';
+        indicator.classList.remove('pulling');
+      }
+    }, { passive: true });
+  })();
+
+  // ══════════════════════════════════════════════════
+  // WEATHER — Open-Meteo API (free, no key)
+  // ══════════════════════════════════════════════════
+
+  var _weatherCache = null;
+  var _weatherCacheTime = 0;
+
+  function loadWeather() {
+    var el = document.getElementById('weatherBar');
+    if (!el) return;
+
+    // Cache for 30 minutes
+    if (_weatherCache && Date.now() - _weatherCacheTime < 30 * 60 * 1000) {
+      el.innerHTML = _weatherCache;
+      return;
+    }
+
+    // Perth, WA coordinates
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=-31.95&longitude=115.86&current=temperature_2m,weather_code,wind_speed_10m&daily=precipitation_probability_max,temperature_2m_max,temperature_2m_min&timezone=Australia%2FPerth&forecast_days=1';
+
+    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+      var current = data.current || {};
+      var daily = data.daily || {};
+      var temp = Math.round(current.temperature_2m || 0);
+      var maxTemp = Math.round((daily.temperature_2m_max || [])[0] || temp);
+      var minTemp = Math.round((daily.temperature_2m_min || [])[0] || temp);
+      var rainProb = (daily.precipitation_probability_max || [])[0] || 0;
+      var wind = Math.round(current.wind_speed_10m || 0);
+      var code = current.weather_code || 0;
+
+      // WMO weather code to emoji + description
+      var weather = weatherCodeToEmoji(code);
+
+      var html = '<div class="weather-bar">';
+      html += '<span class="weather-icon">' + weather.icon + '</span>';
+      html += '<span class="weather-temp">' + temp + '°</span>';
+      html += '<span>' + weather.label + ' · ' + minTemp + '–' + maxTemp + '°</span>';
+      if (rainProb > 10) html += '<span class="weather-rain">' + rainProb + '% rain</span>';
+      if (wind > 30) html += '<span class="weather-detail">Wind ' + wind + ' km/h</span>';
+      html += '</div>';
+
+      _weatherCache = html;
+      _weatherCacheTime = Date.now();
+      if (el) el.innerHTML = html;
+    }).catch(function() {
+      // Silent fail — weather is non-critical
+    });
+  }
+
+  function weatherCodeToEmoji(code) {
+    if (code === 0) return { icon: '☀️', label: 'Clear' };
+    if (code <= 3) return { icon: '⛅', label: 'Partly cloudy' };
+    if (code <= 48) return { icon: '🌫️', label: 'Foggy' };
+    if (code <= 57) return { icon: '🌦️', label: 'Drizzle' };
+    if (code <= 67) return { icon: '🌧️', label: 'Rain' };
+    if (code <= 77) return { icon: '🌨️', label: 'Snow' };
+    if (code <= 82) return { icon: '🌧️', label: 'Showers' };
+    if (code <= 86) return { icon: '🌨️', label: 'Snow showers' };
+    if (code === 95) return { icon: '⛈️', label: 'Thunderstorm' };
+    if (code <= 99) return { icon: '⛈️', label: 'Thunderstorm + hail' };
+    return { icon: '🌤️', label: 'Fair' };
+  }
+
+  // ══════════════════════════════════════════════════
+  // UTILITIES
+  // ══════════════════════════════════════════════════
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr + 'T00:00:00');
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    var yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (d.getTime() === today.getTime()) return 'Today';
+    if (d.getTime() === tomorrow.getTime()) return 'Tomorrow';
+    if (d.getTime() === yesterday.getTime()) return 'Yesterday';
+
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+  }
+
+  function formatDateTime(str) {
+    if (!str) return '';
+    var d = new Date(str);
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) +
+           ' ' + d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function timeAgo(str) {
+    if (!str) return '';
+    var now = Date.now();
+    var then = new Date(str).getTime();
+    var mins = Math.floor((now - then) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    if (days < 7) return days + 'd ago';
+    return formatDate(str.slice(0, 10));
+  }
+
+  function toast(msg, isError) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (isError ? ' error' : '');
+    clearTimeout(el._timer);
+    el._timer = setTimeout(function() { el.className = 'toast'; }, isError ? 4000 : 2500);
+  }
+
+  // ══════════════════════════════════════════════════
+  // INIT
+  // ══════════════════════════════════════════════════
+
+  var _initRetries = 0;
+  var _maxRetries = 25; // 25 x 200ms = 5 seconds
+
+  function initApp() {
+    cloud = window.SECUREWORKS_CLOUD;
+    if (!cloud) {
+      _initRetries++;
+      if (_initRetries >= _maxRetries) {
+        document.querySelector('.login-box p').textContent = 'Failed to load — please refresh the page';
+        return;
+      }
+      setTimeout(initApp, 200);
+      return;
+    }
+
+    _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+
+    // Listen for auth events
+    cloud.on('auth:login', function(profile) {
+      onLogin(profile);
+    });
+
+    cloud.on('auth:logout', function() {
+      _user = null;
+      _currentJobId = null;
+      _currentJob = null;
+      _currentJobLoaded = null;
+      document.getElementById('bottomNav').style.display = 'none';
+      document.getElementById('viewLogin').classList.add('active');
+    });
+
+    // Check if already logged in
+    if (cloud.auth.isLoggedIn()) {
+      onLogin(cloud.auth.getUser());
+    }
+    // Otherwise stay on login screen
+  }
+
+  // ══════════════════════════════════════════════════
+  // DEMO MODE — bypass auth, inject example data
+  // Remove this block when done demoing
+  // ══════════════════════════════════════════════════
+  var DEMO_MODE = true;
+  if (DEMO_MODE) {
+    (function() {
+      _user = { id: 'demo-user', name: 'Henry Mitchell', email: 'henry@secureworks.com.au' };
+      _opsApiBase = ''; // won't be used
+
+      var DEMO_JOBS = {
+        today: [
+          {
+            id: 'assign-1', status: 'confirmed', scheduled_date: new Date().toISOString().slice(0,10),
+            start_time: '07:00:00', crew_name: 'Crew Alpha',
+            started_at: null, completed_at: null,
+            jobs: { id: 'job-1', client_name: 'Brett & Steph Hunt', site_address: '15 Cloudberry Crescent', site_suburb: 'Joondalup', type: 'patio', client_phone: '0412 345 678', status: 'in_progress', job_number: 'SWP-25004', scope_json: { config: { length: 8, projection: 4, roofStyle: 'Flat', roofing: 'SolarSpan 75mm', sheetColor: 'Surfmist', steelColor: 'Woodland Grey', connection: 'Fascia beam' } } }
+          },
+          {
+            id: 'assign-2', status: 'scheduled', scheduled_date: new Date().toISOString().slice(0,10),
+            start_time: '12:30:00', crew_name: 'Crew Alpha',
+            started_at: null, completed_at: null,
+            jobs: { id: 'job-2', client_name: 'David Chen', site_address: '42 Ocean Reef Road', site_suburb: 'Ocean Reef', type: 'fencing', client_phone: '0438 901 234', status: 'scheduled', job_number: 'SWF-25008', scope_json: { config: { totalLength: 35, material: 'Colorbond', height: 1800, colour: 'Monument', gateCount: 2 } } }
+          }
+        ],
+        thisWeek: [
+          {
+            id: 'assign-3', status: 'scheduled', scheduled_date: (function(){ var d=new Date(); d.setDate(d.getDate()+2); return d.toISOString().slice(0,10); })(),
+            start_time: '07:30:00', crew_name: 'Crew Alpha',
+            started_at: null, completed_at: null,
+            jobs: { id: 'job-3', client_name: 'Sarah & Marcus Lee', site_address: '8 Whitfords Avenue', site_suburb: 'Hillarys', type: 'patio', client_phone: '0421 567 890', status: 'accepted' }
+          },
+          {
+            id: 'assign-4', status: 'scheduled', scheduled_date: (function(){ var d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })(),
+            start_time: '08:00:00', crew_name: 'Crew Alpha',
+            started_at: null, completed_at: null,
+            jobs: { id: 'job-4', client_name: 'Michael Thompson', site_address: '27 Marmion Street', site_suburb: 'Currambine', type: 'decking', client_phone: '0499 123 456', status: 'scheduled' }
+          }
+        ],
+        upcoming: [
+          {
+            id: 'assign-5', status: 'scheduled', scheduled_date: (function(){ var d=new Date(); d.setDate(d.getDate()+8); return d.toISOString().slice(0,10); })(),
+            start_time: '07:00:00', crew_name: 'Crew Bravo',
+            started_at: null, completed_at: null,
+            jobs: { id: 'job-5', client_name: 'Rebecca Walsh', site_address: '3 Kinross Drive', site_suburb: 'Kinross', type: 'fencing', client_phone: '0433 222 111', status: 'accepted' }
+          }
+        ],
+        recent: [
+          {
+            id: 'assign-6', status: 'complete', scheduled_date: (function(){ var d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })(),
+            start_time: '07:00:00', crew_name: 'Crew Alpha',
+            started_at: (function(){ var d=new Date(); d.setDate(d.getDate()-1); d.setHours(7,5,0); return d.toISOString(); })(),
+            completed_at: (function(){ var d=new Date(); d.setDate(d.getDate()-1); d.setHours(15,30,0); return d.toISOString(); })(),
+            jobs: { id: 'job-6', client_name: 'Tom & Lisa Nguyen', site_address: '91 Burns Beach Road', site_suburb: 'Burns Beach', type: 'patio', client_phone: '0411 888 999', status: 'complete' }
+          }
+        ]
+      };
+
+      var DEMO_JOB_DETAIL = {
+        job: {
+          id: 'job-1', client_name: 'Brett & Steph Hunt', site_address: '15 Cloudberry Crescent', site_suburb: 'Joondalup', type: 'patio', status: 'in_progress',
+          client_phone: '0412 345 678', client_email: 'brett.hunt@gmail.com', job_number: 'SWP-25004',
+          scope_json: { config: { length: 8, projection: 4, roofStyle: 'Flat', roofing: 'SolarSpan 75mm', sheetColor: 'Surfmist', steelColor: 'Woodland Grey', connection: 'Fascia beam', posts: '4x 100x100 SHS' }, client: { notes: 'Dog needs to be inside during install.' } },
+          ghl_opportunity_id: 'demo-opp-1'
+        },
+        documents: [],
+        media: [
+          { id: 'm1', phase: 'scope', storage_url: 'https://placehold.co/800x600/293C46/F15A29?text=Scope+Photo+1', thumbnail_url: 'https://placehold.co/200x150/293C46/F15A29?text=Scope+1', label: 'Front view' },
+          { id: 'm2', phase: 'scope', storage_url: 'https://placehold.co/800x600/293C46/F15A29?text=Scope+Photo+2', thumbnail_url: 'https://placehold.co/200x150/293C46/F15A29?text=Scope+2', label: 'Side view' },
+          { id: 'm3', phase: 'scope', storage_url: 'https://placehold.co/800x600/293C46/F15A29?text=Scope+Photo+3', thumbnail_url: 'https://placehold.co/200x150/293C46/F15A29?text=Scope+3', label: 'Rear view' },
+          { id: 'm4', phase: 'completion', storage_url: 'https://placehold.co/800x600/27AE60/FFFFFF?text=Complete+1', thumbnail_url: 'https://placehold.co/200x150/27AE60/FFFFFF?text=Done+1', label: 'Finished' },
+          { id: 'm5', phase: 'completion', storage_url: 'https://placehold.co/800x600/27AE60/FFFFFF?text=Complete+2', thumbnail_url: 'https://placehold.co/200x150/27AE60/FFFFFF?text=Done+2', label: 'Finished side' },
+          { id: 'm6', phase: 'receipt', storage_url: 'https://placehold.co/800x600/E67E22/FFFFFF?text=Receipt', thumbnail_url: 'https://placehold.co/200x150/E67E22/FFFFFF?text=Receipt', po_id: 'po-1' }
+        ],
+        notes: [
+          { id: 'n1', created_at: new Date(Date.now() - 3600000*2).toISOString(), detail_json: { text: 'Footings poured, concrete curing overnight. Posts set.', author: 'Henry Mitchell' } },
+          { id: 'n2', created_at: new Date(Date.now() - 3600000*26).toISOString(), detail_json: { text: 'Client confirmed colour choice: Surfmist panels, Woodland Grey beams. Dog needs to be locked inside during install.', author: 'Shaun Carter' } },
+          { id: 'n3', created_at: new Date(Date.now() - 3600000*50).toISOString(), detail_json: { text: 'Site marked out. Dial Before You Dig all clear. Power line clearance OK.', author: 'Henry Mitchell' } }
+        ],
+        workOrder: {
+          wo_number: 'WO-0012', scope_items: [
+            { description: 'SolarSpan 75mm Surfmist panels', quantity: 6 },
+            { description: '150x50x3mm steel beam', quantity: 2 },
+            { description: '100x100 SHS posts', quantity: 4 },
+            { description: '400x400x500mm concrete footings', quantity: 4 },
+            { description: 'Colorbond flashing + guttering', quantity: 1 }
+          ],
+          special_instructions: 'Dog needs to be inside during install. Access via side gate (code: 1234). Power point on rear wall — keep clear for future fan install.'
+        },
+        crew: [
+          { id: 'c1', user_id: 'demo-user', users: { name: 'Henry Mitchell' }, role: 'lead_installer', crew_name: 'Crew Alpha', status: 'in_progress', started_at: new Date(Date.now() - 3600000*2).toISOString(), completed_at: null },
+          { id: 'c2', user_id: 'other-user', users: { name: 'Isaac Wright' }, role: 'helper', crew_name: 'Crew Alpha', status: 'confirmed', started_at: null, completed_at: null }
+        ],
+        purchaseOrders: [
+          {
+            id: 'po-1', po_number: 'PO-0034', supplier_name: 'Bondor Australia', status: 'authorised', delivery_date: new Date().toISOString().slice(0,10),
+            line_items: [
+              { description: 'SolarSpan 75mm Surfmist 6000mm', quantity: 6 },
+              { description: 'Ridge capping Surfmist', quantity: 2 },
+              { description: 'Foam infill strips', quantity: 12 }
+            ]
+          },
+          {
+            id: 'po-2', po_number: 'PO-0035', supplier_name: 'CMI Steel', status: 'draft', delivery_date: null,
+            line_items: [
+              { description: '150x50x3mm RHS beam 6.5m', quantity: 2 },
+              { description: '100x100 SHS post 3.2m', quantity: 4 },
+              { description: 'Base plates + dynabolts', quantity: 4 }
+            ]
+          }
+        ]
+      };
+
+      var DEMO_REPORT = {
+        report: null,
+        checklistTemplate: [
+          'All footings poured and set',
+          'Posts plumb and secure',
+          'Beams level and bolted',
+          'Panels installed — no gaps or damage',
+          'Flashing and guttering complete',
+          'Downpipes connected',
+          'Site cleaned — all waste removed',
+          'Client walkthrough completed'
+        ]
+      };
+
+      // Override API to return demo data
+      window._origApi = api;
+      api = function(action, params, body) {
+        return new Promise(function(resolve) {
+          setTimeout(function() {
+            if (action === 'my_jobs') resolve(DEMO_JOBS);
+            else if (action === 'trade_job_detail') resolve(DEMO_JOB_DETAIL);
+            else if (action === 'get_service_report') resolve(DEMO_REPORT);
+            else if (action === 'add_note') resolve({ success: true });
+            else if (action === 'get_upload_url') resolve({ uploadUrl: 'https://example.com/upload', publicUrl: 'https://placehold.co/400x300/293C46/F15A29?text=Uploaded', path: 'demo/photo.jpg', token: 'demo' });
+            else if (action === 'confirm_upload') resolve({ id: 'demo-upload', url: 'https://placehold.co/400x300/27AE60/fff?text=Done' });
+            else if (action === 'update_my_assignment') {
+              // Update demo data in-place for visual feedback
+              var crew = DEMO_JOB_DETAIL.crew;
+              for (var i = 0; i < crew.length; i++) {
+                if (crew[i].user_id === 'demo-user') {
+                  crew[i].status = (body && body.status) || crew[i].status;
+                  if (body && body.status === 'in_progress') crew[i].started_at = new Date().toISOString();
+                  if (body && body.status === 'complete') crew[i].completed_at = new Date().toISOString();
+                }
+              }
+              resolve({ success: true, all_complete: false });
+            }
+            else resolve({ success: true });
+          }, 300); // Simulate network delay
+        });
+      };
+
+      // Boot demo immediately
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+          document.getElementById('headerUser').textContent = _user.name;
+          document.getElementById('bottomNav').style.display = 'flex';
+          document.getElementById('viewLogin').classList.remove('active');
+          showView('myJobs');
+          renderMyJobs(DEMO_JOBS);
+        }, 200);
+      });
+    })();
+  } else {
+    setTimeout(initApp, 100);
+  }
+  // END DEMO MODE
+
+  // ══════════════════════════════════════════════════
+  // USER MENU & LOGOUT
+  // ══════════════════════════════════════════════════
+
+  window.toggleUserMenu = function() {
+    var menu = document.getElementById('userMenu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  };
+
+  // Close menu when tapping elsewhere
+  document.addEventListener('click', function(e) {
+    var menu = document.getElementById('userMenu');
+    var header = document.getElementById('headerUser');
+    if (menu.style.display === 'block' && !menu.contains(e.target) && e.target !== header) {
+      menu.style.display = 'none';
+    }
+  });
+
+  window.doLogout = function() {
+    document.getElementById('userMenu').style.display = 'none';
+    if (cloud && cloud.supabase) {
+      cloud.supabase.auth.signOut();
+    }
+  };
+
+  // ══════════════════════════════════════════════════
+  // NETWORK STATUS — offline/online indicator
+  // ══════════════════════════════════════════════════
+
+  function updateOfflineBar() {
+    var bar = document.getElementById('offlineBar');
+    if (navigator.onLine) {
+      bar.classList.remove('show');
+    } else {
+      bar.classList.add('show');
+    }
+  }
+
+  window.addEventListener('online', function() {
+    updateOfflineBar();
+    toast('Back online');
+    syncPendingNotes();
+  });
+
+  window.addEventListener('offline', function() {
+    updateOfflineBar();
+  });
+
+  // Check on load
+  if (!navigator.onLine) updateOfflineBar();
+
+  // ══════════════════════════════════════════════════
+  // iOS KEYBOARD — hide bottom nav when keyboard is up
+  // ══════════════════════════════════════════════════
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function() {
+      var isKeyboard = window.visualViewport.height < window.innerHeight * 0.75;
+      document.getElementById('bottomNav').style.display = isKeyboard ? 'none' : 'flex';
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // PWA — Service Worker + Install Prompt
+  // ══════════════════════════════════════════════════
+
+  var _deferredInstallPrompt = null;
+
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw-trade.js').catch(function(err) {
+      console.warn('[SW] Registration failed:', err);
+    });
+  }
+
+  // Capture the install prompt
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    // Don't show if user already dismissed
+    if (localStorage.getItem('sw_install_dismissed')) return;
+    _deferredInstallPrompt = e;
+    document.getElementById('installBanner').classList.add('show');
+  });
+
+  window.installPWA = function() {
+    if (!_deferredInstallPrompt) return;
+    _deferredInstallPrompt.prompt();
+    _deferredInstallPrompt.userChoice.then(function(result) {
+      _deferredInstallPrompt = null;
+      document.getElementById('installBanner').classList.remove('show');
+    });
+  };
+
+  window.dismissInstall = function() {
+    document.getElementById('installBanner').classList.remove('show');
+    localStorage.setItem('sw_install_dismissed', '1');
+    _deferredInstallPrompt = null;
+  };
+
+  // Hide banner if already installed as PWA
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    // Already running as installed app
+    var banner = document.getElementById('installBanner');
+    if (banner) banner.style.display = 'none';
+  }
+})();
+</script>
+</body>
+</html>

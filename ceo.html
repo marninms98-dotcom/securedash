@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureWorks — CEO Report</title>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
+  </script>
+  <script src="../tools/shared/brand.js"></script>
+  <script src="../tools/shared/cloud.js"></script>
+  <style>
+    :root {
+      --sw-orange: #F15A29;
+      --sw-dark: #293C46;
+      --sw-mid: #4C6A7C;
+      --sw-light: #F0F4F7;
+      --sw-bg: #F7F8FA;
+      --sw-border: #EAEDF0;
+      --sw-text: #1A2332;
+      --sw-text-sec: #7C8898;
+      --sw-green: #27AE60;
+      --sw-red: #E74C3C;
+      --sw-yellow: #E67E22;
+      --sw-blue: #3498DB;
+      --sw-purple: #8E44AD;
+      --sw-card: #FFFFFF;
+      --sw-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+      --sw-shadow-hover: 0 10px 40px rgba(0,0,0,0.08);
+      --sw-radius: 12px;
+      --sw-font: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      --sw-font-num: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--sw-font);
+      background: var(--sw-bg);
+      color: var(--sw-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--sw-dark);
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header-brand { font-size: 18px; font-weight: 700; }
+    .header-brand span { color: rgba(255,255,255,0.5); font-weight: 400; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-user { font-size: 13px; color: rgba(255,255,255,0.7); }
+    .btn-header {
+      padding: 6px 14px;
+      background: var(--sw-orange);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-header:hover { opacity: 0.9; }
+    .btn-header-ghost {
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-header-ghost:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Section Nav (sticky below header) ── */
+    .section-nav {
+      background: #fff;
+      border-bottom: 1px solid var(--sw-border);
+      position: sticky;
+      top: 48px;
+      z-index: 99;
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .section-nav a {
+      padding: 12px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--sw-text-sec);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .section-nav a:hover { color: var(--sw-text); }
+    .section-nav a.active {
+      color: var(--sw-orange);
+      border-bottom-color: var(--sw-orange);
+    }
+
+    /* ── Container ── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+    /* ── Section headings ── */
+    .section { margin-bottom: 48px; scroll-margin-top: 110px; }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--sw-dark);
+      margin-bottom: 4px;
+    }
+    .section-subtitle {
+      font-size: 13px;
+      color: var(--sw-text-sec);
+      margin-bottom: 20px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 20px;
+      box-shadow: var(--sw-shadow);
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sw-dark);
+      margin-bottom: 12px;
+    }
+
+    /* ── Stat Cards Grid ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 16px;
+      box-shadow: var(--sw-shadow);
+      border-left: 4px solid var(--sw-border);
+    }
+    .stat-card.rag-green { border-left-color: var(--sw-green); }
+    .stat-card.rag-amber { border-left-color: var(--sw-yellow); }
+    .stat-card.rag-red { border-left-color: var(--sw-red); }
+    .stat-label {
+      font-size: 11px;
+      color: var(--sw-text-sec);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--sw-text);
+      font-family: var(--sw-font-num);
+      line-height: 1.2;
+      margin-top: 4px;
+    }
+    .stat-sub {
+      font-size: 11px;
+      color: var(--sw-text-sec);
+      margin-top: 4px;
+    }
+    .stat-sub .trend-up { color: var(--sw-green); font-weight: 600; }
+    .stat-sub .trend-down { color: var(--sw-red); font-weight: 600; }
+
+    /* ── Progress Bars ── */
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: var(--sw-light);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.6s ease;
+      min-width: 2px;
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      margin-top: 3px;
+      color: var(--sw-text-sec);
+    }
+    .track-badge {
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+    .track-badge.on-track { color: var(--sw-green); background: rgba(39,174,96,0.08); }
+    .track-badge.behind { color: var(--sw-yellow); background: rgba(230,126,34,0.08); }
+    .track-badge.at-risk { color: var(--sw-red); background: rgba(231,76,60,0.08); }
+
+    /* ── Chart wrappers ── */
+    .chart-wrap {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 20px;
+      box-shadow: var(--sw-shadow);
+      margin-bottom: 16px;
+    }
+    .chart-wrap canvas { max-height: 300px; }
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+    /* ── Alert cards ── */
+    .alert-card {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      border-left: 4px solid;
+    }
+    .alert-card.critical { background: rgba(231,76,60,0.06); border-left-color: var(--sw-red); }
+    .alert-card.warning { background: rgba(230,126,34,0.06); border-left-color: var(--sw-yellow); }
+    .alert-card.success { background: rgba(39,174,96,0.06); border-left-color: var(--sw-green); }
+    .alert-card.info { background: rgba(52,152,219,0.06); border-left-color: var(--sw-blue); }
+    .alert-title { font-weight: 600; }
+    .alert-action { font-size: 12px; color: var(--sw-text-sec); margin-top: 4px; font-style: italic; }
+
+    /* ── Month at a Glance ── */
+    .glance-card {
+      background: linear-gradient(135deg, var(--sw-dark), #3a5463);
+      color: #fff;
+      border-radius: var(--sw-radius);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    .glance-card strong { color: var(--sw-orange); }
+
+    /* ── KPI Scorecard grid (4-col for 11 cards) ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 14px 16px;
+      box-shadow: var(--sw-shadow);
+      text-align: center;
+      border-top: 3px solid var(--sw-border);
+    }
+    .kpi-card.rag-green { border-top-color: var(--sw-green); }
+    .kpi-card.rag-amber { border-top-color: var(--sw-yellow); }
+    .kpi-card.rag-red { border-top-color: var(--sw-red); }
+    .kpi-name { font-size: 11px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .kpi-value { font-size: 26px; font-weight: 700; font-family: var(--sw-font-num); margin: 4px 0; }
+    .kpi-target { font-size: 11px; color: var(--sw-text-sec); }
+
+    /* ── AR Buckets ── */
+    .bucket-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .bucket-card {
+      flex: 1;
+      min-width: 100px;
+      background: var(--sw-card);
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: var(--sw-shadow);
+      text-align: center;
+      border-top: 3px solid var(--sw-border);
+    }
+    .bucket-card.overdue { border-top-color: var(--sw-yellow); }
+    .bucket-card.severe { border-top-color: var(--sw-red); }
+    .bucket-label { font-size: 11px; color: var(--sw-text-sec); font-weight: 600; }
+    .bucket-value { font-size: 18px; font-weight: 700; font-family: var(--sw-font-num); margin-top: 4px; }
+    .bucket-count { font-size: 11px; color: var(--sw-text-sec); }
+
+    /* ── Tables ── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .data-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--sw-light);
+      color: var(--sw-text-sec);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid var(--sw-border);
+      position: sticky;
+      top: 0;
+    }
+    .data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .data-table tr:hover { background: rgba(0,0,0,0.015); }
+    .text-right { text-align: right; }
+    .text-mono { font-family: var(--sw-font-num); }
+
+    /* ── Velocity funnel ── */
+    .funnel { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 16px; }
+    .funnel-step {
+      flex: 1;
+      text-align: center;
+    }
+    .funnel-bar {
+      background: var(--sw-blue);
+      border-radius: 6px 6px 0 0;
+      margin: 0 auto 6px;
+      width: 60%;
+      transition: height 0.5s ease;
+    }
+    .funnel-label { font-size: 10px; color: var(--sw-text-sec); font-weight: 600; }
+    .funnel-days { font-size: 16px; font-weight: 700; font-family: var(--sw-font-num); }
+    .funnel-arrow { color: var(--sw-text-sec); font-size: 18px; align-self: center; margin-bottom: 20px; }
+
+    /* ── Loading ── */
+    .loading-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--sw-text-sec);
+    }
+    .loading-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--sw-border);
+      border-top-color: var(--sw-orange);
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+
+    /* ── Data Freshness Badges ── */
+    .freshness-badges { display: inline-flex; gap: 8px; margin-left: 12px; vertical-align: middle; }
+    .freshness-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 500; padding: 2px 8px;
+      border-radius: 10px; background: var(--sw-light); color: var(--sw-text-sec);
+    }
+    .freshness-badge.stale { background: rgba(230,126,34,0.1); color: var(--sw-yellow); }
+    .freshness-badge.error { background: rgba(231,76,60,0.1); color: var(--sw-red); }
+    .freshness-dot {
+      width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+    }
+    .freshness-dot.fresh { background: var(--sw-green); }
+    .freshness-dot.stale { background: var(--sw-yellow); }
+    .freshness-dot.error { background: var(--sw-red); }
+
+    /* ── Budget Burn Bar ── */
+    .burn-bar-track {
+      width: 100%; height: 24px; background: var(--sw-light);
+      border-radius: 12px; overflow: hidden; position: relative;
+    }
+    .burn-bar-fill {
+      height: 100%; border-radius: 12px;
+      transition: width 0.6s ease;
+    }
+    .burn-bar-label {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 11px; font-weight: 600; color: var(--sw-text);
+    }
+    .burn-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px;
+    }
+    .burn-stat { text-align: center; }
+    .burn-stat-value { font-size: 18px; font-weight: 700; font-family: var(--sw-font-num); }
+    .burn-stat-label { font-size: 10px; color: var(--sw-text-sec); text-transform: uppercase; font-weight: 600; }
+
+    /* ── Fallback Month Badge ── */
+    .fallback-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 10px;
+      background: rgba(230,126,34,0.12); color: var(--sw-yellow);
+      font-size: 11px; font-weight: 600; margin-left: 8px;
+    }
+
+    /* ── Data quality caveat ── */
+    .data-caveat {
+      font-size: 12px; color: var(--sw-yellow); font-style: italic;
+      padding: 6px 12px; margin-bottom: 8px;
+      background: rgba(230,126,34,0.06); border-radius: 6px;
+      border-left: 3px solid var(--sw-yellow);
+    }
+
+    /* ── Print styles ── */
+    @media print {
+      .header, .section-nav, .btn-header, .btn-header-ghost { display: none !important; }
+      .container { max-width: 100%; padding: 10px; }
+      .section { page-break-inside: avoid; margin-bottom: 24px; }
+      .chart-wrap { break-inside: avoid; }
+      body { background: #fff; }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+      .chart-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      .stat-grid { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .bucket-row { flex-direction: column; }
+      .container { padding: 16px; }
+      .section-nav a { padding: 10px 14px; font-size: 12px; }
+      .funnel { flex-wrap: wrap; }
+      .funnel-step { min-width: 60px; }
+      .chat-panel { width: 100%; right: -100%; }
+      .chat-fab { bottom: 24px; }
+    }
+
+    /* ═══════ AI Chat Sidebar ═══════ */
+    .chat-fab {
+      position: fixed; bottom: 24px; right: 24px; z-index: 900;
+      width: 56px; height: 56px; border-radius: 50%; border: none;
+      background: var(--sw-orange); color: #fff; font-size: 24px;
+      cursor: pointer; box-shadow: 0 4px 16px rgba(241,90,41,0.35);
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(241,90,41,0.45); }
+    .chat-panel {
+      position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
+      background: var(--sw-bg); z-index: 950;
+      display: flex; flex-direction: column;
+      box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+      transition: right 0.3s ease;
+    }
+    .chat-panel.open { right: 0; }
+    .chat-header {
+      background: var(--sw-dark); color: #fff; padding: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .chat-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .chat-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 4px 8px; }
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 16px; display: flex;
+      flex-direction: column; gap: 12px;
+    }
+    .chat-msg {
+      max-width: 85%; padding: 10px 14px; border-radius: 12px;
+      font-size: 13px; line-height: 1.5; word-wrap: break-word;
+    }
+    .chat-msg.user {
+      align-self: flex-end; background: var(--sw-orange); color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-msg.assistant {
+      align-self: flex-start; background: var(--sw-card);
+      border: 1px solid var(--sw-border); border-bottom-left-radius: 4px;
+      color: var(--sw-text);
+    }
+    .chat-msg.assistant strong { color: var(--sw-dark); }
+    .chat-msg.assistant ul, .chat-msg.assistant ol { margin: 6px 0; padding-left: 18px; }
+    .chat-msg.assistant li { margin-bottom: 3px; }
+    .chat-msg.assistant code { background: var(--sw-light); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+    .chat-typing {
+      align-self: flex-start; padding: 10px 14px;
+      background: var(--sw-card); border: 1px solid var(--sw-border);
+      border-radius: 12px; border-bottom-left-radius: 4px;
+      font-size: 13px; color: var(--sw-text-sec);
+    }
+    .chat-typing .dots span {
+      animation: chatBlink 1.4s infinite both; display: inline-block; font-size: 18px; line-height: 1;
+    }
+    .chat-typing .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .chat-typing .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes chatBlink { 0%,80%,100%{opacity:.3} 40%{opacity:1} }
+    .chat-quick-prompts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+    .chat-quick-prompt {
+      background: var(--sw-light); border: 1px solid var(--sw-border);
+      border-radius: 16px; padding: 6px 12px; font-size: 12px;
+      color: var(--sw-mid); cursor: pointer; transition: all 0.15s;
+    }
+    .chat-quick-prompt:hover { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
+    .chat-input-area {
+      flex-shrink: 0; padding: 12px 16px; background: var(--sw-card);
+      border-top: 1px solid var(--sw-border); display: flex; gap: 8px;
+    }
+    .chat-input {
+      flex: 1; border: 1px solid var(--sw-border); border-radius: 8px;
+      padding: 10px 12px; font-size: 13px; font-family: var(--sw-font);
+      resize: none; outline: none; min-height: 40px; max-height: 100px;
+    }
+    .chat-input:focus { border-color: var(--sw-orange); }
+    .chat-send {
+      background: var(--sw-orange); color: #fff; border: none;
+      border-radius: 8px; padding: 0 14px; cursor: pointer; font-size: 16px;
+    }
+    .chat-send:hover { background: #D94D1A; }
+    .chat-send:disabled { opacity: 0.5; cursor: default; }
+    .chat-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.25);
+      z-index: 940; display: none;
+    }
+    .chat-backdrop.open { display: block; }
+
+    @media print {
+      .chat-fab, .chat-panel, .chat-backdrop { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════ -->
+<!-- MAIN APP                              -->
+<!-- ══════════════════════════════════════ -->
+<div id="mainApp">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="header-brand">SecureWorks <span>CEO Report</span></div>
+    </div>
+    <div class="header-right">
+      <a href="index.html" class="btn-header-ghost">Finance View</a>
+      <a href="ops.html" class="btn-header-ghost">Ops View</a>
+      <button class="btn-header" onclick="window.print()">Print</button>
+    </div>
+  </div>
+
+  <!-- Section Nav -->
+  <nav class="section-nav" id="sectionNav">
+    <a href="#overview" class="active" data-section="overview">Overview</a>
+    <a href="#financials" data-section="financials">Financials</a>
+    <a href="#costs" data-section="costs">Costs</a>
+    <a href="#operations" data-section="operations">Performance</a>
+    <a href="#customers" data-section="customers">Customers</a>
+  </nav>
+
+  <!-- Loading state -->
+  <div class="loading-state" id="loadingState">
+    <div class="loading-spinner"></div>
+    <div>Loading CEO report data...</div>
+  </div>
+
+  <!-- Report content (hidden until data loads) -->
+  <div class="container" id="reportContent" style="display:none;">
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- SECTION 1: OVERVIEW                     -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="overview">
+      <div class="section-title">Overview <span class="freshness-badges" id="overviewFreshness"></span></div>
+      <div class="section-subtitle">60-second business pulse</div>
+
+      <!-- Month at a Glance -->
+      <div class="glance-card" id="glanceCard">Loading summary...</div>
+
+      <!-- 6 Hero Stat Cards -->
+      <div class="stat-grid" id="heroStats"></div>
+
+      <!-- Marketing Budget Burn -->
+      <div class="card" id="budgetBurnCard" style="display:none;">
+        <div class="card-title">Marketing Budget Burn</div>
+        <div id="budgetBurnContent"></div>
+      </div>
+
+      <!-- Actions This Week -->
+      <div class="card">
+        <div class="card-title">Actions This Week</div>
+        <div id="topAlerts">Loading...</div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- SECTION 2: FINANCIALS                   -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="financials">
+      <div class="section-title">Financials</div>
+      <div class="section-subtitle">Where is the money?</div>
+
+      <!-- P&L Trend Chart -->
+      <div class="chart-wrap">
+        <div class="card-title">P&L Trend — 12 Months</div>
+        <canvas id="plTrendChart"></canvas>
+      </div>
+
+      <div class="chart-row">
+        <!-- P&L by Segment -->
+        <div class="chart-wrap">
+          <div class="card-title">Revenue by Segment — Current Month</div>
+          <canvas id="segmentChart"></canvas>
+        </div>
+        <!-- Segment Trend -->
+        <div class="chart-wrap">
+          <div class="card-title">Segment Trend — 12 Months</div>
+          <canvas id="segmentTrendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Cash Forecast -->
+      <div class="card" id="cashForecastCard" style="display:none;">
+        <div class="card-title">Cash Forecast</div>
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);" id="cashForecastGrid"></div>
+        <div class="stat-sub" id="cashForecastSub" style="text-align:center; margin-top:8px;"></div>
+      </div>
+
+      <!-- DSO + AR Buckets -->
+      <div class="stat-grid" style="grid-template-columns: 1fr;">
+        <div class="stat-card" id="dsoCard">
+          <div class="stat-label">Days Sales Outstanding (DSO)</div>
+          <div class="stat-value" id="dsoValue">—</div>
+          <div class="stat-sub" id="dsoSub">How many days of revenue are tied up in receivables</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Overdue Receivables</div>
+        <div class="bucket-row" id="arBuckets"></div>
+        <div class="card-title" style="margin-top:16px;">Top Overdue Clients</div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="arTable">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th class="text-right">Amount Owed</th>
+                <th>Oldest Bucket</th>
+                <th class="text-right">Invoices</th>
+              </tr>
+            </thead>
+            <tbody id="arTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Problem Jobs — worst margin active jobs -->
+      <div class="card" id="problemJobsCard" style="display:none;">
+        <div class="card-title">Problem Jobs — Lowest Margin</div>
+        <div id="problemJobsCaveat" class="data-caveat" style="display:none;">Margins based on Xero Project costs — expenses may be understated if receipts aren't linked</div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" id="problemJobsTable">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Type</th>
+                <th>Job #</th>
+                <th class="text-right">Revenue</th>
+                <th class="text-right">Costs</th>
+                <th class="text-right">Est. Margin</th>
+                <th class="text-right">Actual Margin</th>
+                <th class="text-right">Slippage</th>
+              </tr>
+            </thead>
+            <tbody id="problemJobsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- SECTION 3: COSTS                        -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="costs">
+      <div class="section-title">Costs</div>
+      <div class="section-subtitle">Where is the money going?</div>
+
+      <!-- Cost-to-Revenue Ratio stat -->
+      <div class="stat-grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="stat-card" id="costRatioCard">
+          <div class="stat-label">Cost-to-Revenue (Current Month)</div>
+          <div class="stat-value" id="costRatioCurrent">—</div>
+          <div class="stat-sub" id="costRatioSub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cost-to-Revenue (12-Month Avg)</div>
+          <div class="stat-value" id="costRatioTrailing">—</div>
+        </div>
+      </div>
+
+      <div class="chart-row">
+        <!-- Top Suppliers -->
+        <div class="chart-wrap">
+          <div class="card-title">Top 10 Suppliers — Total Spend</div>
+          <canvas id="supplierChart"></canvas>
+        </div>
+        <!-- Cost Categories -->
+        <div class="chart-wrap">
+          <div class="card-title">Cost Category Breakdown</div>
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Cost Trend -->
+      <div class="chart-wrap">
+        <div class="card-title">Revenue vs Costs — 12 Months</div>
+        <canvas id="costTrendChart"></canvas>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- SECTION 4: OPERATIONS                   -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="operations">
+      <div class="section-title">Performance</div>
+      <div class="section-subtitle">Is the machine running well?</div>
+
+      <!-- KPI Scorecard -->
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div class="chart-row">
+        <!-- Win Rate + Deal Size Trend -->
+        <div class="chart-wrap">
+          <div class="card-title">Win Rate & Avg Deal Size — 12 Months</div>
+          <canvas id="winRateChart"></canvas>
+        </div>
+        <!-- Marketing Efficiency Trend -->
+        <div class="chart-wrap">
+          <div class="card-title">Marketing Efficiency — 12 Months</div>
+          <canvas id="marketingTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
+    <!-- SECTION 5: CUSTOMERS                   -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="customers">
+      <div class="section-title">Customers</div>
+      <div class="section-subtitle">Who are the best customers?</div>
+
+      <div style="background:#FFF3E0;border:1px solid #F15A29;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#293C46;">
+        Data quality: ~65% contact match rate. Customer metrics are directionally accurate but may undercount some clients. Improving as bookkeepers use SW job numbers on invoices.
+      </div>
+
+      <!-- CLV Stats Row -->
+      <div class="stat-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
+        <div class="stat-card"><div class="stat-value" id="clvAvg">—</div><div class="stat-label">Avg CLV</div></div>
+        <div class="stat-card"><div class="stat-value" id="clvCustomers">—</div><div class="stat-label">Total Customers</div></div>
+        <div class="stat-card"><div class="stat-value" id="clvRepeatRate">—</div><div class="stat-label">Repeat Rate</div></div>
+        <div class="stat-card"><div class="stat-value" id="clvConcentration">—</div><div class="stat-label">Top 5 Concentration</div></div>
+      </div>
+
+      <div class="chart-row">
+        <!-- Top 10 Customers -->
+        <div class="chart-wrap">
+          <div class="card-title">Top 10 Customers by Revenue</div>
+          <canvas id="topCustomersChart"></canvas>
+        </div>
+        <!-- Revenue by Channel -->
+        <div class="chart-wrap">
+          <div class="card-title">Revenue by Acquisition Channel</div>
+          <canvas id="channelChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timestamp -->
+    <div style="text-align:center; font-size:12px; color:var(--sw-text-sec); padding:20px 0 40px;">
+      Report generated <span id="reportTimestamp"></span>
+    </div>
+
+  </div><!-- /container -->
+</div><!-- /mainApp -->
+
+
+<script>
+// ════════════════════════════════════════════════════════════
+// INIT — Load report immediately (no auth required)
+// ════════════════════════════════════════════════════════════
+
+(function() {
+  loadReport();
+})();
+
+
+// ════════════════════════════════════════════════════════════
+// DATA LOADING
+// ════════════════════════════════════════════════════════════
+
+let reportData = null;
+
+async function loadReport() {
+  try {
+    const res = await fetch(
+      window.SUPABASE_URL + '/functions/v1/reporting-api?action=ceo_report'
+    );
+    if (!res.ok) throw new Error('API error: ' + res.status);
+    reportData = await res.json();
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('reportContent').style.display = 'block';
+    document.getElementById('reportTimestamp').textContent = new Date().toLocaleString('en-AU', {
+      dateStyle: 'medium', timeStyle: 'short', timeZone: 'Australia/Perth'
+    });
+
+    // Render each section independently so one failure doesn't block others
+    const sections = [
+      ['overview', renderOverview],
+      ['financials', renderFinancials],
+      ['costs', renderCosts],
+      ['operations', renderOperations],
+      ['customers', () => renderCustomers(reportData)],
+    ];
+    for (const [id, fn] of sections) {
+      try { fn(); } catch (e) {
+        console.error('Error rendering ' + id + ':', e);
+        const el = document.getElementById(id);
+        if (el) el.innerHTML += '<div class="alert-card critical" style="margin-top:12px;">Failed to render this section: ' + e.message + '</div>';
+      }
+    }
+  } catch (err) {
+    document.getElementById('loadingState').innerHTML =
+      '<div style="color:var(--sw-red);">Failed to load report: ' + err.message + '</div>';
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// SECTION NAV — scroll spy + smooth scroll
+// ════════════════════════════════════════════════════════════
+
+document.querySelectorAll('.section-nav a').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const id = link.getAttribute('href').replace('#', '');
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  });
+});
+
+// Scroll spy: highlight active section in nav
+const sectionIds = ['overview', 'financials', 'costs', 'operations', 'customers'];
+window.addEventListener('scroll', () => {
+  let current = sectionIds[0];
+  for (const id of sectionIds) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top <= 130) current = id;
+  }
+  document.querySelectorAll('.section-nav a').forEach(a => {
+    a.classList.toggle('active', a.dataset.section === current);
+  });
+}, { passive: true });
+
+
+// ════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════
+
+function fmtK(n) {
+  if (n == null) return '—';
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1000000) return sign + '$' + (abs / 1000000).toFixed(1) + 'M';
+  if (abs >= 1000) return sign + '$' + (abs / 1000).toFixed(0) + 'K';
+  return sign + '$' + Math.round(abs).toLocaleString();
+}
+
+function fmtDollar(n) {
+  if (n == null) return '—';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function fmtPct(n) {
+  if (n == null) return '—';
+  return Math.round(n) + '%';
+}
+
+function ragClass(value, greenThreshold, amberThreshold, inverted) {
+  if (value == null) return '';
+  if (inverted) {
+    if (value <= greenThreshold) return 'rag-green';
+    if (value <= amberThreshold) return 'rag-amber';
+    return 'rag-red';
+  }
+  if (value >= greenThreshold) return 'rag-green';
+  if (value >= amberThreshold) return 'rag-amber';
+  return 'rag-red';
+}
+
+function shortDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' });
+}
+
+// Chart.js defaults
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Inter, sans-serif';
+Chart.defaults.font.size = 12;
+Chart.defaults.color = '#7C8898';
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyleWidth = 8;
+
+const CHART_COLORS = {
+  green: '#27AE60', red: '#E74C3C', orange: '#F15A29', blue: '#3498DB',
+  purple: '#8E44AD', yellow: '#E67E22', dark: '#293C46', mid: '#4C6A7C',
+  teal: '#1ABC9C', pink: '#E91E63',
+};
+
+
+// ════════════════════════════════════════════════════════════
+// RENDER: OVERVIEW
+// ════════════════════════════════════════════════════════════
+
+function renderOverview() {
+  const d = reportData;
+  const s = d.summary.stats;
+  const t = d.summary.targets || {};
+  const m = d.marketing.stats;
+  const pf = d.summary.pipeline_forecast;
+
+  // ── Data Freshness Badges ──
+  if (d.sync_health) {
+    const sh = d.sync_health;
+    const badges = [];
+    if (sh.xero_last_sync) {
+      const hoursAgo = Math.round((Date.now() - new Date(sh.xero_last_sync).getTime()) / 3600000);
+      const cls = hoursAgo > 48 ? 'stale' : '';
+      const dotCls = hoursAgo > 48 ? 'stale' : 'fresh';
+      badges.push('<span class="freshness-badge ' + cls + '"><span class="freshness-dot ' + dotCls + '"></span>Xero: ' + (hoursAgo < 1 ? 'just now' : hoursAgo + 'h ago') + '</span>');
+    }
+    if (sh.ads_last_date) {
+      const daysAgo = Math.round((Date.now() - new Date(sh.ads_last_date).getTime()) / 86400000);
+      const cls = daysAgo > 1 ? 'stale' : '';
+      const dotCls = daysAgo > 1 ? 'stale' : 'fresh';
+      badges.push('<span class="freshness-badge ' + cls + '"><span class="freshness-dot ' + dotCls + '"></span>Ads: ' + (daysAgo === 0 ? 'today' : daysAgo + 'd ago') + '</span>');
+    }
+    document.getElementById('overviewFreshness').innerHTML = badges.join('');
+  }
+
+  // Month at a Glance
+  const revTarget = t.revenue || 180000;
+  const revPct = revTarget > 0 ? Math.round((s.revenue_mtd / revTarget) * 100) : 0;
+  const now = new Date();
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const expectedPct = Math.round((dayOfMonth / daysInMonth) * 100);
+  const pacing = revPct >= expectedPct ? 'on track' : revPct >= expectedPct * 0.75 ? 'slightly behind' : 'behind pace';
+
+  // Fallback display: show explicit "Data as of [month]" badge instead of silent swap
+  let fallbackHtml = '';
+  if (s.is_fallback) {
+    const fbDate = new Date(s.display_month + 'T00:00:00');
+    const fbMonth = fbDate.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+    fallbackHtml = '<span class="fallback-badge">Data as of ' + fbMonth + '</span>';
+  }
+
+  document.getElementById('glanceCard').innerHTML =
+    'Revenue at <strong>' + fmtK(s.revenue_mtd) + '</strong> (' + revPct + '% of ' + fmtK(revTarget) + ' target) — ' +
+    '<strong>' + pacing + '</strong> for day ' + dayOfMonth + '/' + daysInMonth + '.' + fallbackHtml +
+    ' Gross margin <strong>' + fmtPct(s.margin_pct) + '</strong>.' +
+    ' Pipeline weighted at <strong>' + fmtK(pf.weighted_pipeline) + '</strong> (' + pf.coverage + 'x coverage).' +
+    ' Win rate <strong>' + fmtPct(m.win_rate) + '</strong>, PPAD <strong>$' + m.ppad + '</strong>.';
+
+  // Hero stat cards — add fallback badge to Revenue card label
+  const revLabel = 'Revenue MTD' + (s.is_fallback ? ' <span class="fallback-badge">prev month</span>' : '');
+
+  const cards = [
+    {
+      label: revLabel, value: fmtK(s.revenue_mtd),
+      sub: s.yoy_change_pct != null ? (s.yoy_change_pct >= 0 ? '<span class="trend-up">+' + s.yoy_change_pct + '% YoY</span>' : '<span class="trend-down">' + s.yoy_change_pct + '% YoY</span>') : '',
+      rag: ragClass(revPct, expectedPct, expectedPct * 0.75, false),
+      target: revTarget, current: s.revenue_mtd,
+    },
+    {
+      label: 'Gross Margin', value: fmtPct(s.margin_pct),
+      sub: 'Target: ' + fmtPct(t.margin || 30),
+      rag: ragClass(s.margin_pct, t.margin || 30, 20, false),
+      target: t.margin || 30, current: s.margin_pct,
+    },
+    {
+      label: 'Gross Profit', value: fmtK(s.gross_profit_mtd),
+      sub: '',
+      rag: ragClass(s.margin_pct, 30, 20, false),
+    },
+    {
+      label: 'Pipeline (Weighted)', value: fmtK(pf.weighted_pipeline),
+      sub: 'Coverage: ' + pf.coverage + 'x',
+      rag: ragClass(pf.coverage, t.pipeline_coverage || 2, 1.5, false),
+      target: (t.pipeline_coverage || 2) * (t.revenue || 180000), current: pf.raw_pipeline,
+    },
+    {
+      label: 'Win Rate', value: fmtPct(m.win_rate),
+      sub: 'Target: ' + fmtPct(t.win_rate || 40),
+      rag: ragClass(m.win_rate, t.win_rate || 40, 25, false),
+      target: t.win_rate || 40, current: m.win_rate,
+    },
+    {
+      label: 'CPL', value: '$' + (m.cpl || 0),
+      sub: 'Cost per lead (90d)',
+      rag: ragClass(m.cpl, 80, 120, true), // inverted: lower is better
+    },
+    {
+      label: 'PPAD', value: '$' + (m.ppad || 0),
+      sub: 'Profit per ad dollar',
+      rag: ragClass(m.ppad, 3, 1, false),
+    },
+  ];
+
+  document.getElementById('heroStats').innerHTML = cards.map(c => {
+    let progressHtml = '';
+    if (c.target && c.current != null) {
+      const pct = Math.min(Math.round((c.current / c.target) * 100), 100);
+      const color = c.rag === 'rag-green' ? 'var(--sw-green)' : c.rag === 'rag-amber' ? 'var(--sw-yellow)' : 'var(--sw-red)';
+      progressHtml = '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+        '<div class="progress-label"><span>' + pct + '%</span></div>';
+    }
+    return '<div class="stat-card ' + (c.rag || '') + '">' +
+      '<div class="stat-label">' + c.label + '</div>' +
+      '<div class="stat-value">' + c.value + '</div>' +
+      '<div class="stat-sub">' + (c.sub || '') + '</div>' +
+      progressHtml + '</div>';
+  }).join('');
+
+  // ── Marketing Budget Burn ──
+  if (d.budget_burn) {
+    const bb = d.budget_burn;
+    const burnCard = document.getElementById('budgetBurnCard');
+    burnCard.style.display = 'block';
+    const burnColor = bb.pct_used > 90 ? 'var(--sw-red)' : bb.pct_used > 70 ? 'var(--sw-yellow)' : 'var(--sw-green)';
+    document.getElementById('budgetBurnContent').innerHTML =
+      '<div class="burn-bar-track"><div class="burn-bar-fill" style="width:' + Math.min(bb.pct_used, 100) + '%;background:' + burnColor + '"></div>' +
+      '<div class="burn-bar-label">' + fmtDollar(bb.mtd_spend) + ' of ' + fmtDollar(bb.budget) + ' (' + bb.pct_used + '%)</div></div>' +
+      '<div class="burn-stats">' +
+        '<div class="burn-stat"><div class="burn-stat-value">' + fmtDollar(bb.daily_rate) + '</div><div class="burn-stat-label">Daily Rate</div></div>' +
+        '<div class="burn-stat"><div class="burn-stat-value">' + fmtDollar(bb.remaining) + '</div><div class="burn-stat-label">Remaining</div></div>' +
+        '<div class="burn-stat"><div class="burn-stat-value">' + fmtDollar(bb.projected_month_end) + '</div><div class="burn-stat-label">Projected</div></div>' +
+        '<div class="burn-stat"><div class="burn-stat-value">' + bb.days_left + '</div><div class="burn-stat-label">Days Left</div></div>' +
+      '</div>';
+  }
+
+  // ── Actions This Week (reworded insights as action items) ──
+  // Filter out insights referencing unreliable data (match rate improved from 11% to 65%, most metrics now usable)
+  const brokenTerms = ['lifetime']; // Only filter truly broken metrics
+  const filteredInsights = (d.insights.insights || []).filter(a => {
+    const text = ((a.title || '') + (a.message || '') + (a.metric || '')).toLowerCase();
+    return !brokenTerms.some(t => text.includes(t));
+  });
+  const alerts = filteredInsights.slice(0, 5);
+  if (alerts.length === 0) {
+    document.getElementById('topAlerts').innerHTML = '<div style="color:var(--sw-text-sec);font-size:13px;">All clear — no actions needed this week.</div>';
+  } else {
+    document.getElementById('topAlerts').innerHTML = alerts.map((a, i) => {
+      const priorityBadge = a.severity === 'critical'
+        ? '<span style="background:var(--sw-red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-right:6px;">URGENT</span>'
+        : a.severity === 'warning'
+        ? '<span style="background:var(--sw-yellow);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-right:6px;">ACTION</span>'
+        : '';
+      return '<div class="alert-card ' + a.severity + '">' +
+        '<div class="alert-title">' + priorityBadge + (a.action || a.title) + '</div>' +
+        '<div>' + a.message + '</div>' +
+      '</div>';
+    }).join('');
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// RENDER: FINANCIALS
+// ════════════════════════════════════════════════════════════
+
+function renderFinancials() {
+  const d = reportData;
+  const t = d.trends;
+  const s = d.summary;
+  const revTarget = s.targets?.revenue || 180000;
+
+  // P&L Trend Chart — combo: revenue bars + cost bars + margin line
+  new Chart(document.getElementById('plTrendChart'), {
+    type: 'bar',
+    data: {
+      labels: t.months,
+      datasets: [
+        {
+          label: 'Revenue',
+          data: t.revenue.data,
+          backgroundColor: CHART_COLORS.green + '99',
+          borderColor: CHART_COLORS.green,
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 2,
+        },
+        {
+          label: 'Costs',
+          data: t.costs.data,
+          backgroundColor: CHART_COLORS.red + '66',
+          borderColor: CHART_COLORS.red,
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 3,
+        },
+        {
+          label: 'Margin %',
+          data: t.margin_pct.data,
+          type: 'line',
+          borderColor: CHART_COLORS.orange,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 3,
+          yAxisID: 'y1',
+          order: 1,
+        },
+        {
+          label: 'Target (' + fmtK(revTarget) + ')',
+          data: Array(t.months.length).fill(revTarget),
+          type: 'line',
+          borderColor: CHART_COLORS.mid,
+          borderDash: [6, 4],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          order: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => fmtK(v) },
+          title: { display: true, text: 'Amount ($)' },
+        },
+        y1: {
+          position: 'right',
+          beginAtZero: true,
+          max: 100,
+          grid: { drawOnChartArea: false },
+          ticks: { callback: v => v + '%' },
+          title: { display: true, text: 'Margin %' },
+        },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.yAxisID === 'y1') return ctx.dataset.label + ': ' + ctx.raw + '%';
+              return ctx.dataset.label + ': ' + fmtDollar(ctx.raw);
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Revenue by Segment — horizontal bar
+  const rbt = s.revenue_by_type || {};
+  const segLabels = Object.keys(rbt).filter(k => (rbt[k].revenue || 0) > 0);
+  const segValues = segLabels.map(k => rbt[k].revenue);
+  const segColors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.purple, CHART_COLORS.teal, CHART_COLORS.yellow];
+
+  new Chart(document.getElementById('segmentChart'), {
+    type: 'bar',
+    data: {
+      labels: segLabels,
+      datasets: [{
+        data: segValues,
+        backgroundColor: segLabels.map((_, i) => segColors[i % segColors.length] + '99'),
+        borderColor: segLabels.map((_, i) => segColors[i % segColors.length]),
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { callback: v => fmtK(v) } },
+      },
+    },
+  });
+
+  // Segment Trend — stacked area
+  const sr = s.stacked_revenue || {};
+  const stackedDatasets = [
+    { label: 'Fencing', data: sr.fencing || [], backgroundColor: CHART_COLORS.blue + '80' },
+    { label: 'Patios', data: sr.patios || [], backgroundColor: CHART_COLORS.orange + '80' },
+    { label: 'Renovations', data: sr.renovations || [], backgroundColor: CHART_COLORS.green + '80' },
+    { label: 'Insurance', data: sr.insurance_work || [], backgroundColor: CHART_COLORS.purple + '80' },
+    { label: 'Other', data: sr.other || [], backgroundColor: CHART_COLORS.mid + '80' },
+  ].filter(ds => ds.data.some(v => v > 0));
+
+  new Chart(document.getElementById('segmentTrendChart'), {
+    type: 'bar',
+    data: {
+      labels: sr.months || [],
+      datasets: stackedDatasets.map(ds => ({
+        ...ds,
+        borderWidth: 0,
+        borderRadius: 2,
+      })),
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, ticks: { callback: v => fmtK(v) } },
+      },
+    },
+  });
+
+  // ── Cash Forecast ──
+  if (d.cash_forecast) {
+    const cf = d.cash_forecast;
+    document.getElementById('cashForecastCard').style.display = 'block';
+    const forecasts = [
+      { label: '30-Day Projected Cash', value: cf.projected_cash_30d, detail: 'AR: ' + fmtK(cf.overdue + cf.due_30d) + ' + Pipeline: ' + fmtK(cf.pipeline_30d) },
+      { label: '60-Day Projected Cash', value: cf.projected_cash_60d, detail: 'Includes medium-term receivables' },
+      { label: '90-Day Projected Cash', value: cf.projected_cash_90d, detail: 'Full pipeline + all AR' },
+    ];
+    document.getElementById('cashForecastGrid').innerHTML = forecasts.map(f =>
+      '<div class="stat-card rag-green">' +
+        '<div class="stat-label">' + f.label + '</div>' +
+        '<div class="stat-value">' + fmtK(f.value) + '</div>' +
+        '<div class="stat-sub">' + f.detail + '</div>' +
+      '</div>'
+    ).join('');
+    if (cf.months_runway != null) {
+      const runwayRag = cf.months_runway >= 3 ? 'var(--sw-green)' : cf.months_runway >= 1.5 ? 'var(--sw-yellow)' : 'var(--sw-red)';
+      document.getElementById('cashForecastSub').innerHTML =
+        'Monthly fixed costs: ' + fmtK(cf.monthly_fixed_costs) + ' | Runway: <strong style="color:' + runwayRag + '">' + cf.months_runway + ' months</strong>';
+    }
+  }
+
+  // DSO card — wire target from org_config
+  const dsoTarget = d.summary.targets?.dso || 30;
+  const dso = s.stats?.dso;
+  document.getElementById('dsoValue').textContent = dso != null ? dso + ' days' : '—';
+  const dsoCard = document.getElementById('dsoCard');
+  if (dso != null) {
+    dsoCard.classList.add(dso <= dsoTarget ? 'rag-green' : dso <= dsoTarget * 2 ? 'rag-amber' : 'rag-red');
+    document.getElementById('dsoSub').textContent = dso <= dsoTarget ? 'Healthy — collecting within ' + dsoTarget + ' days' :
+      dso <= dsoTarget * 2 ? 'Moderate — consider tightening payment terms' : 'High — cash flow risk, chase outstanding invoices';
+  }
+
+  // AR Buckets
+  const ar = s.aged_receivables || {};
+  const bucketDefs = [
+    { key: 'current', label: 'Current', cls: '' },
+    { key: '1-30', label: '1-30 Days', cls: '' },
+    { key: '31-60', label: '31-60 Days', cls: 'overdue' },
+    { key: '61-90', label: '61-90 Days', cls: 'overdue' },
+    { key: '90+', label: '90+ Days', cls: 'severe' },
+  ];
+
+  document.getElementById('arBuckets').innerHTML = bucketDefs.map(b => {
+    const bucket = ar[b.key] || { total: 0, count: 0 };
+    return '<div class="bucket-card ' + b.cls + '">' +
+      '<div class="bucket-label">' + b.label + '</div>' +
+      '<div class="bucket-value">' + fmtK(bucket.total) + '</div>' +
+      '<div class="bucket-count">' + bucket.count + ' invoice' + (bucket.count !== 1 ? 's' : '') + '</div>' +
+    '</div>';
+  }).join('');
+
+  // Top 5 overdue clients table
+  const debtClients = (d.debt.clients || []).slice(0, 5);
+  document.getElementById('arTableBody').innerHTML = debtClients.length === 0
+    ? '<tr><td colspan="4" style="text-align:center;color:var(--sw-text-sec);">No outstanding receivables</td></tr>'
+    : debtClients.map(c =>
+      '<tr>' +
+        '<td>' + c.contact_name + '</td>' +
+        '<td class="text-right text-mono">' + fmtDollar(c.total_owed) + '</td>' +
+        '<td><span class="track-badge ' + (c.oldest_bucket === '90+' ? 'at-risk' : (c.oldest_bucket === '61-90' || c.oldest_bucket === '31-60') ? 'behind' : 'on-track') + '">' + c.oldest_bucket + '</span></td>' +
+        '<td class="text-right">' + c.invoices.length + '</td>' +
+      '</tr>'
+    ).join('');
+
+  // ── Problem Jobs — worst margin (from Xero Projects — real costs) ──
+  const problems = d.problem_jobs || [];
+  if (problems.length > 0) {
+    document.getElementById('problemJobsCard').style.display = 'block';
+    // Add caveat about expense completeness
+    var problemCaveat = document.getElementById('problemJobsCaveat');
+    if (problemCaveat) problemCaveat.style.display = 'block';
+    document.getElementById('problemJobsBody').innerHTML = problems.map(p => {
+      const actualCls = p.margin_pct < 0 ? 'at-risk' : p.margin_pct < 20 ? 'behind' : 'on-track';
+      const estMargin = p.quoted_margin_pct != null ? p.quoted_margin_pct + '%' : '—';
+      const estCls = p.quoted_margin_pct == null ? '' : p.quoted_margin_pct < 15 ? 'at-risk' : p.quoted_margin_pct < 30 ? 'behind' : 'on-track';
+      const slippage = p.slippage != null ? (p.slippage > 0 ? '+' : '') + p.slippage + '%' : '—';
+      const slipCls = p.slippage == null ? '' : p.slippage >= 0 ? 'on-track' : p.slippage > -10 ? 'behind' : 'at-risk';
+      return '<tr>' +
+        '<td>' + (p.client_name || '—') + '</td>' +
+        '<td>' + (p.type || '—') + '</td>' +
+        '<td class="text-mono">' + (p.job_number || '—') + '</td>' +
+        '<td class="text-right text-mono">' + fmtDollar(p.revenue) + '</td>' +
+        '<td class="text-right text-mono">' + fmtDollar(p.costs) + '</td>' +
+        '<td class="text-right">' + (estCls ? '<span class="track-badge ' + estCls + '">' + estMargin + '</span>' : estMargin) + '</td>' +
+        '<td class="text-right"><span class="track-badge ' + actualCls + '">' + p.margin_pct + '%</span></td>' +
+        '<td class="text-right">' + (slipCls ? '<span class="track-badge ' + slipCls + '">' + slippage + '</span>' : slippage) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// RENDER: COSTS
+// ════════════════════════════════════════════════════════════
+
+function renderCosts() {
+  const c = reportData.costs;
+
+  // Cost-to-Revenue ratio cards
+  const cur = c.cost_to_revenue.current_month_pct;
+  const trail = c.cost_to_revenue.trailing_12m_pct;
+
+  document.getElementById('costRatioCurrent').textContent = cur != null ? cur + '%' : '—';
+  document.getElementById('costRatioTrailing').textContent = trail != null ? trail + '%' : '—';
+
+  if (cur != null && trail != null) {
+    const diff = cur - trail;
+    document.getElementById('costRatioSub').innerHTML = diff > 0
+      ? '<span class="trend-down">+' + diff + '% vs 12-month avg</span>'
+      : '<span class="trend-up">' + diff + '% vs 12-month avg</span>';
+  }
+
+  // RAG on cost ratio (lower is better): green <=70%, amber <=80%, red >80%
+  const ratioCard = document.getElementById('costRatioCard');
+  if (cur != null) {
+    ratioCard.classList.add(cur <= 70 ? 'rag-green' : cur <= 80 ? 'rag-amber' : 'rag-red');
+  }
+
+  // Top 10 Suppliers — horizontal bar
+  const suppliers = (c.top_suppliers || []).slice(0, 10);
+  new Chart(document.getElementById('supplierChart'), {
+    type: 'bar',
+    data: {
+      labels: suppliers.map(s => s.name.length > 25 ? s.name.substring(0, 25) + '...' : s.name),
+      datasets: [{
+        data: suppliers.map(s => s.total),
+        backgroundColor: CHART_COLORS.red + '80',
+        borderColor: CHART_COLORS.red,
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { callback: v => fmtK(v) } } },
+    },
+  });
+
+  // Cost Category — doughnut
+  const cats = c.categories || [];
+  const catColors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.purple, CHART_COLORS.yellow, CHART_COLORS.mid];
+  new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c => c.category),
+      datasets: [{
+        data: cats.map(c => c.amount),
+        backgroundColor: cats.map((_, i) => catColors[i % catColors.length] + 'CC'),
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true,
+      cutout: '55%',
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.label + ': ' + fmtDollar(ctx.raw) + ' (' + Math.round(ctx.raw / cats.reduce((s, c) => s + c.amount, 0) * 100) + '%)',
+          },
+        },
+      },
+    },
+  });
+
+  // Cost Trend — revenue vs costs with gross profit band
+  const ct = c.cost_trend || [];
+  new Chart(document.getElementById('costTrendChart'), {
+    type: 'bar',
+    data: {
+      labels: ct.map(m => m.month),
+      datasets: [
+        {
+          label: 'Revenue',
+          data: ct.map(m => m.revenue),
+          backgroundColor: CHART_COLORS.green + '80',
+          borderColor: CHART_COLORS.green,
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 2,
+        },
+        {
+          label: 'Costs',
+          data: ct.map(m => m.costs),
+          backgroundColor: CHART_COLORS.red + '66',
+          borderColor: CHART_COLORS.red,
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 3,
+        },
+        {
+          label: 'Gross Profit',
+          data: ct.map(m => m.gross_profit),
+          type: 'line',
+          borderColor: CHART_COLORS.blue,
+          backgroundColor: CHART_COLORS.blue + '15',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 3,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { ticks: { callback: v => fmtK(v) } },
+      },
+    },
+  });
+}
+
+
+// ════════════════════════════════════════════════════════════
+// RENDER: OPERATIONS
+// ════════════════════════════════════════════════════════════
+
+function renderOperations() {
+  const d = reportData;
+  const mkt = d.marketing.stats;
+  const t = d.trends;
+  const pf = d.summary.pipeline_forecast;
+  const targets = d.summary.targets || {};
+  const sc = d.insights.scorecard || [];
+
+  // Targets from org_config
+  const cycleTarget = targets.cycle_time || 60;
+  const dsoTarget = targets.dso || 30;
+  const costRevTarget = targets.cost_to_revenue || 70;
+
+  // KPI Scorecard — Concentration re-enabled (65% match rate)
+  const concTarget = targets.concentration_risk || 50;
+  const kpis = [
+    ...sc.map(k => ({
+      name: k.name,
+      value: k.value != null ? (k.unit === '$' ? '$' + k.value : k.value + (k.unit || '')) : '—',
+      target: 'Target: ' + (k.unit === '$' ? '$' : '') + k.target + (k.unit && k.unit !== '$' ? k.unit : ''),
+      rag: k.status === 'green' ? 'rag-green' : k.status === 'amber' ? 'rag-amber' : k.status === 'red' ? 'rag-red' : '',
+    })),
+    {
+      name: 'DSO',
+      value: d.summary.stats?.dso != null ? d.summary.stats.dso + ' days' : '—',
+      target: 'Target: ' + dsoTarget + ' days',
+      rag: d.summary.stats?.dso != null ? (d.summary.stats.dso <= dsoTarget ? 'rag-green' : d.summary.stats.dso <= dsoTarget * 2 ? 'rag-amber' : 'rag-red') : '',
+    },
+    {
+      name: 'Cycle Time',
+      value: pf.avg_cycle_days != null ? pf.avg_cycle_days + ' days' : '—',
+      target: 'Target: ' + cycleTarget + ' days',
+      rag: pf.avg_cycle_days != null ? (pf.avg_cycle_days <= cycleTarget ? 'rag-green' : pf.avg_cycle_days <= cycleTarget * 1.5 ? 'rag-amber' : 'rag-red') : '',
+    },
+    {
+      name: 'Cost-to-Revenue',
+      value: d.costs?.cost_to_revenue?.current_month_pct != null ? d.costs.cost_to_revenue.current_month_pct + '%' : '—',
+      target: 'Target: <' + costRevTarget + '%',
+      rag: d.costs?.cost_to_revenue?.current_month_pct != null
+        ? (d.costs.cost_to_revenue.current_month_pct <= costRevTarget ? 'rag-green' : d.costs.cost_to_revenue.current_month_pct <= 80 ? 'rag-amber' : 'rag-red') : '',
+    },
+    {
+      name: 'CPA',
+      value: mkt.cpa > 0 ? '$' + mkt.cpa : '—',
+      target: 'Target: $250',
+      rag: mkt.cpa > 0 ? (mkt.cpa <= 250 ? 'rag-green' : mkt.cpa <= 400 ? 'rag-amber' : 'rag-red') : '',
+    },
+    {
+      name: 'PPAD',
+      value: mkt.ppad > 0 ? '$' + mkt.ppad : '—',
+      target: 'Target: $3+',
+      rag: mkt.ppad >= 3 ? 'rag-green' : mkt.ppad >= 1 ? 'rag-amber' : 'rag-red',
+    },
+    {
+      name: 'Concentration',
+      value: d.clv?.concentration?.top_5_pct != null ? d.clv.concentration.top_5_pct + '%' : '—',
+      target: 'Target: <' + concTarget + '%',
+      rag: d.clv?.concentration?.top_5_pct != null
+        ? (d.clv.concentration.top_5_pct <= concTarget ? 'rag-green' : d.clv.concentration.top_5_pct <= 60 ? 'rag-amber' : 'rag-red') : '',
+    },
+  ];
+
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k =>
+    '<div class="kpi-card ' + k.rag + '">' +
+      '<div class="kpi-name">' + k.name + '</div>' +
+      '<div class="kpi-value">' + k.value + '</div>' +
+      '<div class="kpi-target">' + k.target + '</div>' +
+    '</div>'
+  ).join('');
+
+  // Pipeline Velocity Funnel removed — GHL doesn't set quoted_at/accepted_at consistently (shows 0d)
+
+  // Win Rate + Deal Size Trend — dual axis
+  new Chart(document.getElementById('winRateChart'), {
+    type: 'bar',
+    data: {
+      labels: t.months,
+      datasets: [
+        {
+          label: 'Win Rate %',
+          data: t.win_rate.rate,
+          type: 'line',
+          borderColor: CHART_COLORS.green,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 3,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          label: 'Avg Deal Size',
+          data: t.avg_deal_size.data,
+          backgroundColor: CHART_COLORS.blue + '80',
+          borderColor: CHART_COLORS.blue,
+          borderWidth: 1,
+          borderRadius: 4,
+          yAxisID: 'y1',
+          order: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          ticks: { callback: v => v + '%' },
+          title: { display: true, text: 'Win Rate %' },
+        },
+        y1: {
+          position: 'right',
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          ticks: { callback: v => fmtK(v) },
+          title: { display: true, text: 'Avg Deal Size' },
+        },
+      },
+    },
+  });
+
+  // Marketing Efficiency Trend
+  new Chart(document.getElementById('marketingTrendChart'), {
+    type: 'bar',
+    data: {
+      labels: t.months,
+      datasets: [
+        {
+          label: 'Ad Spend',
+          data: t.google_ads.spend,
+          backgroundColor: CHART_COLORS.orange + '80',
+          borderColor: CHART_COLORS.orange,
+          borderWidth: 1,
+          borderRadius: 4,
+          order: 2,
+        },
+        {
+          label: 'CPL',
+          data: t.google_ads.cpl,
+          type: 'line',
+          borderColor: CHART_COLORS.red,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 3,
+          yAxisID: 'y1',
+          order: 1,
+        },
+        {
+          label: 'Conversions',
+          data: t.google_ads.conversions,
+          type: 'line',
+          borderColor: CHART_COLORS.green,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 3,
+          yAxisID: 'y2',
+          order: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => fmtK(v) },
+          title: { display: true, text: 'Ad Spend' },
+        },
+        y1: {
+          position: 'right',
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          ticks: { callback: v => '$' + v },
+          title: { display: true, text: 'CPL ($)' },
+        },
+        y2: {
+          position: 'right',
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          display: false,
+        },
+      },
+    },
+  });
+}
+
+
+// ── Customers Section ──
+function renderCustomers(d) {
+  const clv = d.clv || {};
+  const overall = clv.overall || {};
+  const conc = clv.concentration || {};
+
+  // Stats
+  document.getElementById('clvAvg').textContent = overall.avg_clv ? '$' + overall.avg_clv.toLocaleString() : '—';
+  document.getElementById('clvCustomers').textContent = overall.total_customers || '—';
+  document.getElementById('clvRepeatRate').textContent = overall.repeat_rate != null ? overall.repeat_rate + '%' : '—';
+
+  const concPct = conc.top_5_pct;
+  const concEl = document.getElementById('clvConcentration');
+  concEl.textContent = concPct != null ? concPct + '%' : '—';
+  // RAG for concentration: green < 30%, amber 30-50%, red > 50%
+  const concCard = concEl.closest('.stat-card');
+  if (concCard && concPct != null) {
+    concCard.style.borderLeft = '4px solid ' + (concPct > 50 ? 'var(--sw-red)' : concPct > 30 ? 'var(--sw-yellow)' : 'var(--sw-green)');
+  }
+
+  // Top 10 Customers — horizontal bar chart
+  const topC = (clv.top_customers || []).slice(0, 10);
+  if (topC.length > 0) {
+    new Chart(document.getElementById('topCustomersChart'), {
+      type: 'bar',
+      data: {
+        labels: topC.map(c => (c.contact_name || '?').substring(0, 20)),
+        datasets: [{
+          label: 'Revenue',
+          data: topC.map(c => c.total_revenue),
+          backgroundColor: CHART_COLORS.blue + '99',
+          borderColor: CHART_COLORS.blue,
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => '$' + ctx.raw.toLocaleString() } },
+        },
+        scales: {
+          x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } },
+        },
+      },
+    });
+  }
+
+  // Revenue by Channel — doughnut
+  const byChannel = clv.by_channel || [];
+  if (byChannel.length > 0) {
+    const colors = [CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.green, CHART_COLORS.red, '#9966FF', '#AAAAAA'];
+    new Chart(document.getElementById('channelChart'), {
+      type: 'doughnut',
+      data: {
+        labels: byChannel.map(c => c.channel),
+        datasets: [{
+          data: byChannel.map(c => c.revenue),
+          backgroundColor: byChannel.map((_, i) => colors[i % colors.length] + '99'),
+          borderColor: byChannel.map((_, i) => colors[i % colors.length]),
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': $' + ctx.raw.toLocaleString() } },
+        },
+      },
+    });
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// AI CHAT SIDEBAR (CEO view)
+// ════════════════════════════════════════════════════════════
+
+var _chatMessages = [];
+var _chatOpen = false;
+var _chatSending = false;
+var _opsAiBase = window.SUPABASE_URL + '/functions/v1/ops-ai';
+
+(function() {
+  try {
+    var saved = localStorage.getItem('sw_ceo_chat');
+    if (saved) _chatMessages = JSON.parse(saved);
+  } catch(e) {}
+})();
+
+function toggleChat() {
+  _chatOpen = !_chatOpen;
+  document.getElementById('chatPanel').classList.toggle('open', _chatOpen);
+  document.getElementById('chatBackdrop').classList.toggle('open', _chatOpen);
+  if (_chatOpen && _chatMessages.length > 0) renderChatHistory();
+  if (_chatOpen) document.getElementById('chatInput').focus();
+}
+
+function clearChat() {
+  _chatMessages = [];
+  localStorage.removeItem('sw_ceo_chat');
+  document.getElementById('chatMessages').innerHTML =
+    '<div style="text-align:center; padding: 20px 0;">' +
+      '<div style="font-size:28px; margin-bottom:8px;">&#9889;</div>' +
+      '<div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask about revenue, margins, pipeline, or strategy</div>' +
+      '<div class="chat-quick-prompts">' +
+        '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'Are we on track for $180K this month?\')">Month summary</button>' +
+        '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'What\\\'s our margin looking like?\')">Margins</button>' +
+        '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'Show me top overdue invoices\')">Overdue AR</button>' +
+        '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'Compare fencing vs patio profitability\')">Type analysis</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function sendQuickPrompt(text) {
+  document.getElementById('chatInput').value = text;
+  sendChat();
+}
+
+function renderChatHistory() {
+  var container = document.getElementById('chatMessages');
+  var html = '';
+  _chatMessages.forEach(function(msg) {
+    if (msg.role === 'user') {
+      html += '<div class="chat-msg user">' + escapeHtml(msg.content) + '</div>';
+    } else {
+      html += '<div class="chat-msg assistant">' + renderMarkdown(msg.content) + '</div>';
+    }
+  });
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^\s*[-•]\s+(.+)$/gm, '<li>$1</li>')
+    .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n/g, '<br>');
+}
+
+async function sendChat() {
+  if (_chatSending) return;
+  var input = document.getElementById('chatInput');
+  var text = input.value.trim();
+  if (!text) return;
+
+  _chatSending = true;
+  input.value = '';
+  document.getElementById('chatSendBtn').disabled = true;
+
+  _chatMessages.push({ role: 'user', content: text });
+  saveChatHistory();
+
+  var container = document.getElementById('chatMessages');
+  var welcome = container.querySelector('[style*="text-align:center"]');
+  if (welcome) welcome.remove();
+
+  container.innerHTML += '<div class="chat-msg user">' + escapeHtml(text) + '</div>';
+  container.innerHTML += '<div class="chat-typing" id="chatTyping"><div class="dots"><span>.</span><span>.</span><span>.</span></div></div>';
+  container.scrollTop = container.scrollHeight;
+
+  try {
+    var msgs = _chatMessages.slice(-20).map(function(m) {
+      return { role: m.role, content: m.content };
+    });
+
+    var resp = await fetch(_opsAiBase, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: msgs, view: 'ceo' }),
+    });
+    var data = await resp.json();
+
+    var typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+
+    if (data.error) {
+      container.innerHTML += '<div class="chat-msg assistant" style="color:var(--sw-red);">Error: ' + escapeHtml(data.error) + '</div>';
+    } else {
+      _chatMessages.push({ role: 'assistant', content: data.content || '' });
+      saveChatHistory();
+      container.innerHTML += '<div class="chat-msg assistant">' + renderMarkdown(data.content || '') + '</div>';
+    }
+  } catch (e) {
+    var typing = document.getElementById('chatTyping');
+    if (typing) typing.remove();
+    container.innerHTML += '<div class="chat-msg assistant" style="color:var(--sw-red);">Connection error. Please try again.</div>';
+  }
+
+  _chatSending = false;
+  document.getElementById('chatSendBtn').disabled = false;
+  container.scrollTop = container.scrollHeight;
+
+  if (_chatMessages.length > 50) _chatMessages = _chatMessages.slice(-50);
+  saveChatHistory();
+}
+
+function saveChatHistory() {
+  try {
+    var toSave = _chatMessages.slice(-50).map(function(m) {
+      return { role: m.role, content: m.content };
+    });
+    localStorage.setItem('sw_ceo_chat', JSON.stringify(toSave));
+  } catch(e) {}
+}
+
+</script>
+
+<!-- Chat Sidebar HTML -->
+<div class="chat-backdrop" id="chatBackdrop" onclick="toggleChat()"></div>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">
+    <h3>&#9889; SecureWorks AI</h3>
+    <div>
+      <button class="chat-close" onclick="clearChat()" title="Clear chat" style="font-size:14px;">&#128465;</button>
+      <button class="chat-close" onclick="toggleChat()">&times;</button>
+    </div>
+  </div>
+  <div class="chat-messages" id="chatMessages">
+    <div style="text-align:center; padding: 20px 0;">
+      <div style="font-size:28px; margin-bottom:8px;">&#9889;</div>
+      <div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask about revenue, margins, pipeline, or strategy</div>
+      <div class="chat-quick-prompts">
+        <button class="chat-quick-prompt" onclick="sendQuickPrompt('Are we on track for $180K this month?')">Month summary</button>
+        <button class="chat-quick-prompt" onclick="sendQuickPrompt('What\'s our margin looking like?')">Margins</button>
+        <button class="chat-quick-prompt" onclick="sendQuickPrompt('Show me top overdue invoices')">Overdue AR</button>
+        <button class="chat-quick-prompt" onclick="sendQuickPrompt('Compare fencing vs patio profitability')">Type analysis</button>
+      </div>
+    </div>
+  </div>
+  <div class="chat-input-area">
+    <textarea class="chat-input" id="chatInput" placeholder="Ask about revenue, margins, pipeline..." rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+    <button class="chat-send" id="chatSendBtn" onclick="sendChat()">&#10148;</button>
+  </div>
+</div>
+<button class="chat-fab" id="chatFab" onclick="toggleChat()" title="AI Assistant">&#9889;</button>
+
+</body>
+</html>
