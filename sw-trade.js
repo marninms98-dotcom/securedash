@@ -9,9 +9,9 @@ const CACHE_NAME = 'sw-trade-v4'
 
 // App shell — these files are cached for instant load
 const SHELL_FILES = [
-  '/dashboard/trade.html',
-  '/tools/shared/brand.js',
-  '/tools/shared/cloud.js',
+  '/securedash/trade.html',
+  '/securedash/shared/brand.js',
+  '/securedash/shared/cloud.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ]
 

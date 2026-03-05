@@ -9,9 +9,9 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#293C46">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SW Trade">
-  <link rel="apple-touch-icon" href="../assets/logo/png/SecureWorks Icon Main@4x.png">
 
   <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -3718,11 +3718,11 @@
       document.getElementById('viewLogin').classList.add('active');
     });
 
-    // Check if already logged in
-    if (cloud.auth.isLoggedIn()) {
+    // Check if already logged in (guard against profile not yet loaded)
+    if (cloud.auth.isLoggedIn() && cloud.auth.getUser()) {
       onLogin(cloud.auth.getUser());
     }
-    // Otherwise stay on login screen
+    // Otherwise wait for auth:login event or stay on login screen
   }
 
   // Boot app
