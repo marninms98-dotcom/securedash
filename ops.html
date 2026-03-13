@@ -1152,6 +1152,7 @@
         <button class="filter-chip" onclick="filterJobs('fencing')" data-filter="fencing">Fencing</button>
         <button class="filter-chip" onclick="filterJobs('patio')" data-filter="patio">Patios</button>
         <input type="text" class="filter-search" placeholder="Search jobs..." oninput="searchJobs(this.value)">
+        <button class="btn btn-secondary btn-sm" id="btnShowDrafts" onclick="toggleDrafts()" style="opacity:0.6;font-size:11px;">Show Drafts</button>
         <div style="flex:1;"></div>
         <button class="btn btn-secondary btn-sm" id="btnKanban" onclick="setJobView('kanban')" style="font-weight:600;">Kanban</button>
         <button class="btn btn-secondary btn-sm" id="btnListView" onclick="setJobView('list')">List</button>
@@ -1642,13 +1643,14 @@ var _suppliers = [];
 var GHL_LOCATION_ID = '13yKADzN94BRxX4hByYX';
 
 var STATUS_LABELS = {
-  quoted: 'Quoted', accepted: 'Accepted', scheduled: 'Scheduled', in_progress: 'In Progress',
+  draft: 'Drafts', quoted: 'Quoted', accepted: 'Accepted', scheduled: 'Scheduled', in_progress: 'In Progress',
   complete: 'Complete', invoiced: 'Invoiced', lost: 'Lost', cancelled: 'Cancelled'
 };
 var STATUS_COLORS = {
-  quoted: '#9B59B6', accepted: '#3498DB', scheduled: '#E67E22', in_progress: '#F15A29',
+  draft: '#8FA4B2', quoted: '#9B59B6', accepted: '#3498DB', scheduled: '#E67E22', in_progress: '#F15A29',
   complete: '#27AE60', invoiced: '#7F8C8D', cancelled: '#E74C3C', lost: '#95A5A6'
 };
+var _showDrafts = false;
 var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -2587,6 +2589,17 @@ function searchJobs(q) {
   window._jobSearchTimer = setTimeout(function() { loadJobs(); }, 300);
 }
 
+function toggleDrafts() {
+  _showDrafts = !_showDrafts;
+  var btn = document.getElementById('btnShowDrafts');
+  if (btn) {
+    btn.textContent = _showDrafts ? 'Hide Drafts' : 'Show Drafts';
+    btn.style.opacity = _showDrafts ? '1' : '0.6';
+    btn.style.fontWeight = _showDrafts ? '700' : '400';
+  }
+  if (_pipelineData) renderJobs(_pipelineData);
+}
+
 function renderJobs(data) {
   var container = document.getElementById('jobsBody');
   if (_jobView === 'kanban') {
@@ -2597,7 +2610,9 @@ function renderJobs(data) {
 }
 
 function renderKanban(container, columns) {
-  var order = ['quoted', 'accepted', 'scheduled', 'in_progress', 'complete', 'invoiced'];
+  var order = _showDrafts
+    ? ['draft', 'quoted', 'accepted', 'scheduled', 'in_progress', 'complete', 'invoiced']
+    : ['quoted', 'accepted', 'scheduled', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -2638,7 +2653,10 @@ function renderKanban(container, columns) {
 
 function renderJobList(container, columns) {
   var allJobs = [];
-  Object.values(columns).forEach(function(arr) { allJobs = allJobs.concat(arr); });
+  Object.keys(columns).forEach(function(status) {
+    if (status === 'draft' && !_showDrafts) return;
+    allJobs = allJobs.concat(columns[status]);
+  });
 
   var html = '<div class="data-table-wrap"><table class="data-table"><thead><tr>' +
     '<th>Client</th><th>Suburb</th><th>Type</th><th>Status</th><th>Value</th><th>Days</th><th>Sched</th><th>POs</th><th>WOs</th>' +
