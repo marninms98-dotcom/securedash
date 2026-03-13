@@ -99,14 +99,14 @@
     /* ── Stat Cards ── */
     .stat-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
       margin-bottom: 24px;
     }
     .stat-card {
       background: var(--sw-card);
       border-radius: var(--sw-radius);
-      padding: 16px;
+      padding: 12px;
       box-shadow: var(--sw-shadow);
       display: flex;
       align-items: flex-start;
@@ -119,16 +119,17 @@
     .stat-card.rag-amber { border-left-color: var(--sw-yellow); }
     .stat-card.rag-red { border-left-color: var(--sw-red); }
     .stat-icon {
-      width: 36px; height: 36px;
-      border-radius: 8px;
+      width: 28px; height: 28px;
+      border-radius: 6px;
       background: var(--sw-light);
       display: flex; align-items: center; justify-content: center;
-      font-size: 16px; font-weight: 700; color: var(--sw-mid);
+      font-size: 14px; font-weight: 700; color: var(--sw-mid);
       flex-shrink: 0;
     }
+    .stat-icon svg { width: 16px; height: 16px; stroke: var(--sw-mid); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .stat-body { flex: 1; min-width: 0; }
     .stat-label { font-size: 11px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    .stat-value { font-size: 22px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); line-height: 1.2; margin-top: 2px; }
+    .stat-value { font-size: 18px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); line-height: 1.2; margin-top: 2px; }
     .stat-sub { font-size: 11px; color: var(--sw-text-sec); margin-top: 2px; }
 
     /* ── Section Heading ── */
@@ -789,7 +790,7 @@
       .mobile-nav button .nav-icon { font-size: 18px; }
       .mobile-nav button.active { color: var(--sw-orange); }
       .container { padding: 16px; padding-bottom: 80px; }
-      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
       .kanban-container { grid-template-columns: 1fr 1fr; }
       .cal-week-grid { grid-template-columns: 1fr; }
       .materials-kanban { grid-template-columns: repeat(2, 1fr); }
@@ -1048,7 +1049,7 @@
 
       <div class="stat-grid" id="todayStats">
         <div class="stat-card" id="statJobsWeek">
-          <div class="stat-icon">W</div>
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
           <div class="stat-body">
             <div class="stat-label">Jobs This Week</div>
             <div class="stat-value" id="valJobsWeek">-</div>
@@ -1056,7 +1057,7 @@
           </div>
         </div>
         <div class="stat-card" id="statMaterials">
-          <div class="stat-icon">M</div>
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
           <div class="stat-body">
             <div class="stat-label">Awaiting Materials</div>
             <div class="stat-value" id="valMaterials">-</div>
@@ -1064,7 +1065,7 @@
           </div>
         </div>
         <div class="stat-card" id="statOverdue">
-          <div class="stat-icon">$</div>
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
           <div class="stat-body">
             <div class="stat-label">Overdue Invoices</div>
             <div class="stat-value" id="valOverdue">-</div>
@@ -1072,7 +1073,7 @@
           </div>
         </div>
         <div class="stat-card" id="statQuotes">
-          <div class="stat-icon">Q</div>
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
           <div class="stat-body">
             <div class="stat-label">Quotes Pending</div>
             <div class="stat-value" id="valQuotes">-</div>
@@ -1080,7 +1081,7 @@
           </div>
         </div>
         <div class="stat-card" id="statCompleted">
-          <div class="stat-icon">J</div>
+          <div class="stat-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
           <div class="stat-body">
             <div class="stat-label">Jobs Completed MTD</div>
             <div class="stat-value" id="valCompleted">-</div>
@@ -1151,6 +1152,7 @@
         <button class="filter-chip active" onclick="filterJobs('all')" data-filter="all">All</button>
         <button class="filter-chip" onclick="filterJobs('fencing')" data-filter="fencing">Fencing</button>
         <button class="filter-chip" onclick="filterJobs('patio')" data-filter="patio">Patios</button>
+        <button class="filter-chip" onclick="filterJobs('decking')" data-filter="decking">Decking</button>
         <input type="text" class="filter-search" placeholder="Search jobs..." oninput="searchJobs(this.value)">
         <button class="btn btn-secondary btn-sm" id="btnShowDrafts" onclick="toggleDrafts()" style="opacity:0.6;font-size:11px;">Show Drafts</button>
         <div style="flex:1;"></div>
@@ -1179,6 +1181,9 @@
           <button class="filter-chip" onclick="filterInvoiceStatus('AUTHORISED')" data-inv-status="AUTHORISED">Sent</button>
           <button class="filter-chip" onclick="filterInvoiceStatus('PAID')" data-inv-status="PAID">Paid</button>
           <button class="filter-chip" onclick="filterInvoiceStatus('overdue')" data-inv-status="overdue">Overdue</button>
+          <input type="date" class="form-input" id="invDateFrom" style="width:130px;font-size:12px;padding:4px 8px;" onchange="loadInvoices()" title="From date">
+          <input type="date" class="form-input" id="invDateTo" style="width:130px;font-size:12px;padding:4px 8px;" onchange="loadInvoices()" title="To date">
+          <input type="text" class="filter-search" id="invSearch" placeholder="Search contact / invoice#..." oninput="filterInvoiceSearch()" style="width:180px;">
           <div style="flex:1;"></div>
           <button class="btn btn-primary btn-sm" onclick="openInvoiceModal()">+ Create Invoice</button>
         </div>
@@ -1186,14 +1191,14 @@
           <table class="data-table" id="invoiceTable">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Invoice #</th>
-                <th>Job #</th>
-                <th>Contact</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Due</th>
-                <th>Due Date</th>
+                <th onclick="sortTable('invoiceTable',0,'date')">Date</th>
+                <th onclick="sortTable('invoiceTable',1,'string')">Invoice #</th>
+                <th onclick="sortTable('invoiceTable',2,'string')">Job #</th>
+                <th onclick="sortTable('invoiceTable',3,'string')">Contact</th>
+                <th onclick="sortTable('invoiceTable',4,'string')">Status</th>
+                <th onclick="sortTable('invoiceTable',5,'number')">Total</th>
+                <th onclick="sortTable('invoiceTable',6,'number')">Due</th>
+                <th onclick="sortTable('invoiceTable',7,'date')">Due Date</th>
               </tr>
             </thead>
             <tbody id="invoiceTableBody"></tbody>
@@ -1227,7 +1232,7 @@
         <div class="data-table-wrap">
           <table class="data-table" id="poTable">
             <thead>
-              <tr><th>PO #</th><th>Job #</th><th>Supplier</th><th>Total</th><th>Delivery</th><th>Status</th><th>Actions</th></tr>
+              <tr><th onclick="sortTable('poTable',0,'string')">PO #</th><th onclick="sortTable('poTable',1,'string')">Job #</th><th onclick="sortTable('poTable',2,'string')">Supplier</th><th onclick="sortTable('poTable',3,'number')">Total</th><th onclick="sortTable('poTable',4,'date')">Delivery</th><th onclick="sortTable('poTable',5,'string')">Status</th><th>Actions</th></tr>
             </thead>
             <tbody id="poTableBody"></tbody>
           </table>
@@ -1243,7 +1248,7 @@
         <div class="data-table-wrap">
           <table class="data-table" id="woTable">
             <thead>
-              <tr><th>WO #</th><th>Trade</th><th>Job</th><th>Status</th><th>Scheduled</th><th>Sent</th><th>Actions</th></tr>
+              <tr><th onclick="sortTable('woTable',0,'string')">WO #</th><th onclick="sortTable('woTable',1,'string')">Trade</th><th onclick="sortTable('woTable',2,'string')">Job</th><th onclick="sortTable('woTable',3,'string')">Status</th><th onclick="sortTable('woTable',4,'date')">Scheduled</th><th onclick="sortTable('woTable',5,'date')">Sent</th><th>Actions</th></tr>
             </thead>
             <tbody id="woTableBody"></tbody>
           </table>
@@ -1260,7 +1265,7 @@
         <div class="data-table-wrap">
           <table class="data-table" id="tradeBillTable">
             <thead>
-              <tr><th>Trade</th><th>Week Ending</th><th>Hours</th><th>Total</th><th>Xero Bill #</th><th>Status</th></tr>
+              <tr><th onclick="sortTable('tradeBillTable',0,'string')">Trade</th><th onclick="sortTable('tradeBillTable',1,'date')">Week Ending</th><th onclick="sortTable('tradeBillTable',2,'number')">Hours</th><th onclick="sortTable('tradeBillTable',3,'number')">Total</th><th onclick="sortTable('tradeBillTable',4,'string')">Xero Bill #</th><th onclick="sortTable('tradeBillTable',5,'string')">Status</th></tr>
             </thead>
             <tbody id="tradeBillTableBody"></tbody>
           </table>
@@ -1294,6 +1299,25 @@
 </div><!-- /mainApp -->
 
 <!-- ══════════ MODALS ══════════ -->
+
+<!-- Trade Rate Modal -->
+<div class="modal-overlay" id="rateModal">
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-title" id="rateModalTitle">Set Hourly Rate</div>
+    <div class="form-group">
+      <label class="form-label">Current Rate</label>
+      <div id="rateModalCurrent" style="font-size:16px;font-weight:700;color:var(--sw-green);margin-bottom:8px;">$0.00/hr</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">New Rate ($/hr)</label>
+      <input type="number" class="form-input" id="rateModalInput" min="0" step="0.50" placeholder="e.g. 45.00">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('rateModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitRateModal()">Save Rate</button>
+    </div>
+  </div>
+</div>
 
 <!-- Assignment Modal -->
 <div class="modal-overlay" id="assignmentModal">
@@ -1657,6 +1681,14 @@ var _pipelineData = null;
 var _jobsCache = [];
 var _suppliers = [];
 
+// Deterministic crew colour palette (10 distinct colours)
+var CREW_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#F97316','#6366F1','#14B8A6'];
+function crewColor(name) {
+  var hash = 0;
+  for (var i = 0; i < name.length; i++) hash = ((hash << 5) - hash) + name.charCodeAt(i);
+  return CREW_COLORS[Math.abs(hash) % CREW_COLORS.length];
+}
+
 // GHL sub-account ID for "View in GHL" links (visible in your GHL dashboard URL)
 var GHL_LOCATION_ID = '13yKADzN94BRxX4hByYX';
 
@@ -1771,11 +1803,12 @@ function globalJobSearch(query) {
   }
   _searchTimer = setTimeout(async function() {
     try {
-      var data = await opsFetch('pipeline');
+      var data = _pipelineData || await opsFetch('pipeline');
       var allJobs = [];
       if (data.columns) {
-        data.columns.forEach(function(col) {
-          (col.jobs || []).forEach(function(j) { allJobs.push(j); });
+        Object.values(data.columns).forEach(function(col) {
+          if (Array.isArray(col)) col.forEach(function(j) { allJobs.push(j); });
+          else if (col && col.jobs) col.jobs.forEach(function(j) { allJobs.push(j); });
         });
       }
       var q = query.toLowerCase();
@@ -1912,7 +1945,7 @@ function renderAttention(items) {
 
   var html = '';
   sorted.forEach(function(item) {
-    var icon = item.severity === 'red' ? '&#9888;' : '&#9888;';
+    var icon = item.severity === 'red' ? '&#10071;' : '&#9888;';
     var actionFn = '';
     var actionIcon = '&#10148;';
     var title = item.title || '';
@@ -2028,6 +2061,11 @@ function setCalView(view) {
   document.getElementById('btnWeekView').className = view === 'week' ? 'active' : '';
   document.getElementById('btnMonthView').className = view === 'month' ? 'active' : '';
   loadCalendar();
+}
+
+function switchToWeekView(dateStr) {
+  _calDate = new Date(dateStr + 'T00:00:00');
+  setCalView('week');
 }
 
 function calPrev() {
@@ -2172,7 +2210,7 @@ function renderMonthView(container) {
 
     var total = dayEvents.length + dayDeliveries.length;
     if (total > 3) {
-      html += '<div class="cal-more">+' + (total - 3) + ' more</div>';
+      html += '<div class="cal-more" onclick="event.stopPropagation(); switchToWeekView(\'' + dateStr + '\')" style="cursor:pointer;">+' + (total - 3) + ' more</div>';
     }
 
     html += '</div>';
@@ -2275,10 +2313,11 @@ function renderCrewView(container, range) {
 
   // Crew rows
   crewNames.forEach(function(crew) {
-    // Row label
+    // Row label with deterministic colour
     var initial = crew.charAt(0).toUpperCase();
+    var crewBg = crewColor(crew);
     html += '<div class="crew-cal-row-label">';
-    html += '<span class="crew-initial">' + initial + '</span>';
+    html += '<span class="crew-initial" style="background:' + crewBg + '">' + initial + '</span>';
     html += '<span>' + crew + '</span>';
     html += '</div>';
 
@@ -2292,7 +2331,7 @@ function renderCrewView(container, range) {
       if (isWeekend) cellClass += ' weekend';
       if (isToday) cellClass += ' today-col';
 
-      html += '<div class="' + cellClass + '" onclick="openAssignmentModal()" data-date="' + dateStr + '" data-crew="' + crew + '">';
+      html += '<div class="' + cellClass + '" onclick="openAssignmentModal(null,\'' + dateStr + '\',\'' + crew.replace(/'/g, "\\'") + '\')" data-date="' + dateStr + '" data-crew="' + crew + '">';
 
       var entries = (crewMap[crew] && crewMap[crew][dateStr]) || [];
       entries.forEach(function(entry) {
@@ -2549,11 +2588,25 @@ function filterPOStatus(status) {
   loadPOs();
 }
 
+var _invSearchQuery = '';
+var _allInvoices = [];
+
+function filterInvoiceSearch() {
+  _invSearchQuery = (document.getElementById('invSearch').value || '').toLowerCase();
+  renderInvoiceTable(_allInvoices);
+}
+
 async function loadInvoices() {
   try {
-    var data = await opsFetch('list_invoices', { type: _invFilter, limit: 50 });
+    var params = { type: _invFilter, limit: 200 };
+    var dateFrom = document.getElementById('invDateFrom') && document.getElementById('invDateFrom').value;
+    var dateTo = document.getElementById('invDateTo') && document.getElementById('invDateTo').value;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    var data = await opsFetch('list_invoices', params);
+    _allInvoices = data.invoices || [];
     renderInvoiceStats(data.summary);
-    renderInvoiceTable(data.invoices);
+    renderInvoiceTable(_allInvoices);
   } catch (e) {
     console.error('loadInvoices error:', e);
   }
@@ -2567,17 +2620,55 @@ function renderInvoiceStats(summary) {
     '<div class="stat-card"><div class="stat-body"><div class="stat-label">Total Records</div><div class="stat-value">' + (summary.total || '-') + '</div></div></div>';
 }
 
+// ── Generic table sort ──
+function sortTable(tableId, colIdx, type) {
+  var table = document.getElementById(tableId);
+  if (!table) return;
+  var thead = table.querySelector('thead');
+  var tbody = table.querySelector('tbody');
+  var ths = thead.querySelectorAll('th');
+  var th = ths[colIdx];
+  // Determine direction
+  var asc = !th.classList.contains('sort-asc');
+  ths.forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
+  th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+  // Sort rows
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function(a, b) {
+    var cellA = (a.cells[colIdx] || {}).textContent || '';
+    var cellB = (b.cells[colIdx] || {}).textContent || '';
+    if (type === 'number') {
+      var na = parseFloat(cellA.replace(/[^0-9.\-]/g, '')) || 0;
+      var nb = parseFloat(cellB.replace(/[^0-9.\-]/g, '')) || 0;
+      return asc ? na - nb : nb - na;
+    }
+    if (type === 'date') {
+      var da = new Date(cellA) || 0;
+      var db = new Date(cellB) || 0;
+      return asc ? da - db : db - da;
+    }
+    return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+  });
+  rows.forEach(function(r) { tbody.appendChild(r); });
+}
+
 function renderInvoiceTable(invoices) {
   var tbody = document.getElementById('invoiceTableBody');
   var todayStr = new Date().toISOString().slice(0, 10);
 
   // Apply status filter
   var filtered = (invoices || []).filter(function(inv) {
-    if (_invStatusFilter === 'all') return true;
-    if (_invStatusFilter === 'overdue') {
-      return inv.due_date && inv.due_date < todayStr && ['AUTHORISED', 'SUBMITTED'].indexOf(inv.status) >= 0;
+    if (_invStatusFilter !== 'all') {
+      if (_invStatusFilter === 'overdue') {
+        if (!(inv.due_date && inv.due_date < todayStr && ['AUTHORISED', 'SUBMITTED'].indexOf(inv.status) >= 0)) return false;
+      } else if (inv.status !== _invStatusFilter) return false;
     }
-    return inv.status === _invStatusFilter;
+    // Apply text search
+    if (_invSearchQuery) {
+      var hay = ((inv.contact_name || '') + ' ' + (inv.invoice_number || '') + ' ' + (inv.reference || '')).toLowerCase();
+      if (hay.indexOf(_invSearchQuery) === -1) return false;
+    }
+    return true;
   });
 
   if (filtered.length === 0) {
@@ -2588,7 +2679,7 @@ function renderInvoiceTable(invoices) {
   var html = '';
   filtered.forEach(function(inv) {
     var isOverdue = inv.due_date && inv.due_date < todayStr && ['AUTHORISED', 'SUBMITTED'].indexOf(inv.status) >= 0;
-    html += '<tr' + (isOverdue ? ' style="background:rgba(231,76,60,0.04);"' : '') + '>';
+    html += '<tr style="cursor:pointer;' + (isOverdue ? 'background:rgba(231,76,60,0.04);' : '') + '" onclick="drillInvoice(\'' + (inv.reference || '').replace(/'/g, "\\'") + '\',\'' + (inv.invoice_number || '') + '\')">';
     html += '<td>' + fmtDate(inv.date) + '</td>';
     html += '<td>' + (inv.invoice_number || '-') + '</td>';
     html += '<td style="font-size:11px; color:var(--sw-mid);">' + (inv.reference || '-') + '</td>';
@@ -2600,6 +2691,26 @@ function renderInvoiceTable(invoices) {
     html += '</tr>';
   });
   tbody.innerHTML = html;
+}
+
+// Click invoice row → open matching job, or fallback to Xero
+function drillInvoice(reference, invoiceNumber) {
+  if (_pipelineData && reference) {
+    var allJobs = [];
+    if (_pipelineData.columns) {
+      Object.values(_pipelineData.columns).forEach(function(arr) {
+        if (Array.isArray(arr)) arr.forEach(function(j) { allJobs.push(j); });
+      });
+    }
+    var match = allJobs.find(function(j) {
+      return (j.job_number && reference.indexOf(j.job_number) !== -1);
+    });
+    if (match) { openJobDetail(match.id); return; }
+  }
+  // Fallback: open in Xero
+  if (invoiceNumber) {
+    window.open('https://go.xero.com/AccountsReceivable/Search?queryString=' + encodeURIComponent(invoiceNumber), '_blank');
+  }
 }
 
 var _allPOs = [];
@@ -2785,14 +2896,28 @@ function renderTradeRatesPanel(rates) {
   panel.innerHTML = html;
 }
 
+var _rateModalUserId = null;
+var _rateModalName = '';
+
 function openRateModal(userId, name, currentRate) {
-  var newRate = prompt('Set hourly rate for ' + name + ':\n\nCurrent: $' + Number(currentRate).toFixed(2) + '/hr', currentRate);
-  if (!newRate || isNaN(parseFloat(newRate)) || parseFloat(newRate) <= 0) return;
-  opsPost('set_trade_rate_ops', { user_id: userId, hourly_rate: parseFloat(newRate) }).then(function() {
-    alert('Rate updated for ' + name + ' to $' + parseFloat(newRate).toFixed(2) + '/hr');
+  _rateModalUserId = userId;
+  _rateModalName = name;
+  document.getElementById('rateModalTitle').textContent = 'Set Rate — ' + name;
+  document.getElementById('rateModalCurrent').textContent = '$' + Number(currentRate).toFixed(2) + '/hr';
+  document.getElementById('rateModalInput').value = currentRate;
+  document.getElementById('rateModal').classList.add('active');
+  document.getElementById('rateModalInput').focus();
+}
+
+function submitRateModal() {
+  var val = parseFloat(document.getElementById('rateModalInput').value);
+  if (!val || val <= 0) return;
+  opsPost('set_trade_rate_ops', { user_id: _rateModalUserId, hourly_rate: val }).then(function() {
+    closeModal('rateModal');
+    showToast('Rate updated for ' + _rateModalName + ' to $' + val.toFixed(2) + '/hr', 'success');
     loadTradeBills();
   }).catch(function(e) {
-    alert('Error: ' + e.message);
+    showToast('Error: ' + e.message, 'warning');
   });
 }
 
@@ -3289,10 +3414,12 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('active');
 }
 
-async function openAssignmentModal(preSelectJobId) {
+async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   document.getElementById('assignmentModal').classList.add('active');
-  // Set default date to today
-  document.getElementById('assignDate').value = new Date().toISOString().slice(0, 10);
+  // Set date: use pre-filled date from crew calendar cell, else today
+  document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
+  // Pre-fill crew name if provided
+  if (preCrew) document.getElementById('assignCrew').value = preCrew;
   // Load jobs for dropdown
   await loadJobDropdown('assignJobSelect');
   // Feature 3: Pre-select job if provided (from actionable attention items)
@@ -4625,7 +4752,7 @@ function renderCrewUtilization() {
   var html = '';
   entries.forEach(function(e) {
     var pct = Math.min(100, Math.round(e.days / totalDays * 100));
-    var color = pct < 60 ? 'green' : pct < 80 ? 'amber' : 'red';
+    var color = pct >= 80 ? 'green' : pct >= 60 ? 'amber' : 'red';
     html += '<div class="crew-bar">' +
       '<div class="crew-bar-name" title="' + e.name + '">' + e.name + '</div>' +
       '<div class="crew-bar-track"><div class="crew-bar-fill ' + color + '" style="width:' + pct + '%;"></div></div>' +
