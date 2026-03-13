@@ -380,6 +380,143 @@
     .action-btn:active { background: var(--sw-border); }
     .action-btn svg { width: 18px; height: 18px; fill: var(--sw-mid); }
 
+    /* Hours view */
+    .hours-week-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0 16px;
+    }
+    .hours-week-nav button {
+      background: var(--sw-light);
+      border: none;
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--sw-mid);
+      cursor: pointer;
+    }
+    .hours-week-nav button:active { background: var(--sw-border); }
+    .hours-week-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sw-dark);
+    }
+    .hours-totals {
+      background: var(--sw-dark);
+      color: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .hours-totals-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .hours-totals-row.grand {
+      font-size: 16px;
+      font-weight: 700;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      margin-top: 4px;
+      padding-top: 6px;
+    }
+    .hours-day-header {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--sw-mid);
+      margin: 16px 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hours-row {
+      background: var(--sw-card);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      box-shadow: var(--sw-shadow);
+    }
+    .hours-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .hours-row-job {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sw-dark);
+    }
+    .hours-row-client {
+      font-size: 12px;
+      color: var(--sw-text-sec);
+      margin-top: 2px;
+    }
+    .hours-row-amount {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--sw-dark);
+      white-space: nowrap;
+    }
+    .hours-row-time {
+      font-size: 12px;
+      color: var(--sw-text-sec);
+      margin-top: 4px;
+    }
+    .hours-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 100px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .hours-badge.patio { background: rgba(241,90,41,0.1); color: #F15A29; }
+    .hours-badge.fencing { background: rgba(52,152,219,0.1); color: #3498DB; }
+    .hours-badge.decking { background: rgba(39,174,96,0.1); color: #27AE60; }
+    .hours-submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--sw-orange);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 16px;
+      min-height: 52px;
+    }
+    .hours-submit-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .hours-submit-btn:active:not(:disabled) {
+      background: #C4481F;
+    }
+    .hours-submitted-pill {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: rgba(39,174,96,0.1);
+      color: var(--sw-green);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 16px;
+    }
+    .hours-no-data {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--sw-text-sec);
+      font-size: 14px;
+    }
+
     /* Status bar (assignment status buttons) */
     .status-bar {
       display: flex;
@@ -1009,7 +1146,16 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════
-     BOTTOM NAV — 4 tabs
+     HOURS VIEW
+     ══════════════════════════════════════════════════ -->
+<div id="viewHours" class="view">
+  <div class="container" id="hoursContent">
+    <div class="loading-screen"><div class="spinner"></div>Loading hours...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     BOTTOM NAV — 5 tabs
      ══════════════════════════════════════════════════ -->
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <button class="active" data-view="myJobs" onclick="showView('myJobs')">
@@ -1023,6 +1169,10 @@
   <button data-view="schedule" onclick="showView('schedule')">
     <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
     Schedule
+  </button>
+  <button data-view="hours" onclick="showView('hours')">
+    <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+    Hours
   </button>
   <button data-view="profile" onclick="showView('profile')">
     <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -1483,7 +1633,7 @@
   var _skipPopState = false; // avoid infinite loop when handling popstate
 
   // Main tabs (show in bottom nav) vs sub-views (accessed from job cards)
-  var _mainTabs = ['myJobs', 'camera', 'schedule', 'profile'];
+  var _mainTabs = ['myJobs', 'camera', 'schedule', 'hours', 'profile'];
 
   window.showView = function(view, skipHistory) {
     // Warn if leaving report with unsaved changes
@@ -1516,6 +1666,7 @@
     if (view === 'myJobs') loadMyJobs();
     if (view === 'camera') renderCameraView();
     if (view === 'schedule') renderScheduleView();
+    if (view === 'hours') loadHoursView();
     if (view === 'profile') renderProfileView();
     if (view === 'job' && _currentJobId) {
       if (_currentJobLoaded !== _currentJobId) loadJobDetail(_currentJobId);
@@ -3268,7 +3419,161 @@
   }
 
   // ══════════════════════════════════════════════════
-  // PROFILE VIEW — User info + sign out
+  // HOURS VIEW — Weekly hours + invoice submission
+  // ══════════════════════════════════════════════════
+
+  var _hoursWeekEnd = null; // current week being viewed
+  var _hoursData = null;    // cached response
+  var _tradeRate = null;    // cached rate for profile
+
+  function getWeekEndSunday(offset) {
+    var now = new Date();
+    var day = now.getDay(); // 0=Sun
+    var daysUntilSun = day === 0 ? 0 : 7 - day;
+    now.setDate(now.getDate() + daysUntilSun + (offset || 0) * 7);
+    return now.toISOString().slice(0, 10);
+  }
+
+  function formatWeekRange(weekEnd) {
+    var end = new Date(weekEnd + 'T00:00:00');
+    var start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return start.getDate() + ' ' + months[start.getMonth()] + ' – ' + end.getDate() + ' ' + months[end.getMonth()] + ' ' + end.getFullYear();
+  }
+
+  function shiftWeek(dir) {
+    if (!_hoursWeekEnd) return;
+    var d = new Date(_hoursWeekEnd + 'T00:00:00');
+    d.setDate(d.getDate() + dir * 7);
+    _hoursWeekEnd = d.toISOString().slice(0, 10);
+    loadHoursView();
+  }
+
+  function loadHoursView() {
+    if (!_hoursWeekEnd) _hoursWeekEnd = getWeekEndSunday(0);
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading hours...</div>';
+
+    api('my_hours', { week_ending: _hoursWeekEnd }).then(function(data) {
+      _hoursData = data;
+      _tradeRate = data.rate;
+      renderHoursView(data);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="hours-no-data">' + friendlyError(err) + '</div>';
+    });
+  }
+
+  function renderHoursView(data) {
+    var container = document.getElementById('hoursContent');
+    var html = '';
+
+    // Week navigator
+    html += '<div class="hours-week-nav">';
+    html += '  <button onclick="shiftWeek(-1)">&larr;</button>';
+    html += '  <div class="hours-week-label">' + formatWeekRange(data.week_ending) + '</div>';
+    html += '  <button onclick="shiftWeek(1)">&rarr;</button>';
+    html += '</div>';
+
+    // Totals card
+    html += '<div class="hours-totals">';
+    html += '  <div class="hours-totals-row"><span>Total Hours</span><span>' + data.total_hours.toFixed(2) + ' hrs</span></div>';
+    if (data.rate > 0) {
+      html += '  <div class="hours-totals-row"><span>Rate</span><span>$' + data.rate.toFixed(2) + '/hr</span></div>';
+      html += '  <div class="hours-totals-row"><span>Subtotal</span><span>$' + data.subtotal.toFixed(2) + '</span></div>';
+      html += '  <div class="hours-totals-row"><span>GST (10%)</span><span>$' + data.gst.toFixed(2) + '</span></div>';
+      html += '  <div class="hours-totals-row grand"><span>Total</span><span>$' + data.total.toFixed(2) + '</span></div>';
+    } else {
+      html += '  <div class="hours-totals-row" style="color:var(--sw-yellow)"><span colspan="2">Set your hourly rate in Profile to see totals</span></div>';
+    }
+    html += '</div>';
+
+    // Assignments grouped by day
+    if (!data.assignments || data.assignments.length === 0) {
+      html += '<div class="hours-no-data">No completed hours this week</div>';
+    } else {
+      var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var currentDay = '';
+
+      data.assignments.forEach(function(a) {
+        var d = new Date(a.scheduled_date + 'T00:00:00');
+        var dayLabel = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+        if (dayLabel !== currentDay) {
+          currentDay = dayLabel;
+          html += '<div class="hours-day-header">' + dayLabel + '</div>';
+        }
+
+        var job = a.jobs || {};
+        var jobNum = job.job_number || '';
+        var division = '';
+        if (jobNum.startsWith('SWP')) division = 'patio';
+        else if (jobNum.startsWith('SWF')) division = 'fencing';
+        else if (jobNum.startsWith('SWD')) division = 'decking';
+
+        var startTime = a.started_at ? new Date(a.started_at).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
+        var endTime = a.completed_at ? new Date(a.completed_at).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
+
+        html += '<div class="hours-row">';
+        html += '  <div class="hours-row-top">';
+        html += '    <div>';
+        html += '      <div class="hours-row-job">' + esc(jobNum) + ' · ' + esc(job.client_name || '') + '</div>';
+        html += '      <div class="hours-row-client">' + esc(job.site_suburb || job.site_address || '') + '</div>';
+        html += '    </div>';
+        html += '    <div class="hours-row-amount">' + a.hours.toFixed(2) + 'h';
+        if (data.rate > 0) html += ' · $' + a.amount.toFixed(2);
+        html += '</div>';
+        html += '  </div>';
+        html += '  <div class="hours-row-time">' + startTime + ' – ' + endTime + '</div>';
+        if (division) {
+          html += '  <span class="hours-badge ' + division + '">' + division + '</span>';
+        }
+        html += '</div>';
+      });
+    }
+
+    // Submit button or submitted pill
+    if (data.already_submitted) {
+      html += '<div class="hours-submitted-pill">';
+      html += '  &#10003; Submitted to Xero';
+      if (data.xero_bill_number) html += ' — ' + esc(data.xero_bill_number);
+      html += '</div>';
+    } else if (data.assignments && data.assignments.length > 0 && data.rate > 0) {
+      html += '<button class="hours-submit-btn" id="btnSubmitHours" onclick="submitTradeHours()">Submit Invoice for This Week</button>';
+    } else if (data.rate === 0 && data.assignments && data.assignments.length > 0) {
+      html += '<div class="hours-no-data" style="padding:16px">Set your hourly rate in Profile before submitting</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.shiftWeek = shiftWeek;
+
+  window.submitTradeHours = function() {
+    if (!_hoursData || _hoursData.already_submitted) return;
+
+    var totalStr = '$' + _hoursData.total.toFixed(2);
+    showConfirm('Submit Invoice', 'Submit ' + totalStr + ' (inc GST) for week ending ' + _hoursData.week_ending + ' to Xero?', 'Submit').then(function(ok) {
+      if (!ok) return;
+
+      var btn = document.getElementById('btnSubmitHours');
+      if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+      api('submit_trade_invoice', null, {
+        week_ending: _hoursData.week_ending,
+        notes: ''
+      }).then(function(res) {
+        toast('Invoice submitted to Xero as draft bill' + (res.xero_bill_number ? ' — ' + res.xero_bill_number : ''));
+        loadHoursView(); // reload to show submitted state
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Submit Invoice for This Week'; }
+      });
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // PROFILE VIEW — User info + sign out + rate + invoices
   // ══════════════════════════════════════════════════
 
   function renderProfileView() {
@@ -3287,14 +3592,98 @@
     if (_user.role) html += '<div style="font-size:12px;color:var(--sw-mid);text-transform:capitalize;margin-top:4px">' + esc(_user.role.replace(/_/g, ' ')) + '</div>';
     html += '</div>';
 
+    // ── Hourly Rate ──
+    html += '<div style="margin-top:24px;padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow)">';
+    html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">My Hourly Rate</div>';
+    html += '  <div style="display:flex;gap:8px;align-items:center">';
+    html += '    <span style="font-size:18px;font-weight:700;color:var(--sw-mid)">$</span>';
+    html += '    <input type="number" id="inputTradeRate" step="0.01" min="0" placeholder="55.00" style="flex:1;padding:10px 12px;border:2px solid var(--sw-border);border-radius:8px;font-size:16px;font-weight:600;color:var(--sw-dark);font-family:var(--sw-font)" />';
+    html += '    <span style="font-size:14px;color:var(--sw-text-sec)">/hr</span>';
+    html += '    <button onclick="updateTradeRate()" style="padding:10px 16px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Update</button>';
+    html += '  </div>';
+    html += '  <div id="rateStatus" style="font-size:12px;color:var(--sw-text-sec);margin-top:6px"></div>';
+    html += '</div>';
+
+    // ── Invoice History ──
+    html += '<div style="margin-top:16px;padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow)">';
+    html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">My Invoices</div>';
+    html += '  <div id="profileInvoiceList"><div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div></div>';
+    html += '</div>';
+
     // Sign out
     html += '<button class="btn btn-danger" style="margin-top:24px" onclick="doLogout()">Sign Out</button>';
 
     // App version
-    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.1 · Phase 1</div>';
+    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.2 · Trade Invoicing</div>';
 
     container.innerHTML = html;
+
+    // Load rate into input
+    loadProfileRate();
+    // Load invoice history
+    loadProfileInvoices();
   }
+
+  function loadProfileRate() {
+    // Use cached rate from hours view, or fetch via my_hours for current week
+    api('my_hours', { week_ending: getWeekEndSunday(0) }).then(function(data) {
+      _tradeRate = data.rate;
+      var input = document.getElementById('inputTradeRate');
+      var status = document.getElementById('rateStatus');
+      if (input && data.rate > 0) {
+        input.value = data.rate.toFixed(2);
+        if (status) status.textContent = 'Current active rate';
+      } else if (status) {
+        status.textContent = 'No rate set yet — enter your hourly rate above';
+        status.style.color = 'var(--sw-yellow)';
+      }
+    }).catch(function() {});
+  }
+
+  function loadProfileInvoices() {
+    var container = document.getElementById('profileInvoiceList');
+    if (!container) return;
+    api('my_trade_invoices').then(function(data) {
+      var invoices = data.invoices || [];
+      if (invoices.length === 0) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No invoices submitted yet</div>';
+        return;
+      }
+      var html = '';
+      invoices.forEach(function(inv) {
+        var weDate = new Date(inv.week_ending + 'T00:00:00');
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var label = 'WE ' + weDate.getDate() + ' ' + months[weDate.getMonth()] + ' ' + weDate.getFullYear();
+        html += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--sw-border)">';
+        html += '  <div>';
+        html += '    <div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + label + '</div>';
+        html += '    <div style="font-size:11px;color:var(--sw-text-sec)">' + esc(inv.xero_bill_number || inv.status || '') + '</div>';
+        html += '  </div>';
+        html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(inv.total).toFixed(2) + '</div>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }).catch(function() {
+      container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Could not load invoices</div>';
+    });
+  }
+
+  window.updateTradeRate = function() {
+    var input = document.getElementById('inputTradeRate');
+    var rate = parseFloat(input.value);
+    if (!rate || rate <= 0) {
+      toast('Enter a valid hourly rate', true);
+      return;
+    }
+    api('set_trade_rate', null, { hourly_rate: rate }).then(function() {
+      toast('Rate updated to $' + rate.toFixed(2) + '/hr');
+      _tradeRate = rate;
+      var status = document.getElementById('rateStatus');
+      if (status) { status.textContent = 'Updated just now'; status.style.color = 'var(--sw-green)'; }
+    }).catch(function(err) {
+      toast(friendlyError(err), true);
+    });
+  };
 
   // ══════════════════════════════════════════════════
   // PWA HOME SCREEN ONBOARDING (iOS Safari)

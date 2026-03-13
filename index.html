@@ -1445,6 +1445,96 @@
       .report-table th.sortable { padding-right: 20px; }
       .mkt-funnel { flex-direction: column; }
     }
+
+    /* ── Job Detail Slide-Out Panel ── */
+    .job-panel-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(41,60,70,0.4); z-index: 9000;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .job-panel-overlay.open { opacity: 1; }
+    .job-panel {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: min(520px, 92vw); background: #fff;
+      z-index: 9001; box-shadow: -4px 0 24px rgba(41,60,70,0.15);
+      transform: translateX(100%); transition: transform 0.25s ease;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .job-panel.open { transform: translateX(0); }
+    .jp-header {
+      padding: 20px 24px 16px; border-bottom: 1px solid var(--sw-border);
+      display: flex; justify-content: space-between; align-items: flex-start;
+      position: sticky; top: 0; background: #fff; z-index: 1;
+    }
+    .jp-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--sw-text-sec); padding: 4px 8px; line-height: 1; }
+    .jp-close:hover { color: var(--sw-text); }
+    .jp-title { font-size: 18px; font-weight: 700; color: var(--sw-dark); margin: 0; }
+    .jp-subtitle { font-size: 13px; color: var(--sw-text-sec); margin-top: 2px; }
+    .jp-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .jp-body { padding: 20px 24px; flex: 1; }
+    .jp-section { margin-bottom: 20px; }
+    .jp-section-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--sw-text-sec); margin-bottom: 8px;
+    }
+    .jp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .jp-field { font-size: 13px; }
+    .jp-field-label { font-size: 11px; color: var(--sw-text-sec); margin-bottom: 1px; }
+    .jp-field-value { font-weight: 600; color: var(--sw-dark); }
+    .jp-timeline { list-style: none; padding: 0; margin: 0; }
+    .jp-timeline li {
+      position: relative; padding: 8px 0 8px 20px;
+      border-left: 2px solid var(--sw-border); font-size: 13px;
+    }
+    .jp-timeline li::before {
+      content: ''; position: absolute; left: -5px; top: 12px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--sw-border);
+    }
+    .jp-timeline li.active::before { background: #27AE60; }
+    .jp-timeline li.pending::before { background: var(--sw-border); border: 2px solid var(--sw-border); background: #fff; }
+    .jp-timeline li .tl-label { font-weight: 600; color: var(--sw-dark); }
+    .jp-timeline li .tl-date { color: var(--sw-text-sec); font-size: 11px; margin-left: 4px; }
+    .jp-timeline li .tl-sub { color: var(--sw-text-sec); font-size: 12px; }
+    .jp-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .jp-btn {
+      display: block; width: 100%; padding: 12px 16px; border: none; border-radius: 4px;
+      font-size: 14px; font-weight: 600; cursor: pointer; text-align: center;
+    }
+    .jp-btn-primary { background: #F15A29; color: #fff; }
+    .jp-btn-primary:hover { background: #C4481F; }
+    .jp-btn-secondary { background: #293C46; color: #fff; }
+    .jp-btn-secondary:hover { background: #1A272E; }
+    .jp-btn-outline { background: #fff; color: var(--sw-dark); border: 1px solid var(--sw-border); }
+    .jp-btn-outline:hover { background: #F0F4F7; }
+    .jp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .jp-doc-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; background: #F8F6F3; border-radius: 4px; margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .jp-doc-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+    .jp-doc-sent { background: rgba(52,152,219,0.12); color: #3498DB; }
+    .jp-doc-viewed { background: rgba(230,126,34,0.12); color: #E67E22; }
+    .jp-doc-accepted { background: rgba(39,174,96,0.12); color: #27AE60; }
+    .jp-doc-declined { background: rgba(231,76,60,0.12); color: #E74C3C; }
+    .jp-doc-draft { background: rgba(149,165,166,0.15); color: #95A5A6; }
+    .jp-invoice-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; background: #F8F6F3; border-radius: 4px; margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .jp-inv-paid { color: #27AE60; font-weight: 600; }
+    .jp-inv-due { color: #E67E22; font-weight: 600; }
+    .jp-inv-overdue { color: #E74C3C; font-weight: 600; }
+    .jp-inv-draft { color: #95A5A6; font-weight: 600; }
+    .jp-tracking-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 10px;
+      font-size: 11px; font-weight: 600; background: rgba(76,106,124,0.1); color: #4C6A7C;
+    }
+    .jp-value-big { font-size: 24px; font-weight: 700; color: var(--sw-dark); font-family: var(--sw-font-num); }
+    .jp-loading { text-align: center; padding: 40px; color: var(--sw-text-sec); }
   </style>
 </head>
 <body>
@@ -2409,10 +2499,12 @@ async function loadJobs() {
       var typeIcon = TYPE_ICONS[job.type] || '&#128736;';
       var date = new Date(job.updated_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 
+      var jobNum = job.job_number ? '<span style="font-weight:400;color:var(--sw-text-sec);font-size:12px;margin-left:6px;">' + job.job_number + '</span>' : '';
+
       return '<div class="job-card" onclick="openJob(\'' + job.id + '\', \'' + job.type + '\')">' +
         '<div class="job-type-badge ' + job.type + '">' + typeIcon + '</div>' +
         '<div class="job-info">' +
-          '<div class="job-name">' + (job.client_name || 'Untitled Job') + '</div>' +
+          '<div class="job-name">' + (job.client_name || 'Untitled Job') + jobNum + '</div>' +
           '<div class="job-meta">' +
             (job.site_suburb || 'No suburb') + ' &middot; ' + job.type + ' &middot; ' + date +
           '</div>' +
@@ -2497,11 +2589,8 @@ function filterByStatus(status) {
 }
 
 function openJob(jobId, type) {
-  // Open the appropriate scoping tool with the job ID
-  var toolPath = type === 'fencing'
-    ? '../tools/fencing/index.html'
-    : '../tools/patio/index.html';
-  window.location.href = toolPath + '?jobId=' + jobId;
+  // Open job detail panel instead of navigating away
+  openJobPanel(jobId);
 }
 
 async function createNewJob() {
@@ -5671,6 +5760,321 @@ document.addEventListener('DOMContentLoaded', function() {
   // Auth check first, then init after auth succeeds
   setTimeout(checkAuth, 100);
 });
+</script>
+
+<!-- Job Detail Slide-Out Panel -->
+<div class="job-panel-overlay" id="jpOverlay" onclick="closeJobPanel()" style="display:none;"></div>
+<div class="job-panel" id="jpPanel">
+  <div class="jp-header">
+    <div>
+      <h2 class="jp-title" id="jpTitle">—</h2>
+      <div class="jp-subtitle" id="jpSubtitle"></div>
+    </div>
+    <button class="jp-close" onclick="closeJobPanel()">&times;</button>
+  </div>
+  <div class="jp-body" id="jpBody">
+    <div class="jp-loading">Loading job details...</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// JOB DETAIL PANEL — Full lifecycle view + actions
+// ══════════════════════════════════════════════════════════
+var _cachedJobs = [];
+var _currentJobDetail = null;
+
+function closeJobPanel() {
+  document.getElementById('jpOverlay').style.opacity = '0';
+  document.getElementById('jpPanel').classList.remove('open');
+  setTimeout(function() {
+    document.getElementById('jpOverlay').style.display = 'none';
+  }, 250);
+}
+
+async function openJobPanel(jobId) {
+  var overlay = document.getElementById('jpOverlay');
+  var panel = document.getElementById('jpPanel');
+  var body = document.getElementById('jpBody');
+
+  // Show panel with loading state
+  overlay.style.display = 'block';
+  setTimeout(function() { overlay.style.opacity = '1'; panel.classList.add('open'); }, 10);
+  body.innerHTML = '<div class="jp-loading">Loading job details...</div>';
+  document.getElementById('jpTitle').textContent = '...';
+  document.getElementById('jpSubtitle').textContent = '';
+
+  try {
+    // Fetch full job data via edge function (bypasses RLS)
+    var jobRes = await fetch(cloud.supabaseUrl + '/functions/v1/ghl-proxy?action=load_job&jobId=' + jobId);
+    var jobData = await jobRes.json();
+    if (!jobRes.ok || !jobData.job) throw new Error(jobData.error || 'Job not found');
+    var job = jobData.job;
+    _currentJobDetail = job;
+
+    // Fetch documents, invoices, events via edge function (bypasses RLS)
+    var detailRes = await fetch(cloud.supabaseUrl + '/functions/v1/ghl-proxy?action=job_detail&jobId=' + jobId);
+    var detail = await detailRes.json();
+    var docs = detail.documents || [];
+    var invoices = detail.invoices || [];
+    var events = detail.events || [];
+
+    renderJobPanel(job, docs, invoices, events);
+  } catch(e) {
+    body.innerHTML = '<div class="jp-loading" style="color:#E74C3C;">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+function renderJobPanel(job, docs, invoices, events) {
+  var pricing = job.pricing_json || {};
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var totalIncGST = pricing.totalIncGST || pricing.total || 0;
+  var jobDesc = pricing.job_description || '';
+  var typeLabel = { patio: 'Patios', fencing: 'Fencing', decking: 'Decking' }[job.type] || 'General';
+  var divColors = { Patios: '#3498DB', Fencing: '#E67E22', Decking: '#27AE60', General: '#95A5A6' };
+
+  // Header
+  document.getElementById('jpTitle').textContent = job.client_name || 'Untitled Job';
+  document.getElementById('jpSubtitle').innerHTML =
+    (job.job_number ? '<strong>' + job.job_number + '</strong> &middot; ' : '') +
+    typeLabel + ' &middot; ' +
+    '<span class="jp-badge status-' + job.status + '">' + (STATUS_LABELS[job.status] || job.status) + '</span>';
+
+  // Build body
+  var html = '';
+
+  // ── Job Summary ──
+  html += '<div class="jp-section">';
+  html += '<div class="jp-section-title">Job Summary</div>';
+  html += '<div class="jp-grid">';
+  html += '<div class="jp-field"><div class="jp-field-label">Value</div><div class="jp-value-big">' +
+    (totalIncGST > 0 ? '$' + Number(totalIncGST).toLocaleString('en-AU', {maximumFractionDigits:0}) : '—') + '</div></div>';
+  html += '<div class="jp-field"><div class="jp-field-label">Division</div><div>' +
+    '<span class="jp-tracking-badge" style="background:' + (divColors[typeLabel] || '#95A5A6') + '20;color:' + (divColors[typeLabel] || '#95A5A6') + '">' + typeLabel + '</span></div></div>';
+  html += '</div>';
+  if (jobDesc) {
+    html += '<div class="jp-field" style="margin-top:8px;"><div class="jp-field-label">Scope</div><div class="jp-field-value" style="font-size:13px;">' + escHtml(jobDesc) + '</div></div>';
+  }
+  html += '<div class="jp-grid" style="margin-top:8px;">';
+  html += '<div class="jp-field"><div class="jp-field-label">Address</div><div class="jp-field-value">' + escHtml([job.site_address, job.site_suburb].filter(Boolean).join(', ') || '—') + '</div></div>';
+  html += '<div class="jp-field"><div class="jp-field-label">Client</div><div class="jp-field-value">' + escHtml(job.client_name || '—') + '</div></div>';
+  html += '<div class="jp-field"><div class="jp-field-label">Email</div><div class="jp-field-value">' + escHtml(job.client_email || '—') + '</div></div>';
+  html += '<div class="jp-field"><div class="jp-field-label">Phone</div><div class="jp-field-value">' + escHtml(job.client_phone || '—') + '</div></div>';
+  html += '</div></div>';
+
+  // ── Documents (Quotes) ──
+  var quotes = docs.filter(function(d) { return d.type === 'quote'; });
+  html += '<div class="jp-section">';
+  html += '<div class="jp-section-title">Quotes & Documents (' + quotes.length + ')</div>';
+  if (quotes.length === 0) {
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);padding:8px 0;">No quotes sent yet</div>';
+  } else {
+    quotes.forEach(function(q) {
+      var statusClass = 'jp-doc-draft';
+      var statusLabel = 'Draft';
+      if (q.accepted_at) { statusClass = 'jp-doc-accepted'; statusLabel = 'Accepted'; }
+      else if (q.declined_at) { statusClass = 'jp-doc-declined'; statusLabel = 'Declined'; }
+      else if (q.viewed_at) { statusClass = 'jp-doc-viewed'; statusLabel = 'Viewed'; }
+      else if (q.sent_at) { statusClass = 'jp-doc-sent'; statusLabel = 'Sent'; }
+      var dateStr = q.sent_at ? new Date(q.sent_at).toLocaleDateString('en-AU', { day:'numeric', month:'short' }) : '—';
+      html += '<div class="jp-doc-row">';
+      html += '<div><strong>Quote v' + q.version + '</strong> &middot; ' + dateStr + '</div>';
+      html += '<span class="jp-doc-status ' + statusClass + '">' + statusLabel + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // ── Xero Invoices ──
+  var accrec = invoices.filter(function(i) { return i.invoice_type === 'ACCREC'; });
+  html += '<div class="jp-section">';
+  html += '<div class="jp-section-title">Invoices (' + accrec.length + ')</div>';
+  if (accrec.length === 0) {
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);padding:8px 0;">No invoices created</div>';
+  } else {
+    var totalPaid = 0, totalDue = 0;
+    accrec.forEach(function(inv) {
+      var statusClass = 'jp-inv-draft';
+      if (inv.status === 'PAID') { statusClass = 'jp-inv-paid'; totalPaid += parseFloat(inv.total) || 0; }
+      else if (inv.status === 'AUTHORISED') {
+        var due = new Date(inv.due_date);
+        if (due < new Date()) { statusClass = 'jp-inv-overdue'; }
+        else { statusClass = 'jp-inv-due'; }
+        totalDue += parseFloat(inv.amount_due) || 0;
+      }
+      var ref = inv.reference || inv.invoice_number || '—';
+      var isDep = ref.includes('DEP');
+      html += '<div class="jp-invoice-row">';
+      html += '<div><strong>' + escHtml(inv.invoice_number || '—') + '</strong>' +
+        (isDep ? ' <span style="font-size:10px;color:var(--sw-text-sec);">(Deposit)</span>' : '') +
+        ' &middot; $' + Number(inv.total || 0).toLocaleString('en-AU', {maximumFractionDigits:2}) + '</div>';
+      html += '<span class="' + statusClass + '">' + inv.status + '</span>';
+      html += '</div>';
+    });
+    if (totalPaid > 0 || totalDue > 0) {
+      html += '<div style="display:flex;gap:16px;margin-top:6px;font-size:12px;">';
+      if (totalPaid > 0) html += '<span class="jp-inv-paid">Paid: $' + totalPaid.toLocaleString('en-AU', {maximumFractionDigits:2}) + '</span>';
+      if (totalDue > 0) html += '<span class="jp-inv-due">Outstanding: $' + totalDue.toLocaleString('en-AU', {maximumFractionDigits:2}) + '</span>';
+      html += '</div>';
+    }
+  }
+  html += '</div>';
+
+  // ── Lifecycle Timeline ──
+  html += '<div class="jp-section">';
+  html += '<div class="jp-section-title">Lifecycle</div>';
+  html += '<ul class="jp-timeline">';
+  var stages = [
+    { key: 'created_at', label: 'Created', val: job.created_at },
+    { key: 'quoted_at', label: 'Quoted', val: job.quoted_at },
+    { key: 'accepted_at', label: 'Accepted', val: job.accepted_at },
+    { key: 'scheduled_at', label: 'Scheduled', val: job.scheduled_at },
+    { key: 'completed_at', label: 'Completed', val: job.completed_at },
+  ];
+  var hitCurrent = false;
+  stages.forEach(function(s) {
+    var cls = '';
+    if (s.val) { cls = 'active'; }
+    else if (!hitCurrent) { cls = 'pending'; hitCurrent = true; }
+    else { cls = 'pending'; }
+    var dateStr = s.val ? new Date(s.val).toLocaleDateString('en-AU', { day:'numeric', month:'short', year:'numeric' }) : '';
+    html += '<li class="' + cls + '"><span class="tl-label">' + s.label + '</span>' +
+      (dateStr ? '<span class="tl-date">' + dateStr + '</span>' : '') + '</li>';
+  });
+  html += '</ul></div>';
+
+  // ── Actions ──
+  html += '<div class="jp-section">';
+  html += '<div class="jp-section-title">Actions</div>';
+  html += '<div class="jp-actions">';
+
+  // Contextual actions based on status
+  var st = job.status;
+  var hasDeposit = accrec.some(function(i) { return (i.reference || '').includes('DEP'); });
+
+  // Primary action
+  if ((st === 'draft' || st === 'quoted') && totalIncGST > 0) {
+    html += '<button class="jp-btn jp-btn-primary" onclick="jpSendQuote()">Send Quote</button>';
+  }
+  if ((st === 'accepted' || st === 'scheduled' || st === 'in_progress') && !hasDeposit && totalIncGST > 0) {
+    html += '<button class="jp-btn jp-btn-primary" onclick="jpCreateDeposit()">Create Deposit Invoice</button>';
+  }
+  if (st === 'in_progress' || st === 'scheduled' || st === 'complete') {
+    html += '<button class="jp-btn jp-btn-secondary" onclick="jpCompleteAndInvoice()">Complete & Invoice</button>';
+  }
+
+  // Status change shortcut
+  var nextStatus = { draft: 'quoted', quoted: 'accepted', accepted: 'scheduled', scheduled: 'in_progress' };
+  if (nextStatus[st]) {
+    html += '<button class="jp-btn jp-btn-outline" onclick="jpChangeStatus(\'' + nextStatus[st] + '\')">Move to ' + STATUS_LABELS[nextStatus[st]] + '</button>';
+  }
+
+  // Always show open in tool
+  html += '<button class="jp-btn jp-btn-outline" onclick="jpOpenInTool()">Open in Scoping Tool</button>';
+
+  html += '</div></div>';
+
+  // ── Recent Events ──
+  if (events.length > 0) {
+    html += '<div class="jp-section">';
+    html += '<div class="jp-section-title">Recent Activity (' + events.length + ')</div>';
+    events.slice(0, 10).forEach(function(ev) {
+      var d = new Date(ev.created_at);
+      var dateStr = d.toLocaleDateString('en-AU', { day:'numeric', month:'short' }) + ' ' + d.toLocaleTimeString('en-AU', { hour:'2-digit', minute:'2-digit' });
+      var label = ev.event_type.replace(/_/g, ' ');
+      var detail = '';
+      if (ev.detail_json) {
+        if (ev.detail_json.new_status) detail = ' → ' + ev.detail_json.new_status;
+        if (ev.detail_json.invoice_number) detail = ' — ' + ev.detail_json.invoice_number;
+        if (ev.detail_json.deposit_amount) detail += ' ($' + Number(ev.detail_json.deposit_amount).toLocaleString() + ')';
+      }
+      html += '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #f0f0f0;">' +
+        '<span style="color:var(--sw-text-sec);">' + dateStr + '</span> &middot; ' +
+        '<span style="font-weight:600;">' + label + '</span>' + escHtml(detail) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('jpBody').innerHTML = html;
+}
+
+function escHtml(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function jpOpenInTool() {
+  if (!_currentJobDetail) return;
+  var j = _currentJobDetail;
+  var path = j.type === 'fencing' ? '../tools/fencing/index.html' : '../tools/patio/index.html';
+  window.open(path + '?jobId=' + j.id, '_blank');
+}
+
+async function jpChangeStatus(newStatus) {
+  if (!_currentJobDetail) return;
+  try {
+    await cloud.jobs.updateJobStatus(_currentJobDetail.id, newStatus);
+    _currentJobDetail.status = newStatus;
+    openJobPanel(_currentJobDetail.id); // Refresh
+    loadPipeline();
+    loadJobs();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function jpSendQuote() {
+  if (!_currentJobDetail) return;
+  var j = _currentJobDetail;
+  // Open the scoping tool to use its Send Quote modal (PDF generation happens there)
+  var path = j.type === 'fencing' ? '../tools/fencing/index.html' : '../tools/patio/index.html';
+  if (confirm('This will open the scoping tool where you can send the quote with the PDF.\n\nOpen now?')) {
+    window.open(path + '?jobId=' + j.id, '_blank');
+  }
+}
+
+async function jpCreateDeposit() {
+  if (!_currentJobDetail) return;
+  var j = _currentJobDetail;
+  var pricing = j.pricing_json || {};
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var total = pricing.totalIncGST || 0;
+  if (total <= 0) { alert('No pricing data on this job. Open in scoping tool and set pricing first.'); return; }
+
+  var pct = prompt('Deposit percentage (default 50%):', '50');
+  if (pct === null) return;
+  pct = parseInt(pct) || 50;
+  var depAmount = Math.round(total * (pct / 100) * 100) / 100;
+  if (!confirm('Create deposit invoice for $' + depAmount.toLocaleString('en-AU', {maximumFractionDigits:2}) + ' (' + pct + '% of $' + total.toLocaleString() + ')?\n\nThis will create an AUTHORISED invoice in Xero and email the client.')) return;
+
+  try {
+    var res = await fetch(cloud.supabaseUrl + '/functions/v1/ops-api?action=create_deposit_invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cloud.supabaseKey },
+      body: JSON.stringify({ job_id: j.id, deposit_percent: pct })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    alert('Deposit invoice created: ' + data.invoice_number + '\n$' + data.deposit_amount.toLocaleString());
+    openJobPanel(j.id); // Refresh
+    loadPipeline();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+async function jpCompleteAndInvoice() {
+  if (!_currentJobDetail) return;
+  var j = _currentJobDetail;
+  if (!confirm('This will:\n1. Mark job as Complete\n2. Create a balance invoice in Xero (DRAFT)\n\nProceed?')) return;
+
+  try {
+    var res = await fetch(cloud.supabaseUrl + '/functions/v1/ops-api?action=complete_and_invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cloud.supabaseKey },
+      body: JSON.stringify({ job_id: j.id })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    alert('Job completed & invoiced!\n\nInvoice: ' + data.invoice_number + '\nBalance: $' + data.balance_invoiced.toLocaleString());
+    openJobPanel(j.id); // Refresh
+    loadPipeline();
+    loadJobs();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
 </script>
 
 </body>

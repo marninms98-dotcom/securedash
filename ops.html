@@ -1167,6 +1167,7 @@
         <button class="sub-tab" onclick="showSubTab('quotes')" data-sub="quotes">Quotes</button>
         <button class="sub-tab" onclick="showSubTab('pos')" data-sub="pos">Purchase Orders</button>
         <button class="sub-tab" onclick="showSubTab('workorders')" data-sub="workorders">Work Orders</button>
+        <button class="sub-tab" onclick="showSubTab('tradebills')" data-sub="tradebills">Trade Bills</button>
       </div>
 
       <!-- Invoices -->
@@ -1245,6 +1246,23 @@
               <tr><th>WO #</th><th>Trade</th><th>Job</th><th>Status</th><th>Scheduled</th><th>Sent</th><th>Actions</th></tr>
             </thead>
             <tbody id="woTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Trade Bills -->
+      <div id="subTradebills" class="sub-view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div class="section-heading">Trade Bills</div>
+        </div>
+        <!-- Trade rates summary -->
+        <div id="tradeRatesPanel" style="margin-bottom:16px;"></div>
+        <div class="data-table-wrap">
+          <table class="data-table" id="tradeBillTable">
+            <thead>
+              <tr><th>Trade</th><th>Week Ending</th><th>Hours</th><th>Total</th><th>Xero Bill #</th><th>Status</th></tr>
+            </thead>
+            <tbody id="tradeBillTableBody"></tbody>
           </table>
         </div>
       </div>
@@ -1621,7 +1639,7 @@
 // ════════════════════════════════════════════════════════════
 
 var cloud = null;
-var DEMO_MODE = false; // Set true for demo data, false for live API
+// Demo mode removed — all data from live API
 var _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
 var _calView = 'crew'; // 'crew', 'week', or 'month'
 var _unschedJobs = []; // Unscheduled jobs for crew sidebar
@@ -1654,171 +1672,7 @@ var _showDrafts = false;
 var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-// ════════════════════════════════════════════════════════════
-// DEMO DATA — used when DEMO_MODE = true
-// ════════════════════════════════════════════════════════════
-
-var _demoData = null;
-if (DEMO_MODE) {
-  (function() {
-    var today = new Date().toISOString().slice(0, 10);
-    var todayD = new Date();
-    function dayOff(n) { var d = new Date(todayD); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
-
-    var pipeline = {
-      columns: {
-        accepted: [
-          { id: 'j1', client_name: 'Brett & Steph Hunt', site_suburb: 'Joondalup', site_address: '15 Cloudberry Crescent, Joondalup', type: 'patio', status: 'accepted', value: 18500, job_number: 'SWP-25004', days_in_stage: 3, assignment_count: 0, po_count: 0, wo_count: 0 },
-          { id: 'j2', client_name: 'David Chen', site_suburb: 'Ocean Reef', site_address: '42 Ocean Reef Road, Ocean Reef', type: 'fencing', status: 'accepted', value: 6200, job_number: 'SWF-25008', days_in_stage: 5, assignment_count: 0, po_count: 0, wo_count: 0 },
-        ],
-        scheduled: [
-          { id: 'j3', client_name: 'Sarah & Marcus Lee', site_suburb: 'Hillarys', site_address: '8 Whitfords Avenue, Hillarys', type: 'patio', status: 'scheduled', value: 22000, job_number: 'SWP-25005', days_in_stage: 2, assignment_count: 2, po_count: 1, wo_count: 0 },
-          { id: 'j4', client_name: 'Angela Morrison', site_suburb: 'Kingsley', site_address: '31 Dorado Drive, Kingsley', type: 'fencing', status: 'scheduled', value: 4800, job_number: 'SWF-25009', days_in_stage: 1, assignment_count: 1, po_count: 1, wo_count: 0 },
-          { id: 'j9', client_name: 'Tom & Lisa Baker', site_suburb: 'Sorrento', site_address: '5 Beach Road, Sorrento', type: 'decking', status: 'scheduled', value: 12500, job_number: 'SWD-25001', days_in_stage: 4, assignment_count: 1, po_count: 0, wo_count: 1 },
-        ],
-        in_progress: [
-          { id: 'j5', client_name: 'James McAllister', site_suburb: 'Scarborough', site_address: '14 West Coast Hwy, Scarborough', type: 'patio', status: 'in_progress', value: 28000, job_number: 'SWP-25002', days_in_stage: 8, assignment_count: 3, po_count: 2, wo_count: 1 },
-          { id: 'j6', client_name: 'Rachel Kim', site_suburb: 'Duncraig', site_address: '22 Marmion Avenue, Duncraig', type: 'fencing', status: 'in_progress', value: 5400, job_number: 'SWF-25006', days_in_stage: 4, assignment_count: 1, po_count: 1, wo_count: 0 },
-        ],
-        complete: [
-          { id: 'j7', client_name: 'Peter & Helen Walsh', site_suburb: 'Clarkson', site_address: '7 Neerabup Road, Clarkson', type: 'patio', status: 'complete', value: 15800, job_number: 'SWP-25001', days_in_stage: 3, assignment_count: 2, po_count: 2, wo_count: 1 },
-        ],
-        invoiced: [
-          { id: 'j8', client_name: 'Olivia Watson', site_suburb: 'Butler', site_address: '33 Kingsbridge Blvd, Butler', type: 'fencing', status: 'invoiced', value: 7200, job_number: 'SWF-25003', days_in_stage: 12, assignment_count: 1, po_count: 1, wo_count: 0 },
-        ],
-      }
-    };
-
-    var calEvents = [
-      { job_id: 'j5', client_name: 'James McAllister', site_suburb: 'Scarborough', job_type: 'patio', crew_name: 'Marnin + Henry', assigned_to: 'Henry Mitchell', scheduled_date: today, scheduled_end: dayOff(2), start_time: '07:00:00', end_time: '15:00:00', assignment_status: 'confirmed', assignment_type: 'install' },
-      { job_id: 'j6', client_name: 'Rachel Kim', site_suburb: 'Duncraig', job_type: 'fencing', crew_name: 'Aaron Solo', assigned_to: 'Aaron Peters', scheduled_date: today, scheduled_end: today, start_time: '07:30:00', end_time: '14:00:00', assignment_status: 'confirmed', assignment_type: 'install' },
-      { job_id: 'j3', client_name: 'Sarah & Marcus Lee', site_suburb: 'Hillarys', job_type: 'patio', crew_name: 'Marnin + Henry', assigned_to: 'Henry Mitchell', scheduled_date: dayOff(3), scheduled_end: dayOff(5), start_time: '07:00:00', end_time: '15:30:00', assignment_status: 'scheduled', assignment_type: 'install' },
-      { job_id: 'j4', client_name: 'Angela Morrison', site_suburb: 'Kingsley', job_type: 'fencing', crew_name: 'Aaron Solo', assigned_to: 'Aaron Peters', scheduled_date: dayOff(2), scheduled_end: dayOff(2), start_time: '08:00:00', end_time: '13:00:00', assignment_status: 'scheduled', assignment_type: 'install' },
-      { job_id: 'j9', client_name: 'Tom & Lisa Baker', site_suburb: 'Sorrento', job_type: 'decking', crew_name: 'Sam Crew', assigned_to: 'Sam Taylor', scheduled_date: dayOff(1), scheduled_end: dayOff(3), start_time: '07:00:00', end_time: '16:00:00', assignment_status: 'scheduled', assignment_type: 'install' },
-    ];
-
-    var calDeliveries = [
-      { po_number: 'PO-0012', supplier_name: 'Bondor', delivery_date: dayOff(1), job_id: 'j3' },
-      { po_number: 'PO-0013', supplier_name: 'CMI Steel', delivery_date: dayOff(2), job_id: 'j5' },
-      { po_number: 'PO-0014', supplier_name: 'Metroll', delivery_date: dayOff(4), job_id: 'j4' },
-    ];
-
-    var invoices = [
-      { date: dayOff(-15), invoice_number: 'INV-1042', reference: 'SWF-25003', contact_name: 'Olivia Watson', status: 'PAID', total: 7920, amount_due: 0, due_date: dayOff(-1) },
-      { date: dayOff(-10), invoice_number: 'INV-1043', reference: 'SWP-25001', contact_name: 'Peter & Helen Walsh', status: 'AUTHORISED', total: 17380, amount_due: 17380, due_date: dayOff(4) },
-      { date: dayOff(-30), invoice_number: 'INV-1039', reference: 'SWP-24018', contact_name: 'Greg & Donna Phelps', status: 'AUTHORISED', total: 14200, amount_due: 14200, due_date: dayOff(-16) },
-      { date: dayOff(-5), invoice_number: 'INV-1044', reference: 'SWF-25005', contact_name: 'Tony Nguyen', status: 'DRAFT', total: 5500, amount_due: 5500, due_date: dayOff(9) },
-    ];
-
-    var pos = [
-      { id: 'po1', po_number: 'PO-0012', reference: 'SWP-25005', supplier_name: 'Bondor', total: 4850, delivery_date: dayOff(1), status: 'submitted', created_at: dayOff(-5), job_id: 'j3', xero_po_id: 'xero-po-1' },
-      { id: 'po2', po_number: 'PO-0013', reference: 'SWP-25002', supplier_name: 'CMI Steel', total: 3200, delivery_date: dayOff(2), status: 'authorised', created_at: dayOff(-8), job_id: 'j5', xero_po_id: 'xero-po-2' },
-      { id: 'po3', po_number: 'PO-0014', reference: 'SWF-25009', supplier_name: 'Metroll', total: 1800, delivery_date: dayOff(4), status: 'draft', created_at: dayOff(-2), job_id: 'j4' },
-      { id: 'po4', po_number: 'PO-0011', reference: 'SWP-25001', supplier_name: 'Bondor', total: 5200, delivery_date: dayOff(-10), status: 'billed', created_at: dayOff(-20), job_id: 'j7', xero_po_id: 'xero-po-3' },
-      { id: 'po5', po_number: 'PO-0015', reference: 'SWF-25006', supplier_name: 'CMI Steel', total: 1450, delivery_date: dayOff(-1), status: 'submitted', created_at: dayOff(-4), job_id: 'j6', xero_po_id: 'xero-po-4' },
-    ];
-
-    var wos = [
-      { id: 'wo1', wo_number: 'WO-0008', trade_name: 'Perth Electrical', job_id: 'j5', status: 'sent', scheduled_date: dayOff(2), sent_at: dayOff(-3) + 'T09:00:00' },
-      { id: 'wo2', wo_number: 'WO-0009', trade_name: 'Lighting Plus', job_id: 'j3', status: 'draft', scheduled_date: dayOff(5), sent_at: null },
-      { id: 'wo3', wo_number: 'WO-0010', trade_name: 'Deck Builders Co', job_id: 'j9', status: 'sent', scheduled_date: dayOff(1), sent_at: dayOff(-1) + 'T14:00:00' },
-    ];
-
-    var suppliers = [
-      { id: 's1', name: 'Bondor', email: 'orders@bondor.com.au', xero_contact_id: 'xero-s1' },
-      { id: 's2', name: 'CMI Steel', email: 'sales@cmi.com.au', xero_contact_id: 'xero-s2' },
-      { id: 's3', name: 'Metroll', email: 'orders@metroll.com.au', xero_contact_id: 'xero-s3' },
-      { id: 's4', name: 'JBS Patios', email: 'orders@jbspatios.com.au', xero_contact_id: 'xero-s4' },
-      { id: 's5', name: 'Stratco', email: 'trade@stratco.com.au', xero_contact_id: 'xero-s5' },
-    ];
-
-    function jobDetail(jobId) {
-      var allJobs = [];
-      Object.values(pipeline.columns).forEach(function(arr) { allJobs = allJobs.concat(arr); });
-      var j = allJobs.find(function(jj) { return jj.id === jobId; });
-      if (!j) j = allJobs[0];
-      return {
-        job: {
-          id: j.id, client_name: j.client_name, site_suburb: j.site_suburb, site_address: j.site_address,
-          type: j.type, status: j.status, value: j.value, job_number: j.job_number,
-          client_phone: '0412 345 678', client_email: j.client_name.split(' ')[0].toLowerCase() + '@example.com',
-          ghl_opportunity_id: 'ghl-opp-' + j.id,
-          pricing_json: { total: j.value, totalIncGST: j.value * 1.1, items: [
-            { description: j.type === 'fencing' ? 'Colorbond Fencing Supply & Install' : j.type === 'decking' ? 'Composite Decking Supply & Install' : 'SolarSpan Patio Supply & Install', quantity: 1, unit_price: j.value * 0.85 },
-            { description: 'Engineering & Council', quantity: 1, unit_price: j.value * 0.08 },
-            { description: 'Footings & Concrete', quantity: 1, unit_price: j.value * 0.07 },
-          ]},
-          scope_json: j.type === 'fencing'
-            ? { config: { totalLength: 35, material: 'Colorbond', height: 1800, colour: 'Monument', gateCount: 2 } }
-            : j.type === 'decking'
-            ? { config: { length: 6, width: 4, material: 'Composite', colour: 'Jarrah' } }
-            : { config: { length: 8, projection: 4, roofStyle: 'Flat', roofing: 'SolarSpan 75mm', sheetColor: 'Surfmist', steelColor: 'Woodland Grey', connection: 'Fascia beam' } },
-        },
-        assignments: calEvents.filter(function(ev) { return ev.job_id === jobId; }).map(function(ev, i) {
-          return { id: 'a' + i, scheduled_date: ev.scheduled_date, crew_name: ev.crew_name, status: ev.assignment_status, users: { name: ev.assigned_to } };
-        }),
-        purchase_orders: pos.filter(function(po) { return po.job_id === jobId; }),
-        work_orders: wos.filter(function(wo) { return wo.job_id === jobId; }),
-        media: [],
-        events: [
-          { event_type: 'status_change', users: { name: 'Shaun' }, created_at: dayOff(-2) + 'T10:30:00Z' },
-          { event_type: 'assignment_created', users: { name: 'Shaun' }, created_at: dayOff(-3) + 'T09:15:00Z' },
-        ],
-        xero_project: (j.status === 'invoiced' || j.status === 'complete') ? {
-          project_name: j.job_number, total_invoiced: j.value * 1.1, total_expenses: j.value * 0.55
-        } : null,
-      };
-    }
-
-    var todaySchedule = calEvents.filter(function(ev) { return ev.scheduled_date === today; }).map(function(ev) {
-      return { job_id: ev.job_id, client_name: ev.client_name, site_suburb: ev.site_suburb, crew_name: ev.crew_name, start_time: ev.start_time, job_type: ev.job_type, assignment_status: ev.assignment_status, assignment_type: ev.assignment_type };
-    });
-
-    var summary = {
-      stat_cards: {
-        jobs_this_week: 5, awaiting_materials: 2,
-        overdue_invoices: { count: 1, total: 14200 }, quotes_pending: 3,
-        pipeline: { accepted: 2, scheduled: 3, in_progress: 2, complete: 1, invoiced: 1 },
-      },
-      kpis: { jobs_completed_month: 4, jobs_target: 8 },
-      today_schedule: todaySchedule,
-      attention: [
-        { title: '1 overdue invoice — $14,200 (Greg & Donna Phelps, 16 days overdue)', severity: 'red' },
-        { title: '2 accepted jobs need scheduling', severity: 'amber', job_ids: ['j1', 'j2'] },
-        { title: '1 completed job not yet invoiced (Peter & Helen Walsh)', severity: 'amber', job_ids: ['j7'] },
-        { title: 'PO-0014 still in draft — Metroll fencing materials', severity: 'amber' },
-      ],
-      complete_not_invoiced: [{ id: 'j7', client_name: 'Peter & Helen Walsh', value: 15800 }],
-    };
-
-    var outstanding = invoices.reduce(function(s, i) { return s + i.amount_due; }, 0);
-    var overdue = invoices.filter(function(i) { return i.amount_due > 0 && i.due_date < today; }).reduce(function(s, i) { return s + i.amount_due; }, 0);
-
-    // Expose via global _demoData
-    _demoData = {
-      pipeline: pipeline,
-      calEvents: calEvents,
-      calDeliveries: calDeliveries,
-      invoices: invoices,
-      invoiceSummary: { outstanding: outstanding, overdue: overdue, total: invoices.length },
-      pos: pos,
-      wos: wos,
-      suppliers: suppliers,
-      summary: summary,
-      jobDetail: jobDetail,
-      scopeToPo: function(jobId) {
-        var d = jobDetail(jobId);
-        var j = d.job;
-        var items = j.type === 'fencing'
-          ? [{ description: 'Colorbond Sheets 1800mm Monument', quantity: 35, unit: 'm', unit_price: 28 }, { description: 'Steel Posts 65x65x2400mm', quantity: 18, unit: 'ea', unit_price: 22 }, { description: 'Gate Kit - Single Pedestrian', quantity: 2, unit: 'ea', unit_price: 185 }]
-          : j.type === 'decking'
-          ? [{ description: 'Composite Decking Boards 5.4m', quantity: 24, unit: 'ea', unit_price: 68 }, { description: 'Subframe Joists 90x45', quantity: 12, unit: 'ea', unit_price: 35 }]
-          : [{ description: 'SolarSpan 75mm Surfmist', quantity: 32, unit: 'm2', unit_price: 95 }, { description: 'Steel Beams 150x50x3mm', quantity: 4, unit: 'ea', unit_price: 280 }, { description: 'Posts 100x100 SHS', quantity: 4, unit: 'ea', unit_price: 145 }];
-        return { items: items };
-      }
-    };
-  })();
-}
+// Demo mode removed — all data comes from live API
 
 // ════════════════════════════════════════════════════════════
 // HELPERS
@@ -1840,27 +1694,6 @@ function fmtTime(t) {
 }
 
 function opsFetch(action, params) {
-  // Demo mode — return static data, no network calls
-  if (DEMO_MODE && _demoData) {
-    return new Promise(function(resolve) {
-      setTimeout(function() {
-        switch (action) {
-          case 'ops_summary': resolve(_demoData.summary); break;
-          case 'morning_brief': resolve(_demoData.summary); break;
-          case 'pipeline': resolve(_demoData.pipeline); break;
-          case 'calendar': resolve({ events: _demoData.calEvents, deliveries: _demoData.calDeliveries }); break;
-          case 'list_invoices': resolve({ invoices: _demoData.invoices, summary: _demoData.invoiceSummary }); break;
-          case 'list_pos': resolve({ purchase_orders: _demoData.pos }); break;
-          case 'list_work_orders': resolve({ work_orders: _demoData.wos }); break;
-          case 'list_suppliers': resolve({ suppliers: _demoData.suppliers }); break;
-          case 'job_detail': resolve(_demoData.jobDetail(params && params.jobId ? params.jobId : 'j5')); break;
-          case 'scope_to_po': resolve(_demoData.scopeToPo(params && params.jobId ? params.jobId : 'j5')); break;
-          default: resolve({});
-        }
-      }, 100);
-    });
-  }
-  // Live mode
   var url = _opsApiBase + '?action=' + action;
   if (params) {
     Object.keys(params).forEach(function(k) {
@@ -1874,20 +1707,6 @@ function opsFetch(action, params) {
 }
 
 function opsPost(action, body) {
-  // Demo mode — log and return success
-  if (DEMO_MODE) {
-    console.log('[DEMO] opsPost:', action, body);
-    return new Promise(function(resolve) {
-      setTimeout(function() {
-        switch (action) {
-          case 'create_po': resolve({ success: true, purchase_order: { id: 'demo-po-' + Date.now(), po_number: 'PO-DEMO' } }); break;
-          case 'complete_and_invoice': resolve({ success: true, invoice: { id: 'demo-inv-' + Date.now(), invoice_number: 'INV-DEMO' } }); break;
-          default: resolve({ success: true });
-        }
-      }, 150);
-    });
-  }
-  // Live mode
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2124,6 +1943,9 @@ function renderAttention(items) {
     } else if (type === 'unsent_wo') {
       actionFn = 'onclick="showView(\'financials\'); showSubTab(\'workorders\')"';
       actionIcon = '&#128221;';
+    } else if (type === 'no_trade_rate') {
+      actionFn = 'onclick="showView(\'financials\'); showSubTab(\'tradebills\')"';
+      actionIcon = '&#128176;';
     } else if (item.job_ids && item.job_ids.length) {
       actionFn = 'onclick="openJobDetail(\'' + item.job_ids[0] + '\')"';
     }
@@ -2696,6 +2518,7 @@ function showSubTab(tab) {
   if (tab === 'pos') loadPOs();
   if (tab === 'workorders') loadWOs();
   if (tab === 'quotes') loadQuotes();
+  if (tab === 'tradebills') loadTradeBills();
 }
 
 async function loadFinancials() {
@@ -2863,30 +2686,25 @@ function renderWOTable(wos) {
 }
 
 async function loadQuotes() {
-  // Quotes come from job_documents — fetch via Supabase client
-  if (!cloud || !cloud.supabase) return;
+  // Fetch quotes via ops-api (direct Supabase blocked by RLS)
+  var tbody = document.getElementById('quoteTableBody');
   try {
-    var { data } = await cloud.supabase
-      .from('job_documents')
-      .select('id, job_id, type, version, sent_to_client, sent_at, viewed_at, accepted_at, declined_at, created_at, jobs:job_id(client_name)')
-      .eq('type', 'quote')
-      .order('created_at', { ascending: false })
-      .limit(50);
+    var data = await opsFetch('list_quotes');
+    var quotes = data.quotes || [];
 
-    var tbody = document.getElementById('quoteTableBody');
-    if (!data || data.length === 0) {
+    if (quotes.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No quotes found</td></tr>';
       return;
     }
 
     var html = '';
-    data.forEach(function(q) {
+    quotes.forEach(function(q) {
       var status = q.accepted_at ? 'Accepted' : q.declined_at ? 'Declined' : q.sent_to_client ? 'Sent' : 'Draft';
       var statusClass = q.accepted_at ? 'accepted' : q.declined_at ? 'overdue' : q.sent_to_client ? 'sent' : 'draft';
       html += '<tr>';
       html += '<td>' + fmtDate(q.created_at ? q.created_at.slice(0, 10) : '') + '</td>';
       html += '<td>' + (q.job_id ? '<a href="#" onclick="openJobDetail(\'' + q.job_id + '\');return false;">View</a>' : '-') + '</td>';
-      html += '<td>' + (q.jobs?.client_name || '-') + '</td>';
+      html += '<td>' + (q.client_name || '-') + '</td>';
       html += '<td><span class="status-badge ' + statusClass + '">' + status + '</span></td>';
       html += '<td>' + (q.sent_at ? fmtDate(q.sent_at.slice(0, 10)) : '-') + '</td>';
       html += '<td>' + (q.viewed_at ? fmtDate(q.viewed_at.slice(0, 10)) : '-') + '</td>';
@@ -2895,7 +2713,87 @@ async function loadQuotes() {
     tbody.innerHTML = html;
   } catch (e) {
     console.error('loadQuotes error:', e);
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load quotes</td></tr>';
   }
+}
+
+// ════════════════════════════════════════════════════════════
+// MATERIALS TAB
+// ════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════
+// TRADE BILLS
+// ════════════════════════════════════════════════════════════
+
+async function loadTradeBills() {
+  try {
+    var data = await opsFetch('list_trade_invoices');
+    renderTradeBillTable(data.invoices || []);
+    renderTradeRatesPanel(data.rates || []);
+  } catch (e) {
+    console.error('loadTradeBills error:', e);
+  }
+}
+
+function renderTradeBillTable(invoices) {
+  var tbody = document.getElementById('tradeBillTableBody');
+  if (!invoices.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--sw-text-sec)">No trade bills submitted yet</td></tr>';
+    return;
+  }
+  var html = '';
+  invoices.forEach(function(inv) {
+    var tradeName = inv.users?.name || '—';
+    var we = inv.week_ending || '';
+    // Calculate hours from line_items total
+    var hours = 0;
+    if (inv.line_items && Array.isArray(inv.line_items)) {
+      inv.line_items.forEach(function(li) { hours += (li.hours || 0); });
+    }
+    var statusClass = inv.status === 'pushed' ? 'color:var(--sw-green)' : 'color:var(--sw-red)';
+    var billLink = inv.xero_bill_number || '—';
+    if (inv.xero_invoice_id) {
+      billLink = '<a href="https://go.xero.com/AccountsPayable/View.aspx?InvoiceID=' + inv.xero_invoice_id + '" target="_blank" style="color:var(--sw-blue);text-decoration:none">' + (inv.xero_bill_number || 'View') + ' &#8599;</a>';
+    }
+    html += '<tr>';
+    html += '<td>' + tradeName + '</td>';
+    html += '<td>' + we + '</td>';
+    html += '<td>' + hours.toFixed(1) + '</td>';
+    html += '<td>$' + Number(inv.total).toFixed(2) + '</td>';
+    html += '<td>' + billLink + '</td>';
+    html += '<td style="' + statusClass + ';font-weight:600;text-transform:capitalize">' + (inv.status || '') + '</td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function renderTradeRatesPanel(rates) {
+  var panel = document.getElementById('tradeRatesPanel');
+  if (!rates.length) {
+    panel.innerHTML = '';
+    return;
+  }
+  var html = '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  rates.forEach(function(r) {
+    var name = r.users?.name || 'Unknown';
+    html += '<div style="background:var(--sw-card);padding:8px 12px;border-radius:8px;box-shadow:var(--sw-shadow);font-size:13px;cursor:pointer" onclick="openRateModal(\'' + r.user_id + '\',\'' + name.replace(/'/g, "\\'") + '\',' + r.hourly_rate + ')">';
+    html += '<span style="font-weight:600">' + name + '</span>';
+    html += ' <span style="color:var(--sw-green);font-weight:700">$' + Number(r.hourly_rate).toFixed(2) + '/hr</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function openRateModal(userId, name, currentRate) {
+  var newRate = prompt('Set hourly rate for ' + name + ':\n\nCurrent: $' + Number(currentRate).toFixed(2) + '/hr', currentRate);
+  if (!newRate || isNaN(parseFloat(newRate)) || parseFloat(newRate) <= 0) return;
+  opsPost('set_trade_rate_ops', { user_id: userId, hourly_rate: parseFloat(newRate) }).then(function() {
+    alert('Rate updated for ' + name + ' to $' + parseFloat(newRate).toFixed(2) + '/hr');
+    loadTradeBills();
+  }).catch(function(e) {
+    alert('Error: ' + e.message);
+  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -4472,18 +4370,6 @@ var _briefCacheTTL = 30 * 60 * 1000; // 30 minutes
 async function loadMorningBrief() {
   var briefEl = document.getElementById('morningBrief');
   var contentEl = document.getElementById('briefContent');
-
-  // Demo mode — skip AI call, render static brief
-  if (DEMO_MODE) {
-    briefEl.style.display = '';
-    try {
-      var briefData = await opsFetch('ops_summary');
-      renderStaticBrief(briefData, contentEl);
-    } catch(e) {
-      contentEl.innerHTML = '<div class="brief-loading">Demo mode — brief loaded</div>';
-    }
-    return;
-  }
 
   // Check cache
   try {
