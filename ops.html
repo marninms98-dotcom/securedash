@@ -1079,6 +1079,65 @@
     .jd-sub-view { display: none; padding: 16px 20px; }
     .jd-sub-view.active { display: block; }
 
+    /* ── Comms View ── */
+    .comms-header {
+      display: flex; align-items: center; gap: 8px; padding-bottom: 10px;
+      border-bottom: 1px solid var(--sw-border); margin-bottom: 12px;
+    }
+    .comms-header .phone-num { font-size: 13px; font-weight: 600; color: var(--sw-dark); }
+    .comms-header .comms-call-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 4px;
+      background: var(--sw-green); color: #fff; border: none; cursor: pointer; text-decoration: none;
+    }
+    .comms-thread {
+      max-height: calc(100vh - 420px); overflow-y: auto; padding: 8px 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .comms-msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.4; }
+    .comms-msg.inbound {
+      align-self: flex-start; background: var(--sw-light); color: var(--sw-text);
+      border-bottom-left-radius: 2px;
+    }
+    .comms-msg.outbound {
+      align-self: flex-end; background: rgba(241,90,41,0.12); color: #9a3416;
+      border-bottom-right-radius: 2px;
+    }
+    .comms-msg.call-log {
+      align-self: center; background: none; color: var(--sw-text-sec);
+      font-style: italic; font-size: 11px; text-align: center; max-width: 100%;
+    }
+    .comms-msg.email { border-left: 3px solid var(--sw-mid); }
+    .comms-msg-meta { font-size: 10px; color: var(--sw-text-sec); margin-top: 3px; }
+    .comms-msg-subject { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+    .comms-load-more {
+      text-align: center; padding: 8px; font-size: 11px; color: var(--sw-mid);
+      cursor: pointer; font-weight: 600;
+    }
+    .comms-load-more:hover { color: var(--sw-orange); }
+    .comms-compose {
+      border-top: 1px solid var(--sw-border); padding-top: 12px; margin-top: 12px;
+    }
+    .comms-mode-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+    .comms-mode-tab {
+      padding: 4px 12px; font-size: 11px; font-weight: 600; border-radius: 4px;
+      cursor: pointer; border: 1px solid var(--sw-border); background: var(--sw-card);
+    }
+    .comms-mode-tab.active { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
+    .comms-templates { margin-bottom: 8px; }
+    .comms-template-btn {
+      font-size: 10px; padding: 3px 8px; border: 1px solid var(--sw-border);
+      border-radius: 12px; background: var(--sw-card); cursor: pointer; margin: 2px;
+      color: var(--sw-text-sec);
+    }
+    .comms-template-btn:hover { border-color: var(--sw-orange); color: var(--sw-orange); }
+    .comms-char-count { font-size: 10px; color: var(--sw-text-sec); text-align: right; margin-top: 2px; }
+    .comms-send-row { display: flex; gap: 8px; margin-top: 8px; align-items: flex-end; }
+    .comms-send-btn {
+      padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 4px;
+      background: var(--sw-orange); color: #fff; border: none; cursor: pointer;
+    }
+    .comms-empty { text-align: center; padding: 32px 16px; color: var(--sw-text-sec); font-size: 13px; }
+
     /* Timeline view */
     .jd-timeline { border-left: 2px solid var(--sw-border); margin-left: 8px; padding-left: 16px; }
     .jd-tl-item {
@@ -1886,11 +1945,13 @@
         <button class="jd-tab" data-jd-tab="money" onclick="showJobSubView('money')">Money</button>
         <button class="jd-tab" data-jd-tab="build" onclick="showJobSubView('build')">Build</button>
         <button class="jd-tab" data-jd-tab="files" onclick="showJobSubView('files')">Files</button>
+        <button class="jd-tab" data-jd-tab="comms" onclick="showJobSubView('comms')">&#128172; Comms</button>
       </div>
       <div class="jd-sub-view active" id="jdTimeline"></div>
       <div class="jd-sub-view" id="jdMoney"></div>
       <div class="jd-sub-view" id="jdBuild"></div>
       <div class="jd-sub-view" id="jdFiles"></div>
+      <div class="jd-sub-view" id="jdComms"></div>
     </div>
     <!-- Zone 3: Action Drawer -->
     <div class="jd-drawer" id="jdDrawer"></div>
@@ -5190,8 +5251,8 @@ async function refreshJobDetail() {
 }
 
 function showJobSubView(tab) {
-  var tabs = ['timeline', 'money', 'build', 'files'];
-  var ids = ['jdTimeline', 'jdMoney', 'jdBuild', 'jdFiles'];
+  var tabs = ['timeline', 'money', 'build', 'files', 'comms'];
+  var ids = ['jdTimeline', 'jdMoney', 'jdBuild', 'jdFiles', 'jdComms'];
   tabs.forEach(function(t, i) {
     var el = document.getElementById(ids[i]);
     var btn = document.querySelector('[data-jd-tab="' + t + '"]');
@@ -5210,6 +5271,7 @@ function showJobSubView(tab) {
   if (tab === 'money') renderMoneyView(_currentJobData);
   if (tab === 'build') renderBuildView(_currentJobData);
   if (tab === 'files') renderFilesView(_currentJobData);
+  if (tab === 'comms') renderCommsView(_currentJobData);
 }
 
 // ── Health Bar (Zone 1) ──
@@ -5230,8 +5292,8 @@ function renderHealthBar(data) {
   // Quick action buttons
   html += '<div class="jd-quick-actions">';
   if (j.client_phone) {
-    html += '<a href="tel:' + j.client_phone + '" class="jd-quick-btn" title="Call">&#9742; Call</a>';
-    html += '<a href="sms:' + j.client_phone + '" class="jd-quick-btn" title="SMS">&#128172; SMS</a>';
+    html += '<a href="tel:' + j.client_phone + '" class="jd-quick-btn" title="Call" onclick="scheduleCallLog()">&#9742; Call</a>';
+    html += '<button class="jd-quick-btn" onclick="showJobSubView(\'comms\')" title="Open Comms">&#128172; Comms</button>';
   }
   if (j.ghl_opportunity_id) {
     html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" class="jd-quick-btn">GHL &#8599;</a>';
@@ -5918,7 +5980,7 @@ function renderActionDrawer(data) {
   html += '<button class="jd-drawer-btn" onclick="openActionSheet(\'Assign\')"><span class="icon">&#128197;</span> +Assign</button>';
   html += '<button class="jd-drawer-btn" onclick="openActionSheet(\'Note\')"><span class="icon">&#128221;</span> +Note</button>';
   if (j.client_phone) {
-    html += '<button class="jd-drawer-btn" onclick="openActionSheet(\'SMS\')"><span class="icon">&#128172;</span> SMS</button>';
+    html += '<button class="jd-drawer-btn" onclick="showJobSubView(\'comms\')"><span class="icon">&#128172;</span> SMS</button>';
   }
   // Status change buttons
   var nextStatuses = getNextStatuses(j.status);
@@ -8030,6 +8092,314 @@ async function markPOPaid(poId) {
 // TODO: Use Supabase Storage bucket 'po_attachments' with path: po_attachments/[po_id]/[filename]
 // TODO: On PO edit modal, add 'Attachments' section with file picker + type dropdown
 // TODO: When 'Mark Invoice Received' is clicked, prompt to attach the invoice document
+
+// ════════════════════════════════════════════════════════════
+// CLIENT COMMS (Conversation Thread + Compose)
+// ════════════════════════════════════════════════════════════
+
+var _commsMode = 'sms'; // 'sms' | 'email'
+var _commsGHLBase = window.SUPABASE_URL + '/functions/v1/ghl-proxy';
+
+var COMMS_TEMPLATES = {
+  scheduled:   'Hi {firstName}, your {jobType} project at {address} is scheduled for {date}. Our team will arrive between 7–8am. Please ensure clear access to the work area. Thanks, SecureWorks WA',
+  materials:   'Hi {firstName}, materials are arriving for your {jobType} project at {address}. Build is on track. Thanks, SecureWorks WA',
+  complete:    'Hi {firstName}, great news — your {jobType} project at {address} is complete! Your completion report is attached. Thanks for choosing SecureWorks WA.',
+  payment:     'Hi {firstName}, just a friendly reminder that invoice {invoiceNumber} is now overdue. Please let us know if you have any questions. Thanks, SecureWorks WA',
+  follow_up:   'Hi {firstName}, just checking in on the quote we sent for your {jobType} project. Happy to answer any questions. Thanks, SecureWorks WA',
+};
+
+function renderCommsView(data) {
+  var j = data.job;
+  var container = document.getElementById('jdComms');
+
+  // No GHL contact linked
+  if (!j.ghl_contact_id) {
+    container.innerHTML = '<div class="comms-empty">No GHL contact linked to this job.<br><span style="font-size:11px;">Link a contact via the scope tool or GHL.</span></div>';
+    return;
+  }
+
+  // Build the view shell with loading state
+  var html = '';
+
+  // Header: phone + call button
+  html += '<div class="comms-header">';
+  if (j.client_phone) {
+    html += '<span class="phone-num">' + j.client_phone + '</span>';
+    html += '<a href="tel:' + j.client_phone + '" class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</a>';
+  }
+  html += '<span style="flex:1;"></span>';
+  if (j.ghl_contact_id) {
+    html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/' + j.ghl_contact_id + '" target="_blank" style="font-size:11px;color:var(--sw-text-sec);">View in GHL &#8599;</a>';
+  }
+  html += '</div>';
+
+  // Thread (placeholder — loaded async)
+  html += '<div id="commsThread" class="comms-thread"><div class="loading" style="text-align:center;padding:20px;">Loading conversation...</div></div>';
+
+  // Compose area
+  html += '<div class="comms-compose">';
+  html += '<div class="comms-mode-tabs">';
+  html += '<button class="comms-mode-tab active" onclick="setCommsMode(\'sms\')">SMS</button>';
+  html += '<button class="comms-mode-tab" onclick="setCommsMode(\'email\')">Email</button>';
+  html += '</div>';
+
+  // Templates
+  html += '<div class="comms-templates">';
+  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'scheduled\')">Scheduled</button>';
+  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'materials\')">Materials</button>';
+  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'complete\')">Complete</button>';
+  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'payment\')">Payment</button>';
+  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'follow_up\')">Follow Up</button>';
+  html += '</div>';
+
+  // SMS compose
+  html += '<div id="commsCompSMS">';
+  html += '<textarea id="commsSMSText" class="form-textarea" style="width:100%;min-height:60px;resize:vertical;" placeholder="Type your SMS message..." oninput="updateCommsCharCount()"></textarea>';
+  html += '<div class="comms-char-count"><span id="commsCharCount">0</span>/160</div>';
+  html += '</div>';
+
+  // Email compose (hidden by default)
+  html += '<div id="commsCompEmail" style="display:none;">';
+  html += '<input type="text" class="form-input" id="commsEmailSubject" placeholder="Subject" style="margin-bottom:6px;">';
+  html += '<textarea id="commsEmailBody" class="form-textarea" style="width:100%;min-height:80px;resize:vertical;" placeholder="Email body..."></textarea>';
+  html += '</div>';
+
+  html += '<div class="comms-send-row">';
+  html += '<button class="comms-send-btn" onclick="sendCommsMessage()">Send</button>';
+  html += '</div>';
+  html += '</div>';
+
+  container.innerHTML = html;
+
+  // Load conversation async
+  loadConversation(j.ghl_contact_id);
+}
+
+async function loadConversation(contactId) {
+  var cacheKey = 'sw_convo_' + contactId;
+  var cached = sessionStorage.getItem(cacheKey);
+
+  if (cached) {
+    try {
+      var cachedData = JSON.parse(cached);
+      renderMessageThread(cachedData.messages, cachedData.conversationId);
+      return;
+    } catch (e) {}
+  }
+
+  try {
+    var resp = await fetch(_commsGHLBase + '?action=get_conversation&contactId=' + contactId);
+    var data = await resp.json();
+
+    if (data.error) throw new Error(data.error);
+
+    // Cache for session
+    sessionStorage.setItem(cacheKey, JSON.stringify(data));
+    renderMessageThread(data.messages || [], data.conversationId);
+  } catch (e) {
+    var thread = document.getElementById('commsThread');
+    if (thread) {
+      var j = _currentJobData?.job;
+      var ghlLink = j?.ghl_contact_id ? 'https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/' + j.ghl_contact_id : '#';
+      thread.innerHTML = '<div class="comms-empty">Conversation failed to load.<br><a href="' + ghlLink + '" target="_blank" style="color:var(--sw-orange);">View in GHL &#8599;</a></div>';
+    }
+  }
+}
+
+function renderMessageThread(messages, conversationId) {
+  var thread = document.getElementById('commsThread');
+  if (!thread) return;
+
+  if (!messages || messages.length === 0) {
+    thread.innerHTML = '<div class="comms-empty">No messages yet. Send the first one below.</div>';
+    return;
+  }
+
+  // Sort chronologically (oldest first)
+  messages.sort(function(a, b) { return (a.timestamp || '') < (b.timestamp || '') ? -1 : 1; });
+
+  var html = '';
+  messages.forEach(function(msg) {
+    var ts = msg.timestamp ? new Date(msg.timestamp) : null;
+    var timeStr = ts ? ts.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + ' ' + ts.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '';
+    var type = (msg.type || 'SMS').toUpperCase();
+
+    // Call logs
+    if (type === 'CALL' || type === 'VOICEMAIL') {
+      var durMin = msg.duration ? Math.round(msg.duration / 60) : 0;
+      html += '<div class="comms-msg call-log">&#9742; Phone call' + (durMin > 0 ? ' — ' + durMin + ' min' : '') + ' — ' + timeStr + '</div>';
+      return;
+    }
+
+    var dir = msg.direction === 'outbound' ? 'outbound' : 'inbound';
+    var isEmail = type === 'EMAIL';
+
+    html += '<div class="comms-msg ' + dir + (isEmail ? ' email' : '') + '">';
+    if (isEmail && msg.subject) {
+      html += '<div class="comms-msg-subject">&#9993; ' + escapeHtml(msg.subject || '') + '</div>';
+    }
+    html += '<div>' + escapeHtml(msg.body || '') + '</div>';
+    html += '<div class="comms-msg-meta">' + timeStr;
+    if (dir === 'outbound' && msg.sender_name) html += ' &middot; ' + escapeHtml(msg.sender_name);
+    if (isEmail) html += ' &middot; Email';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  thread.innerHTML = html;
+  // Auto-scroll to bottom
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function setCommsMode(mode) {
+  _commsMode = mode;
+  document.querySelectorAll('.comms-mode-tab').forEach(function(b) {
+    b.classList.toggle('active', b.textContent.toLowerCase() === mode);
+  });
+  document.getElementById('commsCompSMS').style.display = mode === 'sms' ? 'block' : 'none';
+  document.getElementById('commsCompEmail').style.display = mode === 'email' ? 'block' : 'none';
+}
+
+function updateCommsCharCount() {
+  var text = document.getElementById('commsSMSText').value;
+  var count = document.getElementById('commsCharCount');
+  count.textContent = text.length;
+  count.style.color = text.length > 160 ? 'var(--sw-red)' : 'var(--sw-text-sec)';
+}
+
+function applyCommsTemplate(key) {
+  var tmpl = COMMS_TEMPLATES[key];
+  if (!tmpl) return;
+  var j = _currentJobData?.job;
+  if (!j) return;
+
+  var firstName = (j.client_name || '').split(' ')[0] || 'there';
+  var text = tmpl
+    .replace(/\{firstName\}/g, firstName)
+    .replace(/\{jobNumber\}/g, j.job_number || '')
+    .replace(/\{address\}/g, j.site_address || j.site_suburb || '')
+    .replace(/\{jobType\}/g, j.type || 'patio')
+    .replace(/\{date\}/g, j.scheduled_at ? fmtDate(j.scheduled_at) : '[date]')
+    .replace(/\{invoiceNumber\}/g, '[invoice #]');
+
+  if (_commsMode === 'sms') {
+    document.getElementById('commsSMSText').value = text;
+    updateCommsCharCount();
+  } else {
+    document.getElementById('commsEmailBody').value = text;
+    document.getElementById('commsEmailSubject').value = key === 'payment' ? 'Payment Reminder' : key === 'complete' ? 'Project Complete' : 'Update from SecureWorks WA';
+  }
+}
+
+async function sendCommsMessage() {
+  var j = _currentJobData?.job;
+  if (!j || !j.ghl_contact_id) { showToast('No GHL contact linked', 'warning'); return; }
+
+  if (_commsMode === 'sms') {
+    var text = document.getElementById('commsSMSText').value.trim();
+    if (!text) { showToast('Message is empty', 'warning'); return; }
+
+    // Optimistic UI: show message immediately
+    addOptimisticMessage(text, 'SMS');
+    document.getElementById('commsSMSText').value = '';
+    updateCommsCharCount();
+
+    try {
+      await fetch(_commsGHLBase + '?action=send_sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: j.ghl_contact_id,
+          message: text,
+          jobId: j.id,
+        }),
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.success) throw new Error(data.error || 'Send failed');
+      });
+      // Clear cache so next load gets fresh data
+      sessionStorage.removeItem('sw_convo_' + j.ghl_contact_id);
+    } catch (e) {
+      showToast('SMS failed: ' + e.message + ' — retry?', 'warning');
+    }
+  } else {
+    var subject = document.getElementById('commsEmailSubject').value.trim();
+    var body = document.getElementById('commsEmailBody').value.trim();
+    if (!subject || !body) { showToast('Subject and body required', 'warning'); return; }
+
+    addOptimisticMessage(body, 'EMAIL', subject);
+    document.getElementById('commsEmailSubject').value = '';
+    document.getElementById('commsEmailBody').value = '';
+
+    try {
+      await fetch(_commsGHLBase + '?action=send_email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: j.ghl_contact_id,
+          subject: subject,
+          htmlBody: '<p>' + body.replace(/\n/g, '<br>') + '</p>',
+        }),
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.success) throw new Error(data.error || 'Send failed');
+      });
+      sessionStorage.removeItem('sw_convo_' + j.ghl_contact_id);
+    } catch (e) {
+      showToast('Email failed: ' + e.message, 'warning');
+    }
+  }
+}
+
+function addOptimisticMessage(body, type, subject) {
+  var thread = document.getElementById('commsThread');
+  if (!thread) return;
+  var now = new Date();
+  var timeStr = now.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + ' ' + now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+  var isEmail = type === 'EMAIL';
+  var div = document.createElement('div');
+  div.className = 'comms-msg outbound' + (isEmail ? ' email' : '');
+  div.style.opacity = '0.7';
+  var html = '';
+  if (isEmail && subject) html += '<div class="comms-msg-subject">&#9993; ' + escapeHtml(subject) + '</div>';
+  html += '<div>' + escapeHtml(body) + '</div>';
+  html += '<div class="comms-msg-meta">' + timeStr + ' &middot; Sending...</div>';
+  div.innerHTML = html;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+  // Confirm after 2s
+  setTimeout(function() { div.style.opacity = '1'; var meta = div.querySelector('.comms-msg-meta'); if (meta) meta.textContent = timeStr + ' &middot; Sent'; }, 2000);
+}
+
+// ── Call Logging ──
+function scheduleCallLog() {
+  // Listen for visibility change (user returns from phone app)
+  document.addEventListener('visibilitychange', _onCallReturn, { once: true });
+}
+
+function _onCallReturn() {
+  if (document.visibilityState !== 'visible') {
+    document.addEventListener('visibilitychange', _onCallReturn, { once: true });
+    return;
+  }
+  // Small delay to let the UI settle
+  setTimeout(function() {
+    if (!_currentJobData) return;
+    var note = prompt('Log call notes? (leave blank to skip)');
+    if (note !== null && note.trim()) {
+      opsPost('add_note', {
+        job_id: _currentJobData.job.id,
+        note: 'Phone call: ' + note.trim(),
+        event_type: 'call_logged',
+      }).then(function() {
+        showToast('Call logged', 'success');
+        // Clear convo cache
+        var cid = _currentJobData?.job?.ghl_contact_id;
+        if (cid) sessionStorage.removeItem('sw_convo_' + cid);
+      }).catch(function() {});
+    }
+  }, 500);
+}
+
+// TODO: Future: GHL virtual number routing via initiate_call action
 
 // ════════════════════════════════════════════════════════════
 // PO EMAIL LOG
