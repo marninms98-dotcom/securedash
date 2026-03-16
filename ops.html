@@ -342,207 +342,264 @@
 
     /* ── Calendar ── */
     .cal-controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
     }
     .cal-controls button {
-      padding: 6px 12px;
-      border: 1px solid var(--sw-border);
-      background: var(--sw-card);
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      color: var(--sw-text);
+      padding: 6px 12px; border: 1px solid var(--sw-border); background: var(--sw-card);
+      border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--sw-text);
     }
     .cal-controls button:hover { background: var(--sw-light); }
     .cal-controls button.active { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
-    .cal-title { font-size: 16px; font-weight: 700; flex: 1; }
-    .cal-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 1px;
-      background: var(--sw-border);
-      border-radius: var(--sw-radius);
-      overflow: hidden;
+    .cal-title { font-size: 16px; font-weight: 700; }
+
+    /* Division filter pills */
+    .cal-division-filters { display: flex; gap: 4px; }
+    .cal-div-pill {
+      padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--sw-border); background: var(--sw-card);
+      text-transform: uppercase; letter-spacing: 0.3px;
     }
-    .cal-header-cell {
-      background: var(--sw-dark);
-      color: #fff;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 8px;
-      text-align: center;
+    .cal-div-pill.active { background: var(--sw-dark); color: #fff; border-color: var(--sw-dark); }
+    .cal-div-pill.patio-pill.active { background: var(--sw-orange); border-color: var(--sw-orange); }
+    .cal-div-pill.fencing-pill.active { background: var(--sw-mid); border-color: var(--sw-mid); }
+
+    /* Week summary bar */
+    .cal-summary-bar {
+      display: flex; gap: 16px; align-items: center; padding: 8px 14px;
+      background: var(--sw-light); border-radius: 6px; margin-bottom: 12px;
+      font-size: 12px; color: var(--sw-text-sec); flex-wrap: wrap;
     }
-    .cal-cell {
-      background: var(--sw-card);
-      min-height: 100px;
-      padding: 6px;
+    .cal-summary-bar .stat { font-weight: 600; }
+    .cal-summary-bar .stat-val { color: var(--sw-dark); font-family: var(--sw-font-num); }
+    .cal-summary-bar .conflict-warn { color: var(--sw-red); cursor: pointer; font-weight: 700; }
+
+    /* Swimlane layout */
+    .cal-swimlane-wrap {
+      display: grid; grid-template-columns: 1fr; gap: 0;
       position: relative;
     }
-    .cal-cell.today { background: rgba(241,90,41,0.04); }
-    .cal-cell.other-month { background: var(--sw-bg); }
-    .cal-date {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--sw-text-sec);
-      margin-bottom: 4px;
+    .cal-swimlane-wrap.with-sidebar { grid-template-columns: 1fr 280px; gap: 16px; }
+    .cal-swimlane-grid {
+      display: grid; gap: 1px; background: var(--sw-border);
+      border-radius: var(--sw-radius); overflow: hidden;
     }
-    .cal-cell.today .cal-date {
-      color: var(--sw-orange);
-      font-weight: 700;
-    }
-    .cal-event {
-      font-size: 10px;
-      padding: 3px 6px;
-      border-radius: 4px;
-      margin-bottom: 2px;
-      cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-weight: 500;
-    }
-    .cal-event.fencing { background: rgba(76,106,124,0.15); color: var(--sw-dark); }
-    .cal-event.patio { background: rgba(241,90,41,0.15); color: #9a3416; }
-    .cal-event.decking { background: rgba(230,126,34,0.15); color: #b45309; }
-    .cal-event.delivery { background: rgba(142,68,173,0.12); color: var(--sw-purple); border-left: 2px solid var(--sw-purple); }
-    .cal-more { font-size: 10px; color: var(--sw-text-sec); cursor: pointer; font-weight: 600; }
-
-    /* Week view */
-    .cal-week-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 12px;
-    }
-    .cal-week-col {
-      background: var(--sw-card);
-      border-radius: var(--sw-radius);
-      box-shadow: var(--sw-shadow);
-      min-height: 200px;
-    }
-    .cal-week-header {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--sw-border);
-      font-size: 12px;
-      font-weight: 600;
-      text-align: center;
-    }
-    .cal-week-header.today { color: var(--sw-orange); border-bottom-color: var(--sw-orange); }
-    .cal-week-header .day-name { text-transform: uppercase; font-size: 10px; color: var(--sw-text-sec); letter-spacing: 0.5px; }
-    .cal-week-header .day-num { font-size: 18px; font-family: var(--sw-font-num); margin-top: 2px; }
-    .cal-week-body { padding: 8px; }
-    .cal-week-event {
-      padding: 8px 10px;
-      border-radius: 8px;
-      margin-bottom: 6px;
-      cursor: pointer;
-      border-left: 3px solid;
-    }
-    .cal-week-event.fencing { background: rgba(76,106,124,0.08); border-left-color: var(--sw-mid); }
-    .cal-week-event.patio { background: rgba(241,90,41,0.08); border-left-color: var(--sw-orange); }
-    .cal-week-event.decking { background: rgba(230,126,34,0.08); border-left-color: var(--sw-yellow); }
-    .cal-week-event.delivery { background: rgba(142,68,173,0.06); border-left-color: var(--sw-purple); }
-    .cal-week-event-time { font-size: 10px; color: var(--sw-text-sec); font-weight: 600; }
-    .cal-week-event-title { font-size: 12px; font-weight: 600; margin-top: 2px; }
-    .cal-week-event-sub { font-size: 10px; color: var(--sw-text-sec); margin-top: 1px; }
-
-    /* ── Crew Calendar (Trade Calendar) ── */
-    .crew-cal-wrap {
-      display: grid; grid-template-columns: 1fr 240px; gap: 16px;
-    }
-    .crew-cal-grid {
-      display: grid;
-      gap: 1px;
-      background: var(--sw-border);
-      border-radius: var(--sw-radius);
-      overflow: hidden;
-    }
-    .crew-cal-corner {
+    .cal-swimlane-corner {
       background: var(--sw-dark); color: #fff; padding: 10px; font-size: 11px;
       font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
       display: flex; align-items: center; justify-content: center;
     }
-    .crew-cal-day-header {
-      background: var(--sw-dark); color: #fff; padding: 8px 4px;
+    .cal-swimlane-day-header {
+      background: var(--sw-dark); color: #fff; padding: 6px 4px;
       text-align: center; font-size: 11px; font-weight: 600;
     }
-    .crew-cal-day-header.today { color: var(--sw-orange); }
-    .crew-cal-day-header .day-name { text-transform: uppercase; font-size: 9px; color: rgba(255,255,255,0.6); letter-spacing: 0.5px; }
-    .crew-cal-day-header .day-num { font-size: 14px; font-family: var(--sw-font-num); margin-top: 1px; }
-    .crew-cal-row-label {
+    .cal-swimlane-day-header.today { color: var(--sw-orange); }
+    .cal-swimlane-day-header .day-name { text-transform: uppercase; font-size: 9px; color: rgba(255,255,255,0.6); letter-spacing: 0.5px; }
+    .cal-swimlane-day-header .day-num { font-size: 14px; font-family: var(--sw-font-num); margin-top: 1px; }
+
+    /* Division divider */
+    .cal-division-label {
+      grid-column: 1 / -1; background: var(--sw-bg); padding: 4px 12px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--sw-text-sec); border-bottom: 1px solid var(--sw-border);
+    }
+
+    /* Crew row label */
+    .cal-crew-label {
       background: var(--sw-card); padding: 8px 10px; font-size: 12px; font-weight: 600;
       display: flex; align-items: center; gap: 6px; border-right: 1px solid var(--sw-border);
-      min-height: 56px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      min-height: 64px; white-space: nowrap; overflow: hidden;
+      transition: opacity 0.3s;
     }
-    .crew-cal-row-label .crew-initial {
+    .cal-crew-label.dimmed { opacity: 0.3; }
+    .cal-crew-label .crew-initial {
       width: 24px; height: 24px; border-radius: 50%; background: var(--sw-mid); color: #fff;
       display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
       flex-shrink: 0;
     }
-    .crew-cal-cell {
-      background: var(--sw-card); padding: 3px; min-height: 56px; position: relative;
+    .cal-crew-label .division-badge {
+      font-size: 8px; padding: 1px 5px; border-radius: 6px; font-weight: 700; text-transform: uppercase;
     }
-    .crew-cal-cell.weekend { background: var(--sw-bg); }
-    .crew-cal-cell.today-col { background: rgba(241,90,41,0.03); }
-    .crew-cal-cell:hover { background: rgba(241,90,41,0.04); }
-    .crew-cal-event {
-      font-size: 10px; padding: 3px 5px; border-radius: 4px; margin-bottom: 2px;
+    .division-badge.patio { background: rgba(241,90,41,0.12); color: var(--sw-orange); }
+    .division-badge.fencing { background: rgba(76,106,124,0.12); color: var(--sw-mid); }
+
+    /* Calendar cells — Layer 1: Availability backgrounds */
+    .cal-swim-cell {
+      background: var(--sw-card); padding: 3px; min-height: 64px; position: relative;
+      transition: opacity 0.3s;
+    }
+    .cal-swim-cell.dimmed { opacity: 0.3; }
+    .cal-swim-cell.weekend { background: var(--sw-bg); }
+    .cal-swim-cell.today-col { background: rgba(241,90,41,0.03); }
+    .cal-swim-cell.avail-available { background: rgba(39,174,96,0.06); }
+    .cal-swim-cell.avail-unavailable { background: rgba(231,76,60,0.06); }
+    .cal-swim-cell.avail-leave { background: #f5f5f5; }
+    .cal-swim-cell .leave-badge {
+      position: absolute; top: 2px; right: 2px; font-size: 8px; font-weight: 700;
+      color: var(--sw-text-sec); background: rgba(0,0,0,0.05); padding: 0 3px; border-radius: 2px;
+    }
+    .cal-swim-cell:hover { outline: 2px solid rgba(241,90,41,0.3); outline-offset: -2px; }
+    .cal-swim-cell.drag-over { outline: 2px solid var(--sw-orange); outline-offset: -2px; background: rgba(241,90,41,0.08); }
+
+    /* Job blocks — Layers 2 & 3 */
+    .cal-job-block {
+      font-size: 10px; padding: 3px 5px; border-radius: 3px; margin-bottom: 2px;
       cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      font-weight: 500; border-left: 2px solid;
+      font-weight: 500; position: relative; user-select: none;
     }
-    .crew-cal-event.fencing { background: rgba(39,174,96,0.12); color: #1a7a42; border-left-color: var(--sw-green); }
-    .crew-cal-event.patio { background: rgba(52,152,219,0.12); color: #1a6aa5; border-left-color: var(--sw-blue); }
-    .crew-cal-event.decking { background: rgba(230,126,34,0.12); color: #b45309; border-left-color: var(--sw-yellow); }
-    .crew-cal-event.delivery-marker {
-      background: rgba(142,68,173,0.10); color: var(--sw-purple);
-      border-left-color: var(--sw-purple); font-style: italic;
+    /* Tentative (yellow/amber + dashed border) */
+    .cal-job-block.tentative {
+      background: rgba(245,158,11,0.15); border: 1px dashed #D97706; color: #92400E;
     }
-    .crew-cal-event.delivery-warning {
-      background: rgba(231,76,60,0.12); color: var(--sw-red);
-      border-left-color: var(--sw-red); font-weight: 700;
+    /* Confirmed (green + solid border) */
+    .cal-job-block.confirmed {
+      background: rgba(39,174,96,0.15); border: 1px solid #27AE60; color: #15803d;
     }
-    .crew-cal-multi {
-      border-radius: 0; margin-right: -3px; margin-left: -3px;
+    .cal-job-block.confirmed::before {
+      content: '\2713 '; font-size: 9px;
     }
-    .crew-cal-multi.multi-start { margin-left: 0; border-radius: 4px 0 0 4px; }
-    .crew-cal-multi.multi-end { margin-right: 0; border-radius: 0 4px 4px 0; }
-    .crew-cal-multi.multi-single { margin-left: 0; margin-right: 0; border-radius: 4px; }
+    /* In progress (blue + solid border) */
+    .cal-job-block.in_progress {
+      background: rgba(52,152,219,0.15); border: 1px solid #3498DB; color: #1e6faa;
+    }
+    /* Completed (dark green + faded) */
+    .cal-job-block.completed {
+      background: rgba(39,174,96,0.08); border: 1px solid rgba(39,174,96,0.3); color: #5a8a6d;
+      opacity: 0.5;
+    }
+    /* Conflict (red border) */
+    .cal-job-block.conflict {
+      border-color: var(--sw-red) !important; box-shadow: 0 0 0 1px var(--sw-red);
+    }
+
+    /* Division accent (left border) */
+    .cal-job-block.div-patio { border-left: 3px solid var(--sw-orange); }
+    .cal-job-block.div-fencing { border-left: 3px solid var(--sw-mid); }
+    .cal-job-block.div-decking { border-left: 3px solid #E67E22; }
+    .cal-job-block.div-miscellaneous { border-left: 3px solid #8E44AD; }
+
+    /* Multi-day span */
+    .cal-job-block.multi { border-radius: 0; margin-right: -3px; margin-left: -3px; }
+    .cal-job-block.multi-start { margin-left: 0; border-radius: 3px 0 0 3px; }
+    .cal-job-block.multi-end { margin-right: 0; border-radius: 0 3px 3px 0; }
+    .cal-job-block.multi-single { margin-left: 0; margin-right: 0; border-radius: 3px; }
+
+    /* Dragging state */
+    .cal-job-block.dragging { opacity: 0.5; transform: rotate(2deg); }
+
+    /* Conflict / warning icons in cell */
+    .cal-cell-warning {
+      position: absolute; top: 1px; right: 1px; font-size: 11px; cursor: pointer;
+    }
+    .cal-cell-warning.conflict { color: var(--sw-red); }
+    .cal-cell-warning.materials { color: #D97706; }
+
+    /* Delivery row */
+    .cal-delivery-block {
+      font-size: 10px; padding: 3px 5px; border-radius: 3px; margin-bottom: 2px;
+      cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      background: rgba(142,68,173,0.10); color: var(--sw-purple); border-left: 2px solid var(--sw-purple);
+      font-style: italic;
+    }
+    .cal-delivery-block.warning {
+      background: rgba(231,76,60,0.12); color: var(--sw-red); border-left-color: var(--sw-red);
+      font-weight: 700; font-style: normal;
+    }
 
     /* Unscheduled sidebar */
-    .unsched-sidebar {
+    .cal-unsched-sidebar {
       background: var(--sw-card); border-radius: var(--sw-radius);
-      box-shadow: var(--sw-shadow); overflow: hidden;
+      box-shadow: var(--sw-shadow); overflow: hidden; display: none;
     }
-    .unsched-header {
+    .cal-unsched-sidebar.open { display: block; }
+    .cal-unsched-header {
       padding: 12px; font-size: 12px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--sw-text-sec); border-bottom: 2px solid var(--sw-yellow);
       display: flex; justify-content: space-between; align-items: center;
     }
-    .unsched-header .count {
-      background: var(--sw-yellow); color: #fff; padding: 2px 8px;
-      border-radius: 10px; font-size: 11px;
+    .cal-unsched-header .count {
+      background: var(--sw-yellow); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px;
     }
-    .unsched-body { padding: 8px; max-height: 500px; overflow-y: auto; }
-    .unsched-card {
-      background: var(--sw-bg); border-radius: 8px; padding: 10px;
-      margin-bottom: 6px; cursor: pointer; transition: box-shadow 0.2s;
+    .cal-unsched-body { padding: 8px; max-height: calc(100vh - 250px); overflow-y: auto; }
+    .cal-unsched-group { margin-bottom: 8px; }
+    .cal-unsched-group-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--sw-text-sec);
+      padding: 4px 6px; letter-spacing: 0.3px;
+    }
+    .cal-unsched-card {
+      background: var(--sw-bg); border-radius: 6px; padding: 8px 10px;
+      margin-bottom: 4px; cursor: grab; transition: box-shadow 0.2s;
       border-left: 3px solid transparent;
     }
-    .unsched-card:hover { box-shadow: var(--sw-shadow-hover); }
-    .unsched-card.fencing { border-left-color: var(--sw-green); }
-    .unsched-card.patio { border-left-color: var(--sw-blue); }
-    .unsched-card.decking { border-left-color: var(--sw-yellow); }
-    .unsched-card-client { font-size: 12px; font-weight: 600; }
-    .unsched-card-detail { font-size: 10px; color: var(--sw-text-sec); margin-top: 2px; }
-    .unsched-card-value { font-size: 11px; font-weight: 600; color: var(--sw-green); margin-top: 3px; font-family: var(--sw-font-num); }
+    .cal-unsched-card:hover { box-shadow: var(--sw-shadow-hover); }
+    .cal-unsched-card.dragging { opacity: 0.4; }
+    .cal-unsched-card.patio { border-left-color: var(--sw-orange); }
+    .cal-unsched-card.fencing { border-left-color: var(--sw-mid); }
+    .cal-unsched-card.decking { border-left-color: #E67E22; }
+    .cal-unsched-card.miscellaneous { border-left-color: #8E44AD; }
+    .cal-unsched-card.stale { background: rgba(231,76,60,0.05); border-right: 2px solid var(--sw-red); }
+    .cal-unsched-card-client { font-size: 12px; font-weight: 600; }
+    .cal-unsched-card-detail { font-size: 10px; color: var(--sw-text-sec); margin-top: 2px; }
+    .cal-unsched-card-meta { display: flex; gap: 8px; margin-top: 3px; font-size: 11px; }
+    .cal-unsched-card-value { font-weight: 600; color: var(--sw-green); font-family: var(--sw-font-num); }
+    .cal-unsched-card-days { color: var(--sw-text-sec); }
+    .cal-unsched-card-days.overdue { color: var(--sw-red); font-weight: 600; }
 
-    @media (max-width: 1100px) {
-      .crew-cal-wrap { grid-template-columns: 1fr; }
+    /* Schedule modal (from sidebar drag) */
+    .cal-schedule-modal {
+      position: fixed; z-index: 520; background: var(--sw-card);
+      border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      padding: 20px; width: 320px; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); display: none;
     }
+    .cal-schedule-modal.open { display: block; }
+    .cal-schedule-backdrop { position: fixed; inset: 0; z-index: 519; background: rgba(0,0,0,0.3); display: none; }
+    .cal-schedule-backdrop.open { display: block; }
+
+    /* Job popup (click on block) */
+    .cal-job-popup {
+      position: fixed; z-index: 530; background: var(--sw-card);
+      border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      padding: 16px; width: 340px; display: none;
+    }
+    .cal-job-popup.open { display: block; }
+    .cal-job-popup-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .cal-job-popup-row { font-size: 12px; margin-bottom: 4px; color: var(--sw-text-sec); }
+    .cal-job-popup-row strong { color: var(--sw-text); }
+    .cal-job-popup-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .cal-job-popup-actions button {
+      padding: 5px 10px; font-size: 11px; border-radius: 4px; cursor: pointer;
+      border: 1px solid var(--sw-border); background: var(--sw-card); font-weight: 600;
+    }
+    .cal-job-popup-actions .btn-confirm { background: #27AE60; color: #fff; border-color: #27AE60; }
+    .cal-job-popup-actions .btn-confirm-notify { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
+    .cal-job-popup-actions .btn-danger { color: var(--sw-red); border-color: var(--sw-red); }
+
+    /* Bulk confirm bar */
+    .cal-bulk-bar {
+      display: none; align-items: center; gap: 12px; padding: 8px 14px;
+      background: #27AE60; color: #fff; border-radius: 6px; margin-bottom: 8px;
+      font-size: 12px; font-weight: 600;
+    }
+    .cal-bulk-bar.open { display: flex; }
+    .cal-bulk-bar button {
+      padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer;
+      font-weight: 700; font-size: 11px;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .cal-swimlane-wrap.with-sidebar { grid-template-columns: 1fr; }
+      .cal-unsched-sidebar { max-height: 300px; }
+    }
+    @media (max-width: 600px) {
+      .cal-controls { gap: 4px; }
+      .cal-controls button { padding: 4px 8px; font-size: 11px; }
+      .cal-job-popup { width: calc(100vw - 32px); left: 16px; transform: translateY(-50%); }
+    }
+
+    /* Legacy compat (crew-util for non-crew views still used) */
+    .crew-util-wrap { display: grid; grid-template-columns: 1fr 240px; gap: 16px; }
+    @media (max-width: 1100px) { .crew-util-wrap { grid-template-columns: 1fr; } }
 
     /* ── Kanban ── */
     .kanban-container {
@@ -1554,19 +1611,43 @@
         <div class="cal-title" id="calTitle">March 2026</div>
         <button onclick="calNext()">&rarr;</button>
         <button onclick="calToday()">Today</button>
-        <button id="btnCrewView" class="active" onclick="setCalView('crew')">Crew</button>
-        <button id="btnWeekView" onclick="setCalView('week')">Week</button>
-        <button id="btnMonthView" onclick="setCalView('month')">Month</button>
+        <div style="width:1px;height:20px;background:var(--sw-border);"></div>
+        <button id="btnRange1w" class="active" onclick="setCalRange('1w')">1 Week</button>
+        <button id="btnRange2w" onclick="setCalRange('2w')">2 Weeks</button>
+        <button id="btnRangeMonth" onclick="setCalRange('month')">Month</button>
+        <div style="width:1px;height:20px;background:var(--sw-border);"></div>
+        <div class="cal-division-filters">
+          <button class="cal-div-pill active" data-caldiv="all" onclick="setCalDivision('all')">All</button>
+          <button class="cal-div-pill patio-pill" data-caldiv="patio" onclick="setCalDivision('patio')">Patios</button>
+          <button class="cal-div-pill fencing-pill" data-caldiv="fencing" onclick="setCalDivision('fencing')">Fencing</button>
+        </div>
         <div style="flex:1;"></div>
+        <button class="btn btn-secondary btn-sm" id="btnToggleUnsched" onclick="toggleCalUnsched()" style="font-size:11px;">Unscheduled (<span id="unschedCount">0</span>)</button>
         <button class="btn btn-primary btn-sm" onclick="openAssignmentModal()">+ Assignment</button>
       </div>
-      <div class="crew-util-wrap" id="calendarWrap">
-        <div id="calendarBody"></div>
-        <div class="crew-util" id="crewUtilPanel">
-          <h4>Crew Utilisation</h4>
-          <div id="crewUtilBars"><span style="font-size:12px;color:var(--sw-text-sec);">Loading...</span></div>
-        </div>
+
+      <!-- Summary bar -->
+      <div class="cal-summary-bar" id="calSummaryBar"></div>
+
+      <!-- Bulk confirm bar -->
+      <div class="cal-bulk-bar" id="calBulkBar">
+        <span id="calBulkText">Confirm 0 tentative jobs?</span>
+        <button style="background:#fff;color:#27AE60;" onclick="executeBulkConfirm()">Confirm All</button>
+        <button style="background:rgba(255,255,255,0.3);color:#fff;" onclick="closeBulkBar()">Cancel</button>
       </div>
+
+      <!-- Swimlane + Sidebar layout -->
+      <div class="cal-swimlane-wrap" id="calSwimWrap">
+        <div id="calendarBody"></div>
+        <div class="cal-unsched-sidebar" id="calUnschedSidebar"></div>
+      </div>
+
+      <!-- Job popup (appears on block click) -->
+      <div class="cal-job-popup" id="calJobPopup"></div>
+
+      <!-- Schedule modal (from sidebar drag or cell click) -->
+      <div class="cal-schedule-backdrop" id="calSchedBackdrop" onclick="closeScheduleModal()"></div>
+      <div class="cal-schedule-modal" id="calSchedModal"></div>
     </div>
 
     <!-- ═══════════ JOBS TAB ═══════════ -->
@@ -2633,81 +2714,121 @@ function renderPipelineOverview(pipeline) {
 }
 
 // ════════════════════════════════════════════════════════════
-// CALENDAR TAB
+// CALENDAR TAB — Three-Layer Scheduling
 // ════════════════════════════════════════════════════════════
+
+// Calendar state
+var _calRangeMode = localStorage.getItem('sw_cal_range') || '1w'; // '1w', '2w', 'month'
+var _calDivFilter = localStorage.getItem('sw_cal_div') || 'all'; // 'all', 'patio', 'fencing'
+var _calUnschedOpen = false;
+var _calAvailability = {}; // { 'userId_date': { status, note } }
+var _calPopupAssignment = null; // currently open popup data
+
+// TODO Phase 2: BOM Perth weather strip along top of calendar — temperature and rain probability per day
+// TODO Phase 2: Estimated job duration auto-populated from scope_json based on job size
+
+function setCalRange(mode) {
+  _calRangeMode = mode;
+  localStorage.setItem('sw_cal_range', mode);
+  document.querySelectorAll('[id^="btnRange"]').forEach(function(b) { b.className = ''; });
+  var btnId = mode === '1w' ? 'btnRange1w' : mode === '2w' ? 'btnRange2w' : 'btnRangeMonth';
+  document.getElementById(btnId).className = 'active';
+  loadCalendar();
+}
+
+function setCalDivision(div) {
+  _calDivFilter = div;
+  localStorage.setItem('sw_cal_div', div);
+  document.querySelectorAll('.cal-div-pill').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.caldiv === div);
+  });
+  if (_calEvents) renderCalendar();
+}
+
+function toggleCalUnsched() {
+  _calUnschedOpen = !_calUnschedOpen;
+  var sidebar = document.getElementById('calUnschedSidebar');
+  var wrap = document.getElementById('calSwimWrap');
+  sidebar.classList.toggle('open', _calUnschedOpen);
+  wrap.classList.toggle('with-sidebar', _calUnschedOpen);
+}
 
 async function loadCalendar() {
   var range = getCalRange();
   try {
     var fetches = [opsFetch('calendar', { from: range.from, to: range.to })];
-    // Load unscheduled jobs for crew view sidebar
-    if (_calView === 'crew') {
-      fetches.push(opsFetch('pipeline'));
-    }
+    // Always load unscheduled jobs (for sidebar + summary)
+    fetches.push(opsFetch('pipeline'));
+
+    // TODO: Fetch crew availability when endpoint exists
+    // fetches.push(opsFetch('get_crew_availability', { from: range.from, to: range.to }));
+
     var results = await Promise.all(fetches);
     var data = results[0];
     _calEvents = data.events || [];
     _calDeliveries = data.deliveries || [];
 
     // Extract unscheduled jobs (accepted status, no scheduled assignments)
-    if (_calView === 'crew' && results[1]) {
+    if (results[1]) {
       var cols = results[1].columns || {};
       _unschedJobs = (cols.accepted || []);
     }
 
+    // TODO: Load availability data when endpoint exists
+    // if (results[2]) { _calAvailability = parseAvailability(results[2]); }
+
     renderCalendar();
-    // Feature 7: Crew utilization sidebar (non-crew views)
-    if (_calView !== 'crew') renderCrewUtilization();
   } catch (e) {
     console.error('loadCalendar error:', e);
   }
 }
 
 function getCalRange() {
-  if (_calView === 'week' || _calView === 'crew') {
-    var d = new Date(_calDate);
-    var day = d.getDay() || 7;
-    d.setDate(d.getDate() - day + 1); // Monday
-    var from = d.toISOString().slice(0, 10);
-    d.setDate(d.getDate() + 6);
-    var to = d.toISOString().slice(0, 10);
-    return { from: from, to: to };
+  var d = new Date(_calDate);
+  var day = d.getDay() || 7;
+  d.setDate(d.getDate() - day + 1); // Monday
+  var from = d.toISOString().slice(0, 10);
+  if (_calRangeMode === '2w') {
+    d.setDate(d.getDate() + 13);
+  } else if (_calRangeMode === 'month') {
+    var y = _calDate.getFullYear(), m = _calDate.getMonth();
+    from = new Date(y, m, 1).toISOString().slice(0, 10);
+    d = new Date(y, m + 1, 0);
   } else {
-    var y = _calDate.getFullYear();
-    var m = _calDate.getMonth();
-    var from = new Date(y, m, 1).toISOString().slice(0, 10);
-    var to = new Date(y, m + 1, 0).toISOString().slice(0, 10);
-    return { from: from, to: to };
+    d.setDate(d.getDate() + 6);
   }
+  return { from: from, to: d.toISOString().slice(0, 10) };
 }
 
-function setCalView(view) {
-  _calView = view;
-  document.getElementById('btnCrewView').className = view === 'crew' ? 'active' : '';
-  document.getElementById('btnWeekView').className = view === 'week' ? 'active' : '';
-  document.getElementById('btnMonthView').className = view === 'month' ? 'active' : '';
-  loadCalendar();
-}
-
-function switchToWeekView(dateStr) {
-  _calDate = new Date(dateStr + 'T00:00:00');
-  setCalView('week');
+function getCalDays(range) {
+  var dates = [];
+  var d = new Date(range.from + 'T00:00:00');
+  var end = new Date(range.to + 'T00:00:00');
+  while (d <= end) {
+    dates.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
 }
 
 function calPrev() {
-  if (_calView === 'week' || _calView === 'crew') {
-    _calDate.setDate(_calDate.getDate() - 7);
-  } else {
+  if (_calRangeMode === 'month') {
     _calDate.setMonth(_calDate.getMonth() - 1);
+  } else if (_calRangeMode === '2w') {
+    _calDate.setDate(_calDate.getDate() - 14);
+  } else {
+    _calDate.setDate(_calDate.getDate() - 7);
   }
   loadCalendar();
 }
 
 function calNext() {
-  if (_calView === 'week' || _calView === 'crew') {
-    _calDate.setDate(_calDate.getDate() + 7);
-  } else {
+  if (_calRangeMode === 'month') {
     _calDate.setMonth(_calDate.getMonth() + 1);
+  } else if (_calRangeMode === '2w') {
+    _calDate.setDate(_calDate.getDate() + 14);
+  } else {
+    _calDate.setDate(_calDate.getDate() + 7);
   }
   loadCalendar();
 }
@@ -2718,82 +2839,606 @@ function calToday() {
 }
 
 function renderCalendar() {
-  var container = document.getElementById('calendarBody');
-  var wrapEl = document.getElementById('calendarWrap');
   var range = getCalRange();
   var titleEl = document.getElementById('calTitle');
-
-  if (_calView === 'crew') {
-    titleEl.textContent = 'Week of ' + fmtDate(range.from);
-    // Swap wrapper to crew layout (grid + unscheduled sidebar)
-    wrapEl.className = 'crew-cal-wrap';
-    wrapEl.innerHTML = '<div id="calendarBody"></div><div id="unschedSidebar"></div>';
-    renderCrewView(document.getElementById('calendarBody'), range);
-    renderUnschedSidebar(document.getElementById('unschedSidebar'));
-  } else if (_calView === 'week') {
-    titleEl.textContent = 'Week of ' + fmtDate(range.from);
-    wrapEl.className = 'crew-util-wrap';
-    wrapEl.innerHTML = '<div id="calendarBody"></div><div class="crew-util" id="crewUtilPanel"><h4>Crew Utilisation</h4><div id="crewUtilBars"><span style="font-size:12px;color:var(--sw-text-sec);">Loading...</span></div></div>';
-    renderWeekView(document.getElementById('calendarBody'), range);
-    renderCrewUtilization();
-  } else {
+  if (_calRangeMode === 'month') {
     titleEl.textContent = MONTHS[_calDate.getMonth()] + ' ' + _calDate.getFullYear();
-    wrapEl.className = 'crew-util-wrap';
-    wrapEl.innerHTML = '<div id="calendarBody"></div><div class="crew-util" id="crewUtilPanel"><h4>Crew Utilisation</h4><div id="crewUtilBars"><span style="font-size:12px;color:var(--sw-text-sec);">Loading...</span></div></div>';
-    renderMonthView(document.getElementById('calendarBody'));
-    renderCrewUtilization();
+  } else {
+    titleEl.textContent = (_calRangeMode === '2w' ? '2 Weeks from ' : 'Week of ') + fmtDate(range.from);
   }
+  var container = document.getElementById('calendarBody');
+  renderSwimlaneView(container, range);
+  renderCalSummary(range);
+  renderCalUnschedSidebar();
 }
 
-function renderWeekView(container, range) {
+// ── Swimlane View (replaces crew/week/month — unified 3-layer calendar) ──
+function renderSwimlaneView(container, range) {
   var todayStr = new Date().toISOString().slice(0, 10);
-  var d = new Date(range.from + 'T00:00:00');
-  var html = '<div class="cal-week-grid">';
+  var dates = getCalDays(range);
+  var numDays = dates.length;
 
-  for (var i = 0; i < 7; i++) {
-    var dateStr = d.toISOString().slice(0, 10);
+  // Group events by crew, handle multi-day
+  var crewMap = {};
+  _calEvents.forEach(function(ev) {
+    var crew = ev.crew_name || ev.assigned_to || 'Unassigned';
+    if (!crewMap[crew]) crewMap[crew] = { division: guessDivision(ev), events: {} };
+    var startDate = ev.scheduled_date;
+    var endDate = ev.scheduled_end || ev.scheduled_date;
+    dates.forEach(function(dateStr) {
+      if (dateStr >= startDate && dateStr <= endDate) {
+        if (!crewMap[crew].events[dateStr]) crewMap[crew].events[dateStr] = [];
+        var pos = 'multi-single';
+        if (startDate !== endDate) {
+          if (dateStr === startDate) pos = 'multi-start';
+          else if (dateStr === endDate) pos = 'multi-end';
+          else pos = 'multi-mid';
+        }
+        crewMap[crew].events[dateStr].push({ ev: ev, pos: pos });
+      }
+    });
+  });
+
+  // Sort crew by division, then alphabetically; Unassigned last
+  var crewNames = Object.keys(crewMap).sort(function(a, b) {
+    if (a === 'Unassigned') return 1;
+    if (b === 'Unassigned') return -1;
+    var da = crewMap[a].division || 'zzz', db = crewMap[b].division || 'zzz';
+    if (da !== db) return da.localeCompare(db);
+    return a.localeCompare(b);
+  });
+  if (crewNames.length === 0) crewNames = ['No assignments'];
+
+  // Build delivery lookup
+  var deliveryMap = {};
+  _calDeliveries.forEach(function(del) {
+    if (!deliveryMap[del.delivery_date]) deliveryMap[del.delivery_date] = [];
+    deliveryMap[del.delivery_date].push(del);
+  });
+
+  // Detect conflicts: same crew, same date, 2+ different jobs
+  var conflicts = {}; // 'crew_date' -> true
+  Object.keys(crewMap).forEach(function(crew) {
+    var evts = crewMap[crew].events;
+    Object.keys(evts).forEach(function(dateStr) {
+      var jobIds = {};
+      evts[dateStr].forEach(function(e) { jobIds[e.ev.job_id] = true; });
+      if (Object.keys(jobIds).length > 1) conflicts[crew + '_' + dateStr] = true;
+    });
+  });
+
+  // Job start date lookup for material warnings
+  var jobStartDates = {};
+  _calEvents.forEach(function(ev) {
+    if (!jobStartDates[ev.job_id] || ev.scheduled_date < jobStartDates[ev.job_id]) {
+      jobStartDates[ev.job_id] = ev.scheduled_date;
+    }
+  });
+
+  // Track previous division for divider lines
+  var prevDiv = null;
+  var numCols = numDays + 1;
+
+  var html = '<div class="cal-swimlane-grid" style="grid-template-columns: 140px repeat(' + numDays + ', 1fr);">';
+
+  // Header row
+  html += '<div class="cal-swimlane-corner">Crew / Date</div>';
+  dates.forEach(function(dateStr) {
+    var dd = new Date(dateStr + 'T00:00:00');
+    var dayIdx = (dd.getDay() + 6) % 7;
     var isToday = dateStr === todayStr;
-
-    html += '<div class="cal-week-col">';
-    html += '<div class="cal-week-header' + (isToday ? ' today' : '') + '">';
-    html += '<div class="day-name">' + DAYS[i] + '</div>';
-    html += '<div class="day-num">' + d.getDate() + '</div>';
+    html += '<div class="cal-swimlane-day-header' + (isToday ? ' today' : '') + '">';
+    html += '<div class="day-name">' + DAYS[dayIdx] + '</div>';
+    html += '<div class="day-num">' + dd.getDate() + '</div>';
     html += '</div>';
-    html += '<div class="cal-week-body">';
+  });
 
-    // Events for this day
-    var dayEvents = _calEvents.filter(function(ev) { return ev.scheduled_date === dateStr; });
-    var dayDeliveries = _calDeliveries.filter(function(del) { return del.delivery_date === dateStr; });
+  // Crew rows
+  crewNames.forEach(function(crew) {
+    var crewData = crewMap[crew] || { division: '', events: {} };
+    var div = crewData.division || '';
+    var isDimmed = _calDivFilter !== 'all' && div && div !== _calDivFilter;
 
-    dayEvents.forEach(function(ev) {
-      html += '<div class="cal-week-event ' + (ev.job_type || '') + '" onclick="openJobPeek(\'' + ev.job_id + '\')">';
-      if (ev.start_time) html += '<div class="cal-week-event-time">' + fmtTime(ev.start_time) + (ev.end_time ? ' - ' + fmtTime(ev.end_time) : '') + '</div>';
-      html += '<div class="cal-week-event-title">' + (ev.client_name || 'Unknown') + '</div>';
-      html += '<div class="cal-week-event-sub">' + (ev.site_suburb || '') + (ev.crew_name ? ' &middot; ' + ev.crew_name : '') + '</div>';
-      html += '</div>';
-    });
-
-    dayDeliveries.forEach(function(del) {
-      html += '<div class="cal-week-event delivery">';
-      html += '<div class="cal-week-event-time">Delivery</div>';
-      html += '<div class="cal-week-event-title">' + del.supplier_name + '</div>';
-      html += '<div class="cal-week-event-sub">' + del.po_number + '</div>';
-      html += '</div>';
-    });
-
-    if (dayEvents.length === 0 && dayDeliveries.length === 0) {
-      html += '<div style="padding:8px; text-align:center; color:var(--sw-text-sec); font-size:11px;">No events</div>';
+    // Division divider
+    if (div !== prevDiv && div) {
+      html += '<div class="cal-division-label">' + (div === 'patio' ? 'Patios' : div === 'fencing' ? 'Fencing' : div.charAt(0).toUpperCase() + div.slice(1)) + '</div>';
+      prevDiv = div;
     }
 
-    html += '</div></div>';
-    d.setDate(d.getDate() + 1);
+    // Row label
+    var initial = crew.charAt(0).toUpperCase();
+    var crewBg = crewColor(crew);
+    html += '<div class="cal-crew-label' + (isDimmed ? ' dimmed' : '') + '">';
+    html += '<span class="crew-initial" style="background:' + crewBg + '">' + initial + '</span>';
+    html += '<span style="overflow:hidden;text-overflow:ellipsis;">' + crew + '</span>';
+    if (div) html += '<span class="division-badge ' + div + '">' + div + '</span>';
+    html += '</div>';
+
+    // Day cells
+    dates.forEach(function(dateStr) {
+      var dd = new Date(dateStr + 'T00:00:00');
+      var dayIdx = (dd.getDay() + 6) % 7;
+      var isToday = dateStr === todayStr;
+      var isWeekend = dayIdx >= 5;
+
+      // Layer 1: Availability background
+      var availKey = crew + '_' + dateStr;
+      var avail = _calAvailability[availKey];
+      var cellClass = 'cal-swim-cell';
+      if (isDimmed) cellClass += ' dimmed';
+      if (isWeekend) cellClass += ' weekend';
+      if (isToday) cellClass += ' today-col';
+      if (avail) {
+        if (avail.status === 'available') cellClass += ' avail-available';
+        else if (avail.status === 'unavailable') cellClass += ' avail-unavailable';
+        else if (avail.status === 'leave') cellClass += ' avail-leave';
+      }
+
+      var hasConflict = conflicts[crew + '_' + dateStr];
+
+      html += '<div class="' + cellClass + '"';
+      html += ' data-date="' + dateStr + '" data-crew="' + crew.replace(/"/g, '&quot;') + '"';
+      html += ' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"';
+      html += ' ondragleave="this.classList.remove(\'drag-over\')"';
+      html += ' ondrop="handleCalDrop(event,this)"';
+      html += ' onclick="handleCellClick(\'' + dateStr + '\',\'' + crew.replace(/'/g, "\\'") + '\')"';
+      html += '>';
+
+      // Leave badge
+      if (avail && avail.status === 'leave') {
+        html += '<span class="leave-badge">L</span>';
+      }
+
+      // Conflict warning
+      if (hasConflict) {
+        html += '<span class="cal-cell-warning conflict" title="Scheduling conflict — multiple jobs">&#9888;</span>';
+      }
+
+      // Layer 2 & 3: Job blocks
+      var entries = crewData.events[dateStr] || [];
+      entries.forEach(function(entry) {
+        var ev = entry.ev;
+        // Determine confirmation status
+        var confStatus = ev.confirmation_status || 'tentative';
+        if (ev.assignment_status === 'in_progress') confStatus = 'in_progress';
+        if (ev.assignment_status === 'complete') confStatus = 'completed';
+
+        var blockClass = 'cal-job-block ' + confStatus;
+        blockClass += ' div-' + (ev.job_type || 'patio');
+        if (entry.pos !== 'multi-single') blockClass += ' multi ' + entry.pos;
+        else blockClass += ' multi-single';
+        if (hasConflict) blockClass += ' conflict';
+
+        // Client surname
+        var surname = (ev.client_name || 'Job').split(' ').pop();
+
+        html += '<div class="' + blockClass + '"';
+        html += ' draggable="true"';
+        html += ' ondragstart="handleBlockDragStart(event,\'' + ev.assignment_id + '\')"';
+        html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
+        html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '"';
+        html += '>';
+        html += (ev.job_number ? ev.job_number + ' ' : '') + surname;
+        html += '</div>';
+      });
+
+      html += '</div>';
+    });
+  });
+
+  // Delivery row
+  var hasDeliveries = dates.some(function(ds) { return deliveryMap[ds] && deliveryMap[ds].length > 0; });
+  if (hasDeliveries) {
+    html += '<div class="cal-division-label">Deliveries</div>';
+    html += '<div class="cal-crew-label">';
+    html += '<span class="crew-initial" style="background:var(--sw-purple);">D</span>';
+    html += '<span>Deliveries</span>';
+    html += '</div>';
+    dates.forEach(function(dateStr) {
+      var dd = new Date(dateStr + 'T00:00:00');
+      var dayIdx = (dd.getDay() + 6) % 7;
+      var cellClass = 'cal-swim-cell';
+      if (dayIdx >= 5) cellClass += ' weekend';
+      if (dateStr === todayStr) cellClass += ' today-col';
+      html += '<div class="' + cellClass + '">';
+      var dels = deliveryMap[dateStr] || [];
+      dels.forEach(function(del) {
+        var isWarning = del.job_id && jobStartDates[del.job_id] && del.delivery_date > jobStartDates[del.job_id];
+        html += '<div class="cal-delivery-block' + (isWarning ? ' warning' : '') + '" title="' + del.po_number + ' — ' + del.supplier_name + '">';
+        html += del.supplier_name;
+        if (isWarning) html += ' &#9888;';
+        html += '</div>';
+      });
+      html += '</div>';
+    });
   }
 
   html += '</div>';
   container.innerHTML = html;
 }
 
-function renderMonthView(container) {
+// Guess crew division from their most common job type
+function guessDivision(ev) {
+  var t = ev.job_type || '';
+  if (t === 'patio' || t === 'decking') return 'patio';
+  if (t === 'fencing') return 'fencing';
+  return t || '';
+}
+
+// ── Summary Bar ──
+function renderCalSummary(range) {
+  var dates = getCalDays(range);
+  var confirmed = 0, tentative = 0, revenue = 0;
+  var countedJobs = {};
+  var conflictCount = 0;
+
+  // Count conflicts
+  var crewDateJobs = {};
+  _calEvents.forEach(function(ev) {
+    var crew = ev.crew_name || ev.assigned_to || 'Unassigned';
+    var start = ev.scheduled_date;
+    var end = ev.scheduled_end || start;
+    dates.forEach(function(ds) {
+      if (ds >= start && ds <= end) {
+        var key = crew + '_' + ds;
+        if (!crewDateJobs[key]) crewDateJobs[key] = {};
+        crewDateJobs[key][ev.job_id] = true;
+      }
+    });
+  });
+  Object.keys(crewDateJobs).forEach(function(k) {
+    if (Object.keys(crewDateJobs[k]).length > 1) conflictCount++;
+  });
+
+  _calEvents.forEach(function(ev) {
+    if (ev.scheduled_date >= dates[0] && ev.scheduled_date <= dates[dates.length - 1]) {
+      if (!countedJobs[ev.job_id]) {
+        countedJobs[ev.job_id] = true;
+        var cs = ev.confirmation_status || 'tentative';
+        if (cs === 'confirmed' || ev.assignment_status === 'in_progress') confirmed++;
+        else tentative++;
+        revenue += (ev.quote_value || 0);
+      }
+    }
+  });
+
+  var unschedCount = _unschedJobs.length;
+  var bar = document.getElementById('calSummaryBar');
+  var html = '';
+  html += '<span class="stat"><span class="stat-val">' + confirmed + '</span> confirmed</span>';
+  html += '<span class="stat"><span class="stat-val">' + tentative + '</span> tentative</span>';
+  html += '<span class="stat"><span class="stat-val">' + unschedCount + '</span> unscheduled</span>';
+  html += '<span class="stat">Revenue scheduled: <span class="stat-val">' + fmt$(revenue) + '</span></span>';
+  if (conflictCount > 0) {
+    html += '<span class="conflict-warn" onclick="highlightConflicts()">&#9888; ' + conflictCount + ' scheduling conflict' + (conflictCount > 1 ? 's' : '') + '</span>';
+  }
+  bar.innerHTML = html;
+}
+
+// ── Unscheduled Sidebar ──
+function renderCalUnschedSidebar() {
+  var sidebar = document.getElementById('calUnschedSidebar');
+  document.getElementById('unschedCount').textContent = _unschedJobs.length;
+
+  // Group by type
+  var groups = {};
+  _unschedJobs.forEach(function(j) {
+    var t = j.type || 'other';
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(j);
+  });
+
+  var html = '<div class="cal-unsched-header">Unscheduled<span class="count">' + _unschedJobs.length + '</span></div>';
+  html += '<div class="cal-unsched-body">';
+
+  if (_unschedJobs.length === 0) {
+    html += '<div style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:12px;">All jobs scheduled</div>';
+  }
+
+  var groupOrder = ['patio', 'fencing', 'decking', 'miscellaneous', 'other'];
+  var groupLabels = { patio: 'Patios', fencing: 'Fencing', decking: 'Decking', miscellaneous: 'Miscellaneous', other: 'Other' };
+  groupOrder.forEach(function(type) {
+    var jobs = groups[type];
+    if (!jobs || jobs.length === 0) return;
+    html += '<div class="cal-unsched-group">';
+    html += '<div class="cal-unsched-group-title">' + (groupLabels[type] || type) + '</div>';
+    jobs.forEach(function(j) {
+      var val = j.value || 0;
+      var daysAccepted = j.accepted_at ? Math.floor((Date.now() - new Date(j.accepted_at).getTime()) / 86400000) : 0;
+      var isStale = daysAccepted > 7;
+      html += '<div class="cal-unsched-card ' + (j.type || '') + (isStale ? ' stale' : '') + '"';
+      html += ' draggable="true"';
+      html += ' ondragstart="handleUnschedDragStart(event,\'' + j.id + '\')"';
+      html += ' data-jobid="' + j.id + '"';
+      html += '>';
+      html += '<div class="cal-unsched-card-client">' + (j.client_name || 'Unknown') + '</div>';
+      html += '<div class="cal-unsched-card-detail">' + (j.job_number || '') + ' · ' + (j.site_suburb || '') + '</div>';
+      html += '<div class="cal-unsched-card-meta">';
+      if (val > 0) html += '<span class="cal-unsched-card-value">' + fmt$(val) + '</span>';
+      // Duration from scope_json
+      var durText = '? days';
+      // TODO Phase 2: Auto-populate from scope_json based on job size
+      html += '<span class="cal-unsched-card-days' + (isStale ? ' overdue' : '') + '">' + (isStale ? daysAccepted + 'd since accepted' : durText) + '</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+
+  html += '</div>';
+  sidebar.innerHTML = html;
+}
+
+// ── Drag & Drop ──
+var _calDragData = null;
+
+function handleBlockDragStart(event, assignmentId) {
+  _calDragData = { type: 'assignment', assignmentId: assignmentId };
+  event.dataTransfer.effectAllowed = 'move';
+  event.target.classList.add('dragging');
+  setTimeout(function() { event.target.classList.remove('dragging'); }, 0);
+}
+
+function handleUnschedDragStart(event, jobId) {
+  _calDragData = { type: 'unsched', jobId: jobId };
+  event.dataTransfer.effectAllowed = 'copy';
+  event.target.classList.add('dragging');
+  setTimeout(function() { event.target.classList.remove('dragging'); }, 0);
+}
+
+function handleCalDrop(event, cell) {
+  event.preventDefault();
+  cell.classList.remove('drag-over');
+  var date = cell.dataset.date;
+  var crew = cell.dataset.crew;
+  if (!_calDragData || !date) return;
+
+  if (_calDragData.type === 'unsched') {
+    // Show schedule modal
+    openScheduleModal(_calDragData.jobId, crew, date);
+  } else if (_calDragData.type === 'assignment') {
+    // Move existing assignment
+    moveAssignment(_calDragData.assignmentId, crew, date);
+  }
+  _calDragData = null;
+}
+
+function handleCellClick(date, crew) {
+  // On mobile or as fallback: open assignment modal pre-filled
+  openAssignmentModal(null, date, crew);
+}
+
+// ── Schedule Modal (from sidebar drag) ──
+function openScheduleModal(jobId, crew, date) {
+  var job = _unschedJobs.find(function(j) { return j.id === jobId; });
+  if (!job) return;
+  var modal = document.getElementById('calSchedModal');
+  var backdrop = document.getElementById('calSchedBackdrop');
+  modal.innerHTML =
+    '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">Schedule Job</div>' +
+    '<div style="font-size:12px;margin-bottom:6px;"><strong>' + escapeHtml(job.client_name || 'Unknown') + '</strong> — ' + escapeHtml(job.site_suburb || '') + '</div>' +
+    '<div style="font-size:12px;margin-bottom:12px;color:var(--sw-text-sec);">' + (job.job_number || '') + ' · ' + typeBadgeLabel(job.type) + '</div>' +
+    '<div class="form-group"><label class="form-label">Crew</label><input type="text" class="form-input" id="schedCrew" value="' + escapeHtml(crew || '') + '"></div>' +
+    '<div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-input" id="schedDate" value="' + date + '"></div>' +
+    '<div class="form-group"><label class="form-label">Duration (days)</label><input type="number" class="form-input" id="schedDuration" value="1" min="1" max="30"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:16px;">' +
+    '<button class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>' +
+    '<button class="btn btn-primary" style="background:var(--sw-orange);" onclick="submitScheduleFromModal(\'' + jobId + '\')">Create Tentative</button>' +
+    '</div>';
+  modal.classList.add('open');
+  backdrop.classList.add('open');
+}
+
+function closeScheduleModal() {
+  document.getElementById('calSchedModal').classList.remove('open');
+  document.getElementById('calSchedBackdrop').classList.remove('open');
+}
+
+async function submitScheduleFromModal(jobId) {
+  var crew = document.getElementById('schedCrew').value;
+  var date = document.getElementById('schedDate').value;
+  var dur = parseInt(document.getElementById('schedDuration').value) || 1;
+
+  if (!crew || !date) { showToast('Crew and date required', 'warning'); return; }
+
+  var endDate = new Date(date + 'T00:00:00');
+  endDate.setDate(endDate.getDate() + dur - 1);
+  var endStr = endDate.toISOString().slice(0, 10);
+
+  try {
+    await opsPost('create_assignment', {
+      job_id: jobId,
+      crew_name: crew,
+      scheduled_date: date,
+      scheduled_end: endStr,
+      role: 'lead_installer',
+      assignment_type: 'install',
+    });
+    closeScheduleModal();
+    showToast('Assignment created (tentative)', 'success');
+    loadCalendar();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+async function moveAssignment(assignmentId, newCrew, newDate) {
+  // Find the assignment in events
+  var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
+  if (!ev) return;
+
+  // If confirmed, warn
+  if (ev.confirmation_status === 'confirmed') {
+    if (!confirm('This job is confirmed with the client. Moving will require a reschedule notification. Move anyway?')) return;
+  }
+
+  try {
+    await opsPost('update_assignment', {
+      assignment_id: assignmentId,
+      crew_name: newCrew,
+      scheduled_date: newDate,
+    });
+    showToast('Assignment moved', 'success');
+    loadCalendar();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// ── Job Block Popup ──
+function openCalJobPopup(event, assignmentId) {
+  event.stopPropagation();
+  var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
+  if (!ev) return;
+  _calPopupAssignment = ev;
+
+  var popup = document.getElementById('calJobPopup');
+  var confStatus = ev.confirmation_status || 'tentative';
+  var statusLabel = confStatus === 'confirmed' ? 'Confirmed' : confStatus === 'in_progress' ? 'In Progress' : 'Tentative';
+
+  var html = '<div style="display:flex;justify-content:space-between;align-items:start;">';
+  html += '<div class="cal-job-popup-title">' + escapeHtml(ev.client_name || 'Unknown') + '</div>';
+  html += '<button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button>';
+  html += '</div>';
+  html += '<div class="cal-job-popup-row"><strong>Job:</strong> ' + (ev.job_number || '-') + ' · <span class="type-badge ' + (ev.job_type || '') + '">' + typeBadgeLabel(ev.job_type) + '</span></div>';
+  html += '<div class="cal-job-popup-row"><strong>Crew:</strong> ' + (ev.crew_name || ev.assigned_to || '-') + '</div>';
+  html += '<div class="cal-job-popup-row"><strong>Dates:</strong> ' + fmtDate(ev.scheduled_date) + (ev.scheduled_end && ev.scheduled_end !== ev.scheduled_date ? ' — ' + fmtDate(ev.scheduled_end) : '') + '</div>';
+  html += '<div class="cal-job-popup-row"><strong>Status:</strong> ' + statusLabel + '</div>';
+  if (ev.site_suburb) html += '<div class="cal-job-popup-row"><strong>Location:</strong> ' + escapeHtml(ev.site_suburb) + '</div>';
+  if (ev.quote_value) html += '<div class="cal-job-popup-row"><strong>Quote:</strong> ' + fmt$(ev.quote_value) + '</div>';
+  if (ev.confirmed_at) html += '<div class="cal-job-popup-row" style="font-size:11px;">Confirmed: ' + fmtDate(ev.confirmed_at.slice(0,10)) + '</div>';
+
+  html += '<div class="cal-job-popup-actions">';
+  if (confStatus === 'tentative') {
+    html += '<button class="btn-confirm" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Mark Confirmed</button>';
+    html += '<button class="btn-confirm-notify" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Confirm & Notify</button>';
+  }
+  html += '<button onclick="openAssignmentModal(null,\'' + ev.scheduled_date + '\',\'' + (ev.crew_name || '').replace(/'/g, "\\'") + '\')">Edit Dates</button>';
+  html += '<button onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Open Full Record</button>';
+  html += '<button class="btn-danger" onclick="removeAssignment(\'' + assignmentId + '\')">Remove</button>';
+  html += '</div>';
+
+  popup.innerHTML = html;
+  popup.classList.add('open');
+
+  // Position near click
+  var rect = event.target.getBoundingClientRect();
+  popup.style.top = Math.min(rect.bottom + 8, window.innerHeight - 350) + 'px';
+  popup.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+}
+
+function closeCalJobPopup() {
+  document.getElementById('calJobPopup').classList.remove('open');
+  _calPopupAssignment = null;
+}
+
+// Close popup when clicking outside
+document.addEventListener('click', function(e) {
+  var popup = document.getElementById('calJobPopup');
+  if (popup && popup.classList.contains('open') && !popup.contains(e.target)) {
+    closeCalJobPopup();
+  }
+});
+
+// ── Confirm Actions ──
+// TODO: ops-api?action=confirm_assignment — sets confirmation_status='confirmed', confirmed_at=now(), confirmed_by=user_id
+// TODO: ops-api?action=confirm_and_notify — same as above plus sends GHL SMS to client and creates crew notification event
+// TODO: ops-api?action=bulk_confirm — confirms all tentative assignments in a date range, sends all notifications
+// TODO: crew_availability table: id, user_id, date, status (available/unavailable/leave), note, created_at
+// TODO: job_assignments table additions: confirmation_status (text, default 'tentative'), confirmed_at (timestamptz), confirmed_by (uuid), client_notified_at (timestamptz), crew_notified_at (timestamptz), duration_days (integer, default 1)
+
+async function confirmAssignment(assignmentId, notify) {
+  // For now, use update_assignment to mark confirmed (until dedicated endpoint exists)
+  try {
+    await opsPost('update_assignment', {
+      assignment_id: assignmentId,
+      status: 'confirmed',
+    });
+    closeCalJobPopup();
+    showToast(notify ? 'Confirmed & notification queued' : 'Marked as confirmed', 'success');
+    // TODO: If notify=true, call confirm_and_notify endpoint to send SMS
+    loadCalendar();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+async function removeAssignment(assignmentId) {
+  if (!confirm('Remove this assignment from the schedule?')) return;
+  try {
+    await opsPost('delete_assignment', { assignment_id: assignmentId });
+    closeCalJobPopup();
+    showToast('Assignment removed', 'success');
+    loadCalendar();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// ── Bulk Confirm ──
+function openBulkConfirm() {
+  var tentativeCount = _calEvents.filter(function(ev) {
+    return !ev.confirmation_status || ev.confirmation_status === 'tentative';
+  }).length;
+  if (tentativeCount === 0) { showToast('No tentative assignments to confirm', 'warning'); return; }
+  document.getElementById('calBulkText').textContent = 'Confirm ' + tentativeCount + ' tentative job' + (tentativeCount > 1 ? 's' : '') + '?';
+  document.getElementById('calBulkBar').classList.add('open');
+}
+
+function closeBulkBar() {
+  document.getElementById('calBulkBar').classList.remove('open');
+}
+
+async function executeBulkConfirm() {
+  // TODO: Replace with ops-api?action=bulk_confirm when available
+  var tentative = _calEvents.filter(function(ev) {
+    return !ev.confirmation_status || ev.confirmation_status === 'tentative';
+  });
+  closeBulkBar();
+  var count = 0;
+  for (var i = 0; i < tentative.length; i++) {
+    try {
+      await opsPost('update_assignment', { assignment_id: tentative[i].assignment_id, status: 'confirmed' });
+      count++;
+    } catch (e) { console.error('Bulk confirm error:', e); }
+  }
+  showToast(count + ' assignments confirmed', 'success');
+  loadCalendar();
+}
+
+function highlightConflicts() {
+  // Scroll to first conflict cell and flash it
+  var conflictCells = document.querySelectorAll('.cal-cell-warning.conflict');
+  if (conflictCells.length > 0) {
+    conflictCells[0].closest('.cal-swim-cell').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    conflictCells.forEach(function(w) {
+      var cell = w.closest('.cal-swim-cell');
+      cell.style.outline = '3px solid var(--sw-red)';
+      setTimeout(function() { cell.style.outline = ''; }, 3000);
+    });
+  }
+}
+
+// TODO: ops-api?action=get_crew_availability — returns { user_id, date, status, note } for all crew in date range
+
+// Old renderMonthView, renderCrewView, renderUnschedSidebar removed — replaced by renderSwimlaneView above
+
+// Stub for backward compat (old views removed)
+function renderMonthView() {}
+function renderWeekView() {}
+
+// Legacy: keep setCalView for any old callers
+function setCalView(v) { setCalRange(v === 'crew' ? '1w' : v === 'week' ? '1w' : 'month'); }
+function switchToWeekView(dateStr) { _calDate = new Date(dateStr + 'T00:00:00'); setCalRange('1w'); }
+
+// ── End of calendar redesign ──
+// Old calendar functions below removed:
+// renderMonthView, renderWeekView (week column view), renderCrewView, renderUnschedSidebar
+// These are now handled by the unified renderSwimlaneView + renderCalUnschedSidebar
+
+/* REMOVED OLD FUNCTIONS (renderMonthView, renderCrewView, renderUnschedSidebar) */
+/* OLD:
+function renderMonthView_REMOVED(container) {
   var todayStr = new Date().toISOString().slice(0, 10);
   var y = _calDate.getFullYear();
   var m = _calDate.getMonth();
@@ -3035,6 +3680,7 @@ function renderUnschedSidebar(container) {
   html += '</div></div>';
   container.innerHTML = html;
 }
+END OLD */
 
 
 // ════════════════════════════════════════════════════════════
