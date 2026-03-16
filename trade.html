@@ -1168,6 +1168,120 @@
     .job-card-financial span strong {
       color: var(--sw-dark); font-weight: 700;
     }
+
+    /* ══════════════════════════════════════════════════
+       AVAILABILITY & SCHEDULE CALENDAR
+       ══════════════════════════════════════════════════ */
+    .avail-section {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      padding: 16px; margin-bottom: 16px; box-shadow: var(--sw-shadow);
+    }
+    .avail-section h3 {
+      font-size: 14px; font-weight: 700; color: var(--sw-dark); margin-bottom: 10px;
+    }
+    .avail-day-toggles {
+      display: flex; gap: 6px; justify-content: space-between;
+    }
+    .avail-day-btn {
+      flex: 1; min-width: 0; padding: 10px 0; border: 2px solid var(--sw-border);
+      border-radius: 10px; font-size: 12px; font-weight: 700; text-align: center;
+      cursor: pointer; font-family: var(--sw-font); background: var(--sw-light);
+      color: var(--sw-text-sec); transition: all 0.15s;
+    }
+    .avail-day-btn.on {
+      background: var(--sw-green); color: #fff; border-color: var(--sw-green);
+    }
+    .avail-cal-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .avail-cal-nav button {
+      background: none; border: none; font-size: 20px; cursor: pointer;
+      padding: 4px 12px; color: var(--sw-dark);
+    }
+    .avail-cal-nav span {
+      font-size: 15px; font-weight: 700; color: var(--sw-dark);
+    }
+    .avail-cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    }
+    .avail-cal-hdr {
+      font-size: 11px; font-weight: 700; text-align: center;
+      color: var(--sw-text-sec); padding: 4px 0;
+    }
+    .cal-day {
+      aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+      position: relative; transition: background 0.15s;
+    }
+    .cal-day.cal-available { background: #DEF7EC; color: #1B7A4A; }
+    .cal-day.cal-off { background: var(--sw-light); color: var(--sw-text-sec); }
+    .cal-day.cal-unavailable { background: #FDE8E8; color: #C0392B; }
+    .cal-day.cal-today { box-shadow: inset 0 0 0 2px var(--sw-orange); }
+    .cal-day.cal-past { opacity: 0.35; pointer-events: none; }
+    .cal-day.cal-other { opacity: 0.2; pointer-events: none; }
+    .cal-day.cal-exception::after {
+      content: ''; position: absolute; bottom: 3px; left: 50%;
+      transform: translateX(-50%); width: 5px; height: 5px;
+      border-radius: 50%; background: currentColor; opacity: 0.5;
+    }
+    .leave-range-bar {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--sw-border);
+    }
+    .leave-range-bar input[type="date"] {
+      flex: 1; min-width: 120px; padding: 8px; border: 1px solid var(--sw-border);
+      border-radius: 8px; font-size: 13px; font-family: var(--sw-font);
+    }
+    .leave-range-bar button {
+      padding: 8px 14px; background: var(--sw-red); color: #fff; border: none;
+      border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+      font-family: var(--sw-font);
+    }
+    .sched-card {
+      padding: 12px; border-radius: 10px; margin-bottom: 8px;
+      background: var(--sw-card); box-shadow: var(--sw-shadow); cursor: pointer;
+    }
+    .sched-card-confirmed { border-left: 4px solid var(--sw-green); }
+    .sched-card-tentative {
+      border-left: 4px solid var(--sw-yellow);
+      border: 1px dashed var(--sw-yellow); border-left-width: 4px;
+    }
+    .sched-conflict {
+      background: #FDE8E8; color: #C0392B; font-size: 11px; font-weight: 700;
+      padding: 4px 8px; border-radius: 6px; margin-top: 6px;
+      display: inline-block;
+    }
+    .notif-banner {
+      background: var(--sw-orange); color: #fff; padding: 10px 16px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      position: sticky; top: 48px; z-index: 99;
+    }
+    .notif-banner-summary {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .notif-banner-details {
+      margin-top: 8px; font-size: 12px; font-weight: 400;
+    }
+    .notif-banner-details div {
+      padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.2);
+    }
+    .nav-badge {
+      position: absolute; top: 2px; right: calc(50% - 20px);
+      min-width: 16px; height: 16px; border-radius: 8px;
+      background: var(--sw-red); color: #fff; font-size: 10px;
+      font-weight: 700; display: flex; align-items: center;
+      justify-content: center; padding: 0 4px;
+    }
+    .avail-note-inline {
+      margin-top: 8px; padding: 10px; background: var(--sw-light);
+      border-radius: 8px; font-size: 13px;
+    }
+    .avail-note-inline input {
+      width: 100%; padding: 8px; border: 1px solid var(--sw-border);
+      border-radius: 6px; font-size: 13px; font-family: var(--sw-font);
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -1183,6 +1297,13 @@
   <div class="header-user" id="headerUser" onclick="toggleUserMenu()"></div>
 </div>
 <div class="offline-bar" id="offlineBar">No internet connection — working offline</div>
+<div class="notif-banner" id="notifBanner" style="display:none">
+  <div class="notif-banner-summary" onclick="toggleNotifDetails()">
+    <span>You have <strong id="notifCount">0</strong> schedule update(s)</span>
+    <span id="notifArrow">&#9660;</span>
+  </div>
+  <div class="notif-banner-details" id="notifDetails" style="display:none"></div>
+</div>
 <!-- User menu (tap name to show) -->
 <div id="userMenu" style="display:none;position:fixed;top:56px;right:8px;background:#fff;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:200;min-width:140px;overflow:hidden">
   <button onclick="doLogout()" style="display:block;width:100%;padding:14px 16px;border:none;background:none;text-align:left;font-size:14px;font-family:var(--sw-font);color:var(--sw-text);cursor:pointer">Sign out</button>
@@ -1293,9 +1414,10 @@
     <svg viewBox="0 0 24 24"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
     Camera
   </button>
-  <button data-view="schedule" onclick="showView('schedule')">
+  <button data-view="schedule" onclick="showView('schedule')" style="position:relative">
     <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
     Schedule
+    <span class="nav-badge" id="scheduleBadge" style="display:none">0</span>
   </button>
   <button data-view="hours" onclick="showView('hours')">
     <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
@@ -1405,6 +1527,14 @@
   var _reportDirty = false;       // unsaved changes in report form
   var _opsApiBase = '';
   var _cachedMyJobs = [];    // flat array of all assignments for Camera/Schedule views
+
+  // ── Availability state ──
+  var _weeklyPattern = [1, 1, 1, 1, 1, 0, 0]; // Mon=0..Sun=6, 1=available
+  var _exceptions = {};           // { '2026-03-20': { available: false, note: 'Dentist' } }
+  var _calendarMonth = null;      // Date for viewed month
+  var _leaveStart = null;         // for leave range picker
+  var _editingWorkDays = false;
+  var _lastAssignmentCheck = null; // ISO timestamp
 
   // ── Tier system ──
   // TODO: Read from profile.trade_tier when backend field exists
@@ -1824,6 +1954,9 @@
     document.getElementById('bottomNav').style.display = 'flex';
     document.getElementById('viewLogin').classList.remove('active');
 
+    // Load availability data from localStorage
+    loadAvailabilityData();
+
     // Sync any pending offline notes
     syncPendingNotes();
 
@@ -2100,6 +2233,10 @@
 
     // Load weather async (non-blocking)
     loadWeather();
+
+    // Check for schedule notifications + update nav badge
+    checkScheduleNotifications();
+    updateScheduleBadge();
   }
 
   // ══════════════════════════════════════════════════
@@ -3691,55 +3828,358 @@
   // SCHEDULE VIEW — Chronological assignment list
   // ══════════════════════════════════════════════════
 
+  // ══════════════════════════════════════════════════
+  // AVAILABILITY DATA — localStorage + API sync
+  // ══════════════════════════════════════════════════
+
+  function loadAvailabilityData() {
+    try {
+      var p = localStorage.getItem('sw_avail_pattern');
+      if (p) _weeklyPattern = JSON.parse(p);
+    } catch (e) {}
+    try {
+      var x = localStorage.getItem('sw_avail_exceptions');
+      if (x) _exceptions = JSON.parse(x);
+    } catch (e) {}
+    try {
+      _lastAssignmentCheck = localStorage.getItem('sw_last_assignment_check') || null;
+    } catch (e) {}
+  }
+
+  function saveAvailabilityData() {
+    try {
+      localStorage.setItem('sw_avail_pattern', JSON.stringify(_weeklyPattern));
+      localStorage.setItem('sw_avail_exceptions', JSON.stringify(_exceptions));
+    } catch (e) {}
+    // TODO: api('set_availability', null, { pattern: _weeklyPattern, exceptions: _exceptions }) — sync to backend
+  }
+
+  // Map JS getDay (0=Sun) to our pattern index (0=Mon..6=Sun)
+  function jsToPatternIdx(jsDay) { return (jsDay + 6) % 7; }
+
+  function isDateAvailable(dateStr) {
+    if (_exceptions[dateStr]) return _exceptions[dateStr].available;
+    var d = new Date(dateStr + 'T00:00:00');
+    return _weeklyPattern[jsToPatternIdx(d.getDay())] === 1;
+  }
+
+  function isDateException(dateStr) { return !!_exceptions[dateStr]; }
+
+  // ══════════════════════════════════════════════════
+  // SCHEDULE VIEW — Availability + Calendar + Jobs
+  // ══════════════════════════════════════════════════
+
   function renderScheduleView() {
     var container = document.getElementById('scheduleContent');
-    var jobs = _cachedMyJobs || [];
-
-    if (jobs.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No upcoming jobs scheduled</p></div>';
-      return;
+    if (!_calendarMonth) {
+      var now = new Date();
+      _calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    // Sort by date
-    var sorted = jobs.slice().sort(function(a, b) {
-      return (a.scheduled_date || '').localeCompare(b.scheduled_date || '');
-    });
+    var html = '';
 
-    // Group by date
-    var grouped = {};
-    sorted.forEach(function(a) {
-      var d = a.scheduled_date || 'Unscheduled';
-      if (!grouped[d]) grouped[d] = [];
-      grouped[d].push(a);
-    });
+    // ── My Work Days ──
+    html += '<div class="avail-section">';
+    html += '  <h3>My Work Days</h3>';
+    html += '  <div class="avail-day-toggles" id="workDayToggles">';
+    var dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    for (var i = 0; i < 7; i++) {
+      var on = _weeklyPattern[i] === 1;
+      html += '<button class="avail-day-btn' + (on ? ' on' : '') + '" onclick="toggleWorkDay(' + i + ')">' + dayLabels[i] + '</button>';
+    }
+    html += '  </div>';
+    html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-top:6px">Tap to toggle your regular work days</div>';
+    html += '</div>';
 
-    var html = '<h3 style="margin-bottom:12px;color:var(--sw-dark)">My Schedule</h3>';
+    // ── Calendar ──
+    html += '<div class="avail-section">';
+    html += renderAvailCalendar();
+    // Leave range picker
+    html += '  <div class="leave-range-bar">';
+    html += '    <input type="date" id="leaveStart" placeholder="From">';
+    html += '    <input type="date" id="leaveEnd" placeholder="To">';
+    html += '    <button onclick="applyLeaveRange()">Set Leave</button>';
+    html += '  </div>';
+    html += '</div>';
 
-    Object.keys(grouped).forEach(function(date) {
-      html += '<div class="section-label">' + formatDate(date) + '</div>';
-      grouped[date].forEach(function(a) {
-        var job = a.jobs || {};
-        var type = job.type || 'patio';
-        html += '<div class="job-card" data-type="' + type + '" onclick="openJob(\'' + job.id + '\', \'' + a.id + '\')">';
-        html += '  <div class="job-card-top">';
-        html += '    <div>';
-        html += '      <div class="job-card-client">' + esc(job.client_name || 'Unknown') + '</div>';
-        html += '      <div class="job-card-address">' + esc(job.site_suburb || job.site_address || '');
-        if (job.job_number) html += ' <span style="color:var(--sw-mid);font-size:12px">' + esc(job.job_number) + '</span>';
-        html += '</div>';
-        html += '    </div>';
-        html += '    <span class="job-card-badge badge-' + type + '">' + type + '</span>';
-        html += '  </div>';
-        html += '  <div class="job-card-meta">';
-        if (a.start_time) html += '<span>' + a.start_time.slice(0, 5) + '</span>';
-        if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
-        html += '    <span class="status-pill status-' + (a.status || 'scheduled') + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
-        html += '  </div>';
-        html += '</div>';
-      });
-    });
+    // Inline note for exception (hidden by default)
+    html += '<div class="avail-note-inline" id="availNoteBox" style="display:none">';
+    html += '  <strong id="availNoteDate"></strong> — marked unavailable';
+    html += '  <input type="text" id="availNoteInput" placeholder="Reason (optional) — e.g. dentist, holiday" onkeydown="if(event.key===\'Enter\')saveAvailNote()">';
+    html += '  <div style="display:flex;gap:6px;margin-top:6px">';
+    html += '    <button class="btn btn-secondary btn-small" onclick="closeAvailNote()" style="flex:1">Skip</button>';
+    html += '    <button class="btn btn-primary btn-small" onclick="saveAvailNote()" style="flex:1">Save</button>';
+    html += '  </div>';
+    html += '</div>';
+
+    // ── My Schedule (upcoming jobs) ──
+    html += '<div class="avail-section">';
+    html += '  <h3>My Schedule</h3>';
+    html += renderMyScheduleCards();
+    html += '</div>';
 
     container.innerHTML = html;
+  }
+
+  function renderAvailCalendar() {
+    var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var y = _calendarMonth.getFullYear();
+    var m = _calendarMonth.getMonth();
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    var html = '<div class="avail-cal-nav">';
+    html += '  <button onclick="shiftCalMonth(-1)">&larr;</button>';
+    html += '  <span>' + months[m] + ' ' + y + '</span>';
+    html += '  <button onclick="shiftCalMonth(1)">&rarr;</button>';
+    html += '</div>';
+
+    html += '<div class="avail-cal-grid">';
+    // Header row
+    var hdrs = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    hdrs.forEach(function(h) { html += '<div class="avail-cal-hdr">' + h + '</div>'; });
+
+    // First day offset (Mon=0)
+    var firstDay = new Date(y, m, 1);
+    var offset = jsToPatternIdx(firstDay.getDay());
+    var daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    // Empty cells before first day
+    for (var e = 0; e < offset; e++) {
+      html += '<div class="cal-day cal-other"></div>';
+    }
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      var isPast = dateStr < todayStr;
+      var isToday = dateStr === todayStr;
+      var isException = isDateException(dateStr);
+      var available = isDateAvailable(dateStr);
+
+      var cls = 'cal-day';
+      if (available) cls += ' cal-available';
+      else if (isException) cls += ' cal-unavailable';
+      else cls += ' cal-off';
+      if (isException) cls += ' cal-exception';
+      if (isToday) cls += ' cal-today';
+      if (isPast) cls += ' cal-past';
+
+      html += '<div class="' + cls + '" onclick="toggleCalDay(\'' + dateStr + '\')">' + d + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  window.shiftCalMonth = function(dir) {
+    _calendarMonth.setMonth(_calendarMonth.getMonth() + dir);
+    renderScheduleView();
+  };
+
+  window.toggleWorkDay = function(idx) {
+    _weeklyPattern[idx] = _weeklyPattern[idx] === 1 ? 0 : 1;
+    saveAvailabilityData();
+    renderScheduleView();
+  };
+
+  window.toggleCalDay = function(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00');
+    var patternIdx = jsToPatternIdx(d.getDay());
+    var patternAvail = _weeklyPattern[patternIdx] === 1;
+
+    if (_exceptions[dateStr]) {
+      // Has exception — clear it to revert to pattern
+      delete _exceptions[dateStr];
+      saveAvailabilityData();
+      renderScheduleView();
+    } else if (patternAvail) {
+      // Pattern says available — mark unavailable, prompt for note
+      _exceptions[dateStr] = { available: false, note: '' };
+      saveAvailabilityData();
+      renderScheduleView();
+      showAvailNote(dateStr);
+    } else {
+      // Pattern says off — mark as available exception (working a day off)
+      _exceptions[dateStr] = { available: true };
+      saveAvailabilityData();
+      renderScheduleView();
+    }
+  };
+
+  var _activeNoteDate = null;
+  function showAvailNote(dateStr) {
+    _activeNoteDate = dateStr;
+    var box = document.getElementById('availNoteBox');
+    var label = document.getElementById('availNoteDate');
+    var input = document.getElementById('availNoteInput');
+    if (box && label && input) {
+      label.textContent = formatDate(dateStr);
+      input.value = (_exceptions[dateStr] && _exceptions[dateStr].note) || '';
+      box.style.display = 'block';
+      input.focus();
+    }
+  }
+
+  window.saveAvailNote = function() {
+    if (_activeNoteDate && _exceptions[_activeNoteDate]) {
+      var input = document.getElementById('availNoteInput');
+      _exceptions[_activeNoteDate].note = (input || {}).value || '';
+      saveAvailabilityData();
+    }
+    closeAvailNote();
+  };
+
+  window.closeAvailNote = function() {
+    _activeNoteDate = null;
+    var box = document.getElementById('availNoteBox');
+    if (box) box.style.display = 'none';
+  };
+
+  window.applyLeaveRange = function() {
+    var startEl = document.getElementById('leaveStart');
+    var endEl = document.getElementById('leaveEnd');
+    var start = startEl ? startEl.value : '';
+    var end = endEl ? endEl.value : '';
+    if (!start || !end || start > end) {
+      toast('Select a valid date range', true);
+      return;
+    }
+    var d = new Date(start + 'T00:00:00');
+    var endDate = new Date(end + 'T00:00:00');
+    var count = 0;
+    while (d <= endDate) {
+      var ds = d.toISOString().slice(0, 10);
+      _exceptions[ds] = { available: false, note: 'Leave' };
+      d.setDate(d.getDate() + 1);
+      count++;
+    }
+    saveAvailabilityData();
+    toast(count + ' day(s) marked as leave');
+    renderScheduleView();
+  };
+
+  function renderMyScheduleCards() {
+    var jobs = _cachedMyJobs || [];
+    if (jobs.length === 0) return '<div style="font-size:13px;color:var(--sw-text-sec)">No upcoming jobs</div>';
+
+    var todayStr = new Date().toISOString().slice(0, 10);
+    // Filter to today and future, sort by date
+    var upcoming = jobs.filter(function(a) { return (a.scheduled_date || '') >= todayStr; });
+    upcoming.sort(function(a, b) { return (a.scheduled_date || '').localeCompare(b.scheduled_date || ''); });
+
+    if (upcoming.length === 0) return '<div style="font-size:13px;color:var(--sw-text-sec)">No upcoming jobs</div>';
+
+    var html = '';
+    upcoming.forEach(function(a) {
+      var job = a.jobs || {};
+      // TODO: Check confirmation_status field if backend adds it — for now use status
+      var isConfirmed = a.status === 'confirmed' || a.status === 'in_progress' || a.status === 'complete';
+      var isTentative = a.status === 'scheduled';
+      var cardClass = isConfirmed ? 'sched-card sched-card-confirmed' : 'sched-card sched-card-tentative';
+
+      // Check availability conflict
+      var hasConflict = a.scheduled_date && !isDateAvailable(a.scheduled_date);
+
+      html += '<div class="' + cardClass + '" onclick="openJob(\'' + job.id + '\', \'' + a.id + '\')">';
+      html += '  <div style="display:flex;justify-content:space-between;align-items:start">';
+      html += '    <div>';
+      html += '      <div style="font-size:14px;font-weight:700;color:var(--sw-dark)">' + esc(job.client_name || 'Unknown') + '</div>';
+      html += '      <div style="font-size:12px;color:var(--sw-text-sec)">' + esc(job.site_suburb || job.site_address || '');
+      if (job.job_number) html += ' · ' + esc(job.job_number);
+      html += '</div>';
+      html += '    </div>';
+      html += '    <div style="text-align:right">';
+      html += '      <div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + formatDate(a.scheduled_date) + '</div>';
+      if (a.start_time) html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + a.start_time.slice(0, 5) + '</div>';
+      if (isTentative) html += '<div style="font-size:11px;color:var(--sw-yellow);font-weight:600">(tentative)</div>';
+      html += '    </div>';
+      html += '  </div>';
+      if (hasConflict) {
+        var note = _exceptions[a.scheduled_date] ? _exceptions[a.scheduled_date].note || '' : '';
+        html += '<div class="sched-conflict">Conflict — you\'re marked unavailable' + (note ? ' (' + esc(note) + ')' : '') + '</div>';
+      }
+      html += '</div>';
+    });
+    return html;
+  }
+
+  // ══════════════════════════════════════════════════
+  // SCHEDULE NOTIFICATIONS
+  // ══════════════════════════════════════════════════
+
+  function checkScheduleNotifications() {
+    var jobs = _cachedMyJobs || [];
+    if (jobs.length === 0) return;
+
+    var lastCheck = _lastAssignmentCheck;
+    var newItems = [];
+    jobs.forEach(function(a) {
+      if (a.updated_at && lastCheck && a.updated_at > lastCheck) {
+        newItems.push(a);
+      }
+    });
+
+    // Update last check time
+    var now = new Date().toISOString();
+    _lastAssignmentCheck = now;
+    try { localStorage.setItem('sw_last_assignment_check', now); } catch (e) {}
+
+    var banner = document.getElementById('notifBanner');
+    var countEl = document.getElementById('notifCount');
+    var detailsEl = document.getElementById('notifDetails');
+
+    if (newItems.length > 0 && banner && countEl && detailsEl) {
+      countEl.textContent = newItems.length;
+      banner.style.display = 'block';
+
+      var dHtml = '';
+      newItems.forEach(function(a) {
+        var job = a.jobs || {};
+        var label = (a.status === 'confirmed' || a.status === 'in_progress') ? 'Confirmed' : 'Scheduled';
+        dHtml += '<div>' + label + ': ' + esc(job.job_number || '') + ' at ' + esc(job.site_address || job.site_suburb || '') + ' — ' + formatDate(a.scheduled_date) + '</div>';
+      });
+      detailsEl.innerHTML = dHtml;
+    }
+  }
+
+  window.toggleNotifDetails = function() {
+    var el = document.getElementById('notifDetails');
+    var arrow = document.getElementById('notifArrow');
+    if (el) {
+      var show = el.style.display === 'none';
+      el.style.display = show ? 'block' : 'none';
+      if (arrow) arrow.innerHTML = show ? '&#9650;' : '&#9660;';
+    }
+  };
+
+  window.dismissNotifBanner = function() {
+    var banner = document.getElementById('notifBanner');
+    if (banner) banner.style.display = 'none';
+  };
+
+  function updateScheduleBadge() {
+    var badge = document.getElementById('scheduleBadge');
+    if (!badge) return;
+    var jobs = _cachedMyJobs || [];
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    // Count confirmed jobs this week (next 7 days)
+    var weekEnd = new Date();
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    var weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+    var count = 0;
+    jobs.forEach(function(a) {
+      if (a.scheduled_date && a.scheduled_date >= todayStr && a.scheduled_date <= weekEndStr) {
+        if (a.status === 'confirmed' || a.status === 'in_progress') count++;
+      }
+    });
+
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 
   // ══════════════════════════════════════════════════
@@ -5025,7 +5465,11 @@
   // TODO: ops-api?action=get_my_messages — Return job_events where type=sms_sent and user_id=me
   // TODO: ops-api?action=reassign_crew — Change user_id on job_assignments, check tier >= 3
   // TODO: ops-api?action=trade_job_detail — Return quoted_amount, invoiced_amount, estimated_hours when tier >= 3
+  // TODO: ops-api?action=set_availability — Accept weekly_pattern + exceptions object, store per user
+  // TODO: ops-api?action=get_availability — Return weekly_pattern + exceptions for current user
   // TODO: DB migration — Add trade_tier field to users table (1=installer, 2=senior, 3=manager)
+  // TODO: DB migration — Add trade_details JSONB to users (ABN, GST, bank, licence)
+  // TODO: DB migration — Add availability table (user_id, weekly_pattern JSONB, exceptions JSONB)
 })();
 </script>
 </body>
