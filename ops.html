@@ -2075,7 +2075,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Crew / Person</label>
-        <input type="text" class="form-input" id="assignCrew" placeholder="e.g. Team A">
+        <div id="assignCrewContainer"><input type="text" class="form-input" id="assignCrew" placeholder="Loading crew..."></div>
       </div>
     </div>
     <div class="form-group">
@@ -2697,6 +2697,52 @@ function opsPost(action, body) {
 }
 
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// CREW LIST — cached from list_users
+// ════════════════════════════════════════════════════════════
+
+var _crewList = [];  // [{ id, name, email, role, division }]
+
+async function loadCrewList() {
+  if (_crewList.length > 0) return;
+  try {
+    var data = await opsFetch('list_users');
+    _crewList = (data.users || []).map(function(u) {
+      var div = '';
+      if (u.role === 'installer' || u.role === 'lead_installer') div = 'trade';
+      if (u.email && u.email.indexOf('fenc') !== -1) div = 'fencing';
+      return { id: u.id, name: u.name || u.email.split('@')[0], email: u.email, role: u.role || '', division: div };
+    }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+  } catch (e) {
+    console.warn('Failed to load crew list:', e);
+  }
+}
+
+function renderCrewDropdown(selectId, selectedUserId) {
+  var html = '<select class="form-input" id="' + selectId + '" style="width:100%">';
+  html += '<option value="">Select crew member...</option>';
+  _crewList.forEach(function(u) {
+    var sel = u.id === selectedUserId ? ' selected' : '';
+    var label = u.name;
+    if (u.role && u.role !== 'estimator') label += ' (' + u.role.replace(/_/g, ' ') + ')';
+    html += '<option value="' + u.id + '" data-name="' + u.name.replace(/"/g, '&quot;') + '">' + label + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+function getCrewSelectName(selectId) {
+  var sel = document.getElementById(selectId);
+  if (!sel || !sel.value) return null;
+  var opt = sel.options[sel.selectedIndex];
+  return opt ? opt.getAttribute('data-name') : null;
+}
+
+function getCrewSelectId(selectId) {
+  var sel = document.getElementById(selectId);
+  return sel ? sel.value : null;
+}
+
 // VIEW SWITCHING
 // ════════════════════════════════════════════════════════════
 
@@ -3309,6 +3355,13 @@ function renderSwimlaneView(container, range) {
         crewMap[crew].events[dateStr].push({ ev: ev, pos: pos });
       }
     });
+  });
+
+  // Merge in all known crew members (even those without assignments this period)
+  _crewList.forEach(function(u) {
+    if (!crewMap[u.name]) {
+      crewMap[u.name] = { division: u.division || '', events: {} };
+    }
   });
 
   // Sort crew by division, then alphabetically; Unassigned last
@@ -6137,10 +6190,18 @@ function closeModal(id) {
 async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   document.getElementById('assignmentModal').classList.add('active');
   document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
-  if (preCrew) document.getElementById('assignCrew').value = preCrew;
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
   await loadPOJobList();
+  await loadCrewList();
+  // Render crew dropdown — preCrew can be a user ID or a name
+  var preCrewId = preCrew || '';
+  if (preCrewId && !_crewList.some(function(u) { return u.id === preCrewId; })) {
+    // It's a name, not an ID — find the matching user
+    var match = _crewList.find(function(u) { return u.name === preCrewId; });
+    preCrewId = match ? match.id : '';
+  }
+  document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', preCrewId);
   if (preSelectJobId) {
     selectJobPicker('assign', preSelectJobId);
   }
@@ -6359,6 +6420,8 @@ async function submitAssignment() {
   if (!jobId || !date) { alert('Please select a job and date.'); return; }
 
   try {
+    var crewUserId = getCrewSelectId('assignCrew');
+    var crewName = getCrewSelectName('assignCrew');
     await opsPost('create_assignment', {
       jobId: jobId,
       scheduledDate: date,
@@ -6366,14 +6429,15 @@ async function submitAssignment() {
       startTime: document.getElementById('assignStartTime').value || null,
       endTime: document.getElementById('assignEndTime').value || null,
       assignmentType: document.getElementById('assignType').value,
-      crewName: document.getElementById('assignCrew').value || null,
+      crewName: crewName || null,
+      userId: crewUserId || null,
       notes: document.getElementById('assignNotes').value || null,
     });
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
     document.getElementById('assignNotes').value = '';
-    document.getElementById('assignCrew').value = '';
+    document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
     // Refresh
     var activeView = document.querySelector('.view.active');
     if (activeView) {
@@ -8836,6 +8900,7 @@ function togglePOEmailThread(poId, toggleEl) {
 
 function initApp() {
   cloud = window.SECUREWORKS_CLOUD;
+  loadCrewList(); // Pre-cache crew list for dropdowns
   restoreTab();
   // Handle browser back/forward for job detail
   window.addEventListener('popstate', function() {
