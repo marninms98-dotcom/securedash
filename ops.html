@@ -2209,6 +2209,38 @@
   </div>
 </div>
 
+<!-- ══════════ PO EMAIL LOG MODAL ══════════ -->
+<div class="modal-overlay" id="poEmailLogModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Log Email</div>
+    <div class="form-group">
+      <label class="form-label">Supplier</label>
+      <input type="text" class="form-input" id="poEmailSupplier" readonly style="background:var(--sw-light);">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Direction</label>
+      <div style="display:flex;gap:8px;">
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+          <input type="radio" name="poEmailDir" value="sent" checked> Sent
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+          <input type="radio" name="poEmailDir" value="received"> Received
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Summary</label>
+      <textarea class="form-textarea" id="poEmailSummary" rows="3" placeholder="What was discussed..."></textarea>
+    </div>
+    <input type="hidden" id="poEmailPOId">
+    <input type="hidden" id="poEmailJobId">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('poEmailLogModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPOEmailLog()" style="background:var(--sw-purple);">Save Log</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ QUICK QUOTE MODAL ══════════ -->
 <div class="qq-overlay" id="qqOverlay" onclick="if(event.target===this)closeQuickQuote()">
   <div class="qq-modal">
@@ -4306,6 +4338,11 @@ function renderMaterialsKanban() {
       }
       html += '</div>';
 
+      // Log Email button
+      html += '<div style="margin-top:4px;text-align:right;">';
+      html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || '') + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Log Email</button>';
+      html += '</div>';
+
       html += '</div>';
     });
 
@@ -4566,6 +4603,7 @@ function formatEventType(type, detail) {
     'assignment_deleted': 'Assignment removed',
     'assignment_status_changed': 'Assignment ' + (detail?.new_status || 'updated'),
     'po_created': 'PO created' + (detail?.po_number ? ' (' + detail.po_number + ')' : ''),
+    'po_email_log': (detail?.direction === 'received' ? 'Email received' : 'Email sent') + (detail?.supplier ? ' — ' + detail.supplier : ''),
     'scope_saved': 'Scope saved',
     'note_added': 'Note added',
     'photo_uploaded': 'Photo uploaded',
@@ -4960,14 +4998,28 @@ function buildTimelineEvents(data) {
   // Job events
   (data.events || []).forEach(function(ev) {
     var label = formatEventType(ev.event_type, ev.detail_json);
+    // Format detail for display
+    var detailStr = '';
+    var d = ev.detail_json;
+    if (d && typeof d === 'object') {
+      if (ev.event_type === 'po_email_log') {
+        detailStr = (d.direction === 'received' ? 'Received: ' : 'Sent: ') + (d.summary || '');
+      } else if (d.from && d.to) {
+        detailStr = d.from + ' → ' + d.to;
+      } else {
+        detailStr = Object.entries(d).filter(function(p) { return p[1] && p[0] !== 'po_id'; }).map(function(p) { return p[0] + ': ' + p[1]; }).join(' | ');
+      }
+    } else if (d) {
+      detailStr = String(d);
+    }
     events.push({
       date: (ev.created_at || '').slice(0, 10),
       datetime: ev.created_at,
       label: label,
       by: ev.users?.name || '',
       type: ev.event_type,
-      detail: ev.detail_json,
-      source: 'event'
+      detail: detailStr,
+      source: ev.event_type === 'po_email_log' ? 'po' : 'event'
     });
   });
 
@@ -5224,6 +5276,22 @@ function renderBuildView(data) {
   });
   materialsHtml += '</div>';
   html += materialsHtml;
+
+  // PO list with Log Email buttons
+  if ((data.purchase_orders || []).length > 0) {
+    html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Purchase Orders (' + data.purchase_orders.length + ')</div>';
+    data.purchase_orders.forEach(function(po) {
+      html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
+      html += '<div style="flex:1;">';
+      html += '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ';
+      html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
+      html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
+      html += '</div>';
+      html += '<button onclick="openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || j.id || '') + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Log Email</button>';
+      html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
+      html += '</div>';
+    });
+  }
 
   // Assignments
   html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Crew Assignments (' + (data.assignments || []).length + ')</div>';
@@ -7493,6 +7561,48 @@ async function generateQuickQuotePDF(savedJob) {
   var filename = jobNum + '-quote-' + clientName.replace(/\s+/g, '-').toLowerCase() + '.pdf';
   doc.save(filename);
   showToast('PDF downloaded: ' + filename, 'success');
+}
+
+// ════════════════════════════════════════════════════════════
+// PO EMAIL LOG
+// ════════════════════════════════════════════════════════════
+
+function openPOEmailLog(poId, supplier, jobId) {
+  document.getElementById('poEmailPOId').value = poId;
+  document.getElementById('poEmailJobId').value = jobId || '';
+  document.getElementById('poEmailSupplier').value = supplier || '';
+  document.getElementById('poEmailSummary').value = '';
+  document.querySelector('input[name="poEmailDir"][value="sent"]').checked = true;
+  document.getElementById('poEmailLogModal').classList.add('active');
+}
+
+async function submitPOEmailLog() {
+  var poId = document.getElementById('poEmailPOId').value;
+  var jobId = document.getElementById('poEmailJobId').value;
+  var supplier = document.getElementById('poEmailSupplier').value;
+  var summary = document.getElementById('poEmailSummary').value.trim();
+  var direction = document.querySelector('input[name="poEmailDir"]:checked').value;
+
+  if (!summary) { showToast('Summary is required', 'warning'); return; }
+
+  try {
+    await opsPost('add_po_event', {
+      po_id: poId,
+      job_id: jobId || null,
+      event_type: 'po_email_log',
+      supplier: supplier,
+      summary: summary,
+      direction: direction,
+    });
+    closeModal('poEmailLogModal');
+    showToast('Email logged', 'success');
+    // Refresh current view if job detail is open
+    if (_currentJobId) {
+      openJobDetail(_currentJobId);
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
 }
 
 // ════════════════════════════════════════════════════════════
