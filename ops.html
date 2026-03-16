@@ -5546,8 +5546,8 @@ function renderOverviewView(data) {
   var marginPct = quoteVal > 0 ? (margin / quoteVal * 100).toFixed(0) : 0;
   var marginColor = marginPct >= 35 ? 'var(--sw-green)' : marginPct >= 25 ? 'var(--sw-yellow)' : 'var(--sw-red)';
   html += '<div style="display:flex;gap:16px;align-items:baseline;">';
-  html += '<span style="font-size:20px;font-weight:700;color:var(--sw-dark);font-family:var(--sw-font-num);">' + fmt + '</span>';
-  if (quoteVal > 0 && poCosts > 0) html += '<span style="font-size:13px;font-weight:600;color:' + marginColor + ';">' + marginPct + '% margin (' + fmt + ')</span>';
+  html += '<span style="font-size:20px;font-weight:700;color:var(--sw-dark);font-family:var(--sw-font-num);">' + fmt$(quoteVal) + '</span>';
+  if (quoteVal > 0 && poCosts > 0) html += '<span style="font-size:13px;font-weight:600;color:' + marginColor + ';">' + marginPct + '% margin (' + fmt$(margin) + ')</span>';
   html += '</div>';
   html += '<div style="margin-top:8px;font-size:11px;display:flex;gap:12px;">';
   if (j.type !== 'miscellaneous') {
@@ -5584,7 +5584,7 @@ function renderOverviewView(data) {
   var paidInvs = salesInvs.filter(function(i) { return i.status === 'PAID'; });
   var checkSteps = [
     { label: 'Lead received', done: !!j.created_at, date: j.created_at },
-    { label: 'Quote sent', done: !!j.quoted_at, date: j.quoted_at, extra: quoteVal > 0 ? fmt : '' },
+    { label: 'Quote sent', done: !!j.quoted_at, date: j.quoted_at, extra: quoteVal > 0 ? fmt$(quoteVal) : '' },
     { label: 'Quote accepted', done: !!j.accepted_at, date: j.accepted_at },
     { label: 'Materials ordered', done: (data.purchase_orders || []).length > 0, extra: (data.purchase_orders || []).length + ' POs' },
     { label: 'Crew assigned', done: (data.assignments || []).length > 0, extra: (data.assignments || []).length + ' assignments' },
