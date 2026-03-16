@@ -8525,7 +8525,7 @@ function renderMessageThread(messages, conversationId) {
   messages.forEach(function(msg) {
     var ts = msg.timestamp ? new Date(msg.timestamp) : null;
     var timeStr = ts ? ts.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + ' ' + ts.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '';
-    var type = (msg.type || 'SMS').toUpperCase();
+    var type = (msg.type || 'SMS').toUpperCase().replace('TYPE_', '');
 
     // Call logs
     if (type === 'CALL' || type === 'VOICEMAIL') {
