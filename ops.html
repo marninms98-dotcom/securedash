@@ -8366,6 +8366,25 @@ function renderCommsView(data) {
 
     // Compose area
     html += '<div class="comms-compose">';
+
+    // Sending identity — clear who the message comes from
+    var smsIdentity = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
+    var smsNumber = localStorage.getItem('sw_sms_number') || '0450 625 225';
+    var emailIdentity = localStorage.getItem('sw_email_identity') || 'admin@secureworkswa.com.au';
+    html += '<div id="commsSendingAs" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--sw-light);margin-bottom:8px;font-size:12px;">';
+    html += '<span style="color:var(--sw-mid);font-weight:600;">Sending as:</span>';
+    html += '<span id="commsSenderId" style="color:var(--sw-dark);font-weight:700;">' + escapeHtml(smsIdentity) + '</span>';
+    html += '<span id="commsSenderNum" style="color:var(--sw-mid);">(' + escapeHtml(smsNumber) + ')</span>';
+    html += '<button onclick="openCommsSenderSettings()" style="margin-left:auto;font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Change</button>';
+    html += '</div>';
+
+    // To: line — who we're contacting
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;margin-bottom:6px;font-size:12px;">';
+    html += '<span style="color:var(--sw-mid);font-weight:600;">To:</span>';
+    html += '<span style="color:var(--sw-dark);font-weight:600;">' + escapeHtml(j.client_name || '') + '</span>';
+    html += '<span id="commsToDetail" style="color:var(--sw-mid);">' + (j.client_phone || '') + '</span>';
+    html += '</div>';
+
     html += '<div class="comms-mode-tabs">';
     html += '<button class="comms-mode-tab active" onclick="setCommsMode(\'sms\')">SMS</button>';
     html += '<button class="comms-mode-tab" onclick="setCommsMode(\'email\')">Email</button>';
@@ -8388,6 +8407,7 @@ function renderCommsView(data) {
 
     // Email compose (hidden by default)
     html += '<div id="commsCompEmail" style="display:none;">';
+    html += '<input type="email" class="form-input" id="commsEmailTo" value="' + escapeHtml(j.client_email || '') + '" placeholder="Recipient email" style="margin-bottom:6px;">';
     html += '<input type="text" class="form-input" id="commsEmailSubject" placeholder="Subject" style="margin-bottom:6px;">';
     html += '<textarea id="commsEmailBody" class="form-textarea" style="width:100%;min-height:80px;resize:vertical;" placeholder="Email body..."></textarea>';
     html += '</div>';
@@ -8561,6 +8581,59 @@ function setCommsMode(mode) {
   });
   document.getElementById('commsCompSMS').style.display = mode === 'sms' ? 'block' : 'none';
   document.getElementById('commsCompEmail').style.display = mode === 'email' ? 'block' : 'none';
+
+  // Update sending identity + to line
+  var j = _currentJobData ? _currentJobData.job : {};
+  var senderId = document.getElementById('commsSenderId');
+  var senderNum = document.getElementById('commsSenderNum');
+  var toDetail = document.getElementById('commsToDetail');
+  if (mode === 'sms') {
+    if (senderId) senderId.textContent = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
+    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_sms_number') || '0450 625 225') + ')';
+    if (toDetail) toDetail.textContent = j.client_phone || '';
+  } else {
+    if (senderId) senderId.textContent = localStorage.getItem('sw_email_identity') || 'SecureWorks WA';
+    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_email_from') || 'admin@secureworkswa.com.au') + ')';
+    if (toDetail) toDetail.textContent = j.client_email || 'No email on file';
+  }
+}
+
+function openCommsSenderSettings() {
+  var smsName = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
+  var smsNum = localStorage.getItem('sw_sms_number') || '0450 625 225';
+  var emailFrom = localStorage.getItem('sw_email_from') || 'admin@secureworkswa.com.au';
+
+  var html = '<div class="modal-title">Sending Identity</div>';
+  html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px;">These control how the client sees your messages. GHL routes through your configured phone number.</div>';
+  html += '<div class="form-group"><label class="form-label">SMS Display Name</label><input type="text" class="form-input" id="settSmsName" value="' + escapeHtml(smsName) + '"></div>';
+  html += '<div class="form-group"><label class="form-label">SMS Number (display only)</label><input type="text" class="form-input" id="settSmsNum" value="' + escapeHtml(smsNum) + '"></div>';
+  html += '<div class="form-group"><label class="form-label">Email From Address (display only)</label><input type="text" class="form-input" id="settEmailFrom" value="' + escapeHtml(emailFrom) + '"></div>';
+  html += '<div class="modal-actions">';
+  html += '<button class="btn btn-secondary" onclick="closeModal(\'commsSenderModal\')">Cancel</button>';
+  html += '<button class="btn btn-primary" onclick="saveCommsSenderSettings()">Save</button>';
+  html += '</div>';
+
+  var modal = document.getElementById('commsSenderModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'commsSenderModal';
+    modal.innerHTML = '<div class="modal" style="max-width:380px;">' + html + '</div>';
+    document.body.appendChild(modal);
+  } else {
+    modal.querySelector('.modal').innerHTML = html;
+  }
+  modal.classList.add('active');
+}
+
+function saveCommsSenderSettings() {
+  localStorage.setItem('sw_sms_identity', document.getElementById('settSmsName').value);
+  localStorage.setItem('sw_sms_number', document.getElementById('settSmsNum').value);
+  localStorage.setItem('sw_email_from', document.getElementById('settEmailFrom').value);
+  closeModal('commsSenderModal');
+  showToast('Sender identity saved', 'success');
+  // Refresh the display
+  setCommsMode(_commsMode);
 }
 
 function updateCommsCharCount() {
