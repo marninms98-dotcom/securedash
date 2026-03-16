@@ -1041,6 +1041,133 @@
     .photo-grid img {
       background: var(--sw-light);
     }
+
+    /* ══════════════════════════════════════════════════
+       TIER BADGE
+       ══════════════════════════════════════════════════ */
+    .tier-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 20px; letter-spacing: 0.5px;
+    }
+    .tier-badge.tier-1 { background: var(--sw-light); color: var(--sw-text-sec); }
+    .tier-badge.tier-2 { background: #E8F4FD; color: #2980B9; }
+    .tier-badge.tier-3 { background: #FDE8E0; color: var(--sw-orange); }
+
+    /* ══════════════════════════════════════════════════
+       TIMER CARD
+       ══════════════════════════════════════════════════ */
+    .timer-card {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      padding: 16px; margin-bottom: 16px; box-shadow: var(--sw-shadow);
+      text-align: center;
+    }
+    .timer-elapsed {
+      font-size: 32px; font-weight: 800; color: var(--sw-dark);
+      font-variant-numeric: tabular-nums; margin: 8px 0;
+    }
+    .timer-label {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      color: var(--sw-text-sec); letter-spacing: 0.5px;
+    }
+    .timer-btn-row {
+      display: flex; gap: 8px; margin-top: 12px; justify-content: center;
+    }
+    .timer-btn {
+      flex: 1; max-width: 200px; padding: 12px 16px; border: none;
+      border-radius: 10px; font-size: 14px; font-weight: 700;
+      font-family: var(--sw-font); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .timer-btn-travel { background: var(--sw-green); color: #fff; }
+    .timer-btn-arrive { background: var(--sw-blue); color: #fff; }
+    .timer-btn-stop { background: var(--sw-red); color: #fff; }
+    .timer-btn-resume { background: var(--sw-orange); color: #fff; }
+    .timer-btn-done { background: var(--sw-dark); color: #fff; }
+    .timer-btn-skip { background: var(--sw-light); color: var(--sw-text-sec); font-size: 12px; }
+    .timer-btn:disabled { opacity: 0.5; pointer-events: none; }
+    .timer-auto-notify {
+      display: flex; align-items: center; gap: 6px; justify-content: center;
+      font-size: 12px; color: var(--sw-text-sec); margin-top: 10px;
+    }
+    .timer-auto-notify input[type="checkbox"] { accent-color: var(--sw-orange); }
+
+    /* ══════════════════════════════════════════════════
+       MESSAGE OVERLAY & TEMPLATES
+       ══════════════════════════════════════════════════ */
+    .msg-overlay {
+      position: fixed; inset: 0; z-index: 800;
+      background: var(--sw-bg); overflow-y: auto;
+      padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    }
+    .msg-overlay-header {
+      background: var(--sw-dark); color: #fff; padding: 14px 16px;
+      padding-top: max(14px, env(safe-area-inset-top));
+      display: flex; align-items: center; gap: 12px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .msg-overlay-header h3 { font-size: 16px; font-weight: 700; margin: 0; }
+    .msg-overlay-close {
+      background: none; border: none; color: #fff; font-size: 24px;
+      cursor: pointer; padding: 4px 8px;
+    }
+    .msg-template {
+      display: block; width: 100%; padding: 14px 16px;
+      background: var(--sw-card); border: 1px solid var(--sw-border);
+      border-radius: 10px; margin-bottom: 8px; font-size: 14px;
+      font-family: var(--sw-font); color: var(--sw-text);
+      cursor: pointer; text-align: left; transition: background 0.15s;
+    }
+    .msg-template:active { background: var(--sw-light); }
+    .msg-compose {
+      padding: 16px; background: var(--sw-card); border-radius: var(--sw-radius);
+      margin-top: 12px; box-shadow: var(--sw-shadow);
+    }
+    .msg-compose textarea {
+      width: 100%; padding: 12px; border: 1px solid var(--sw-border);
+      border-radius: 8px; font-size: 14px; font-family: var(--sw-font);
+      resize: vertical; min-height: 80px; margin-bottom: 8px;
+    }
+    .msg-sent-item {
+      padding: 10px 14px; background: var(--sw-light); border-radius: 10px;
+      margin-bottom: 6px; font-size: 13px;
+    }
+    .msg-sent-item .msg-sent-text { color: var(--sw-text); }
+    .msg-sent-item .msg-sent-meta {
+      font-size: 11px; color: var(--sw-text-sec); margin-top: 4px;
+    }
+
+    /* ══════════════════════════════════════════════════
+       CONVERSATION THREAD (Tier 3)
+       ══════════════════════════════════════════════════ */
+    .conv-thread {
+      max-height: 400px; overflow-y: auto; padding: 8px 0;
+    }
+    .conv-msg {
+      padding: 8px 12px; border-radius: 12px; margin-bottom: 6px;
+      max-width: 85%; font-size: 13px; line-height: 1.4;
+      word-wrap: break-word;
+    }
+    .conv-msg-other {
+      background: var(--sw-light); color: var(--sw-text);
+      margin-right: auto; border-bottom-left-radius: 4px;
+    }
+    .conv-msg-mine {
+      background: var(--sw-orange); color: #fff;
+      margin-left: auto; border-bottom-right-radius: 4px;
+    }
+    .conv-msg-meta {
+      font-size: 10px; opacity: 0.7; margin-top: 2px;
+    }
+
+    /* Financial display on job cards (Tier 3) */
+    .job-card-financial {
+      display: flex; gap: 12px; font-size: 11px; color: var(--sw-text-sec);
+      margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--sw-border);
+    }
+    .job-card-financial span strong {
+      color: var(--sw-dark); font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -1201,6 +1328,41 @@
   <div class="lightbox-counter" id="lightboxCounter"></div>
 </div>
 
+<!-- Message Overlay -->
+<div class="msg-overlay" id="messageOverlay" style="display:none">
+  <div class="msg-overlay-header">
+    <button class="msg-overlay-close" onclick="closeMessageOverlay()">&larr;</button>
+    <h3 id="msgOverlayTitle">Message Client</h3>
+  </div>
+  <div class="container" id="msgOverlayContent"></div>
+</div>
+
+<!-- Call Notes Modal -->
+<div class="confirm-overlay" id="callNotesOverlay" style="display:none">
+  <div class="confirm-box" style="max-width:400px">
+    <h3>Log Call Notes</h3>
+    <p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:8px">Add notes from your call?</p>
+    <textarea id="callNotesText" rows="3" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);resize:vertical;margin-bottom:12px" placeholder="Call notes..."></textarea>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" onclick="closeCallNotes()">Skip</button>
+      <button class="confirm-ok" onclick="submitCallNotes()">Save Notes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reassign Crew Modal -->
+<div class="confirm-overlay" id="reassignOverlay" style="display:none">
+  <div class="confirm-box" style="max-width:400px">
+    <h3>Reassign Crew Member</h3>
+    <p id="reassignLabel" style="font-size:13px;color:var(--sw-text-sec);margin-bottom:8px"></p>
+    <div id="reassignContent"></div>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" onclick="closeReassignModal()">Cancel</button>
+      <button class="confirm-ok" id="reassignSubmitBtn" onclick="submitReassignment()">Reassign</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
@@ -1243,6 +1405,92 @@
   var _reportDirty = false;       // unsaved changes in report form
   var _opsApiBase = '';
   var _cachedMyJobs = [];    // flat array of all assignments for Camera/Schedule views
+
+  // ── Tier system ──
+  // TODO: Read from profile.trade_tier when backend field exists
+  var _userTier = 1;
+
+  function determineTier(email) {
+    if (!email) return 1;
+    var local = email.split('@')[0].toLowerCase();
+    if (local === 'henry' || local === 'marnin') return 3;
+    if (local === 'jan' || local === 'isaac') return 2;
+    return 1;
+  }
+
+  function canMessage() { return _userTier >= 2; }
+  function canCall() { return _userTier >= 2; }
+  function canSeePricing() { return _userTier >= 2; }
+  function canSeeFullPricing() { return _userTier >= 3; }
+  function canSeeConversation() { return _userTier >= 3; }
+  function canReassignCrew() { return _userTier >= 3; }
+
+  function tierLabel(t) {
+    if (t === 3) return 'Division Manager';
+    if (t === 2) return 'Senior Installer';
+    return 'Installer';
+  }
+
+  // ── Time tracking state machine ──
+  var _timeTrackingState = 'idle'; // idle | travelling | on_site | stopped
+  var _travelStartTime = null;
+  var _onSiteStartTime = null;
+  var _stoppedTravelMins = 0;
+  var _stoppedOnsiteMins = 0;
+  var _timerTickInterval = null;
+  var _autoNotifyClient = true;
+
+  function loadTimerState() {
+    try {
+      var raw = localStorage.getItem('sw_timer_' + _currentJobId);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      _timeTrackingState = s.state || 'idle';
+      _travelStartTime = s.travelStart || null;
+      _onSiteStartTime = s.onSiteStart || null;
+      _stoppedTravelMins = s.travelMins || 0;
+      _stoppedOnsiteMins = s.onsiteMins || 0;
+    } catch (e) { /* ignore */ }
+  }
+
+  function saveTimerState() {
+    try {
+      localStorage.setItem('sw_timer_' + _currentJobId, JSON.stringify({
+        state: _timeTrackingState,
+        travelStart: _travelStartTime,
+        onSiteStart: _onSiteStartTime,
+        travelMins: _stoppedTravelMins,
+        onsiteMins: _stoppedOnsiteMins
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearTimerState() {
+    _timeTrackingState = 'idle';
+    _travelStartTime = null;
+    _onSiteStartTime = null;
+    _stoppedTravelMins = 0;
+    _stoppedOnsiteMins = 0;
+    try { localStorage.removeItem('sw_timer_' + _currentJobId); } catch (e) {}
+  }
+
+  function roundTo15(mins) {
+    return Math.round(mins / 15) * 15;
+  }
+
+  function formatElapsed(startISO) {
+    if (!startISO) return '0m';
+    var elapsed = Math.max(0, Math.round((Date.now() - new Date(startISO).getTime()) / 60000));
+    var h = Math.floor(elapsed / 60);
+    var m = elapsed % 60;
+    return (h > 0 ? h + 'h ' : '') + m + 'm';
+  }
+
+  function formatMins(mins) {
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    return (h > 0 ? h + 'h ' : '') + m + 'm';
+  }
 
   // ── Signature pad state ──
   var _sigCanvas = null;
@@ -1571,6 +1819,7 @@
     _user = profile;
     if (!_user) { console.error('[trade] onLogin: profile is null!'); return; }
     _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+    _userTier = determineTier(_user.email);
     document.getElementById('headerUser').textContent = _user.name || _user.email;
     document.getElementById('bottomNav').style.display = 'flex';
     document.getElementById('viewLogin').classList.remove('active');
@@ -1813,9 +2062,18 @@
         if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
         html += '    <span class="status-pill ' + statusClass + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
         html += '  </div>';
+        // Financial display (Tier 3 only)
+        if (canSeeFullPricing() && (job.quoted_amount || job.invoiced_amount)) {
+          html += '  <div class="job-card-financial">';
+          if (job.quoted_amount != null) html += '<span>Quoted: <strong>$' + Number(job.quoted_amount).toFixed(0) + '</strong></span>';
+          if (job.invoiced_amount != null) html += '<span>Invoiced: <strong>$' + Number(job.invoiced_amount).toFixed(0) + '</strong></span>';
+          var outstanding = (job.quoted_amount || 0) - (job.invoiced_amount || 0);
+          if (outstanding > 0) html += '<span>O/S: <strong>$' + outstanding.toFixed(0) + '</strong></span>';
+          html += '  </div>';
+        }
         // Quick action icons
         html += '  <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">';
-        if (job.client_phone) {
+        if (job.client_phone && canCall()) {
           html += '    <a href="tel:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--sw-light);border-radius:8px;text-decoration:none">';
           html += '      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
           html += '    </a>';
@@ -1906,7 +2164,7 @@
 
     var html = '';
 
-    // ── Assignment Status Bar + Time Tracking ──
+    // ── Assignment Status Bar ──
     if (myAssignment) {
       var curStatus = myAssignment.status || 'scheduled';
       var statusSteps = [
@@ -1924,38 +2182,33 @@
       });
       html += '</div>';
 
-      // Time tracking display
-      if (myAssignment.started_at) {
-        var timeHtml = '<div style="text-align:center;font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">';
-        if (myAssignment.completed_at) {
-          // Show total duration
-          var durationMins = Math.round((new Date(myAssignment.completed_at) - new Date(myAssignment.started_at)) / 60000);
-          var hrs = Math.floor(durationMins / 60);
-          var mins = durationMins % 60;
-          timeHtml += 'Time on site: <strong style="color:var(--sw-dark)">' + (hrs > 0 ? hrs + 'h ' : '') + mins + 'm</strong>';
-        } else {
-          // Show live timer (started_at stored, use data attribute for JS update)
-          timeHtml += 'On site since ' + new Date(myAssignment.started_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-          timeHtml += ' &mdash; <strong id="liveTimer" data-start="' + myAssignment.started_at + '" style="color:var(--sw-orange)"></strong>';
-        }
-        timeHtml += '</div>';
-        html += timeHtml;
-      }
+      // ── Time Tracking Card ──
+      loadTimerState();
+      html += '<div class="timer-card" id="timerCard">';
+      html += renderTimerCard(myAssignment, job);
+      html += '</div>';
     }
 
     // ── Client Card ──
     html += '<div class="detail-section">';
     html += '  <div class="client-name">' + esc(job.client_name || 'Unknown') + '</div>';
     html += '  <div class="client-address">' + esc(job.site_address || '') + (job.site_suburb ? ', ' + esc(job.site_suburb) : '') + '</div>';
-    if (job.client_email) {
+    if (job.client_email && canSeePricing()) {
       html += '  <div style="color:var(--sw-mid);font-size:13px;margin:4px 0">' + esc(job.client_email) + '</div>';
     }
     html += '  <div class="action-row">';
-    if (job.client_phone) {
-      html += '    <a href="tel:' + esc(job.client_phone) + '" class="action-btn">';
+    if (job.client_phone && canCall()) {
+      html += '    <a href="tel:' + esc(job.client_phone) + '" class="action-btn" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">';
       html += '      <svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
       html += '      Call';
+      // TODO: Replace tel: with ops-api?action=initiate_call — GHL bridge call through virtual number
       html += '    </a>';
+    }
+    if (canMessage() && job.ghl_contact_id) {
+      html += '    <button class="action-btn" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
+      html += '      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      html += '      Message';
+      html += '    </button>';
     }
     // Navigation link — Apple Maps on iOS, Google Maps elsewhere
     var navUrl;
@@ -1993,6 +2246,9 @@
         if (role) html += '<div class="crew-item-role">' + esc(role) + '</div>';
         html += '  </div>';
         html += '  <span class="status-pill status-' + (c.status || 'scheduled') + '">' + (c.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+        if (canReassignCrew()) {
+          html += '  <button onclick="event.stopPropagation();openReassignModal(\'' + c.id + '\', \'' + esc(userName) + '\')" style="background:none;border:1px solid var(--sw-border);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--sw-mid);cursor:pointer;margin-left:6px">Reassign</button>';
+        }
         html += '</div>';
       });
       html += '</div>';
@@ -2013,6 +2269,22 @@
             html += '</div>';
           }
         });
+      }
+      // Tier 2: Show trade rate estimate
+      if (canSeePricing() && _tradeRate && wo.estimated_hours) {
+        var estTotal = _tradeRate * wo.estimated_hours;
+        html += '<div style="margin-top:10px;padding:10px;background:#E8F4FD;border-radius:8px;font-size:13px;color:#2980B9">';
+        html += '  Your rate: <strong>$' + _tradeRate.toFixed(2) + '/hr</strong> x est. <strong>' + wo.estimated_hours + ' hours</strong> = <strong>$' + estTotal.toFixed(2) + '</strong>';
+        html += '</div>';
+      }
+      // Tier 3: Full trade costs
+      if (canSeeFullPricing()) {
+        if (wo.trade_cost != null) {
+          html += '<div style="margin-top:6px;padding:10px;background:var(--sw-light);border-radius:8px;font-size:13px;color:var(--sw-dark)">';
+          html += '  Trade cost: <strong>$' + Number(wo.trade_cost).toFixed(2) + '</strong>';
+          if (wo.crew_rates) html += ' · Crew rates: ' + esc(wo.crew_rates);
+          html += '</div>';
+        }
       }
       if (wo.special_instructions) {
         html += '<div style="margin-top:10px;padding:10px;background:var(--sw-light);border-radius:8px;font-size:13px">';
@@ -2232,6 +2504,53 @@
     html += '  </div>';
     html += '</div>';
 
+    // ── Conversation Thread (Tier 3 — Division Managers) ──
+    if (canSeeConversation() && job.ghl_contact_id) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Conversation</h3>';
+      html += '  <div id="convThread"><div style="font-size:13px;color:var(--sw-text-sec)">Loading messages...</div></div>';
+      html += '  <div style="display:flex;gap:6px;margin-top:8px">';
+      html += '    <input type="text" id="convInput" placeholder="Send a message..." style="flex:1;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font)">';
+      html += '    <button class="btn btn-primary btn-small" onclick="sendConvMessage(\'' + esc(job.ghl_contact_id) + '\')">Send</button>';
+      html += '  </div>';
+      html += '</div>';
+    }
+
+    // ── Financial Summary (Tier 3) ──
+    if (canSeeFullPricing()) {
+      var hasFinancials = job.quoted_amount != null || job.invoiced_amount != null;
+      if (hasFinancials) {
+        html += '<div class="detail-section">';
+        html += '  <h3>Financials</h3>';
+        html += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+        if (job.quoted_amount != null) {
+          html += '  <div style="padding:10px;background:var(--sw-light);border-radius:8px;text-align:center">';
+          html += '    <div style="font-size:11px;color:var(--sw-text-sec)">Quoted</div>';
+          html += '    <div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + Number(job.quoted_amount).toFixed(0) + '</div>';
+          html += '  </div>';
+        }
+        if (job.invoiced_amount != null) {
+          html += '  <div style="padding:10px;background:var(--sw-light);border-radius:8px;text-align:center">';
+          html += '    <div style="font-size:11px;color:var(--sw-text-sec)">Invoiced</div>';
+          html += '    <div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + Number(job.invoiced_amount).toFixed(0) + '</div>';
+          html += '  </div>';
+        }
+        html += '  </div>';
+        var outstanding = (job.quoted_amount || 0) - (job.invoiced_amount || 0);
+        if (outstanding > 0) {
+          html += '  <div style="margin-top:8px;padding:8px;background:#FDE8E0;border-radius:8px;text-align:center;font-size:13px;color:var(--sw-orange);font-weight:700">Outstanding: $' + outstanding.toFixed(0) + '</div>';
+        }
+        // PO values
+        var pos = data.purchaseOrders || [];
+        if (pos.length > 0) {
+          var poTotal = 0;
+          pos.forEach(function(po) { if (po.total) poTotal += Number(po.total); });
+          if (poTotal > 0) html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:6px">PO total: $' + poTotal.toFixed(2) + '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
     // ── Service Report Button ──
     html += '<div style="padding:8px 0 24px">';
     html += '  <button class="btn btn-primary" onclick="showView(\'report\')">';
@@ -2242,8 +2561,13 @@
 
     container.innerHTML = html;
 
-    // Start live timer if trade is currently on site
-    startLiveTimer();
+    // Start timer tick if active
+    startTimerTick();
+
+    // Load conversation thread async (Tier 3)
+    if (canSeeConversation() && job.ghl_contact_id) {
+      loadConversation(job.ghl_contact_id);
+    }
   }
 
   // Live timer updater — ticks every 30s while on job detail
@@ -2308,8 +2632,8 @@
           }
           b.disabled = false;
         });
-        // Start live timer if going on site
-        if (newStatus === 'in_progress') startLiveTimer();
+        // Start timer tick if going on site
+        if (newStatus === 'in_progress') startTimerTick();
       }).catch(function(err) {
         toast(friendlyError(err), true);
         buttons.forEach(function(b) { b.disabled = false; });
@@ -3590,6 +3914,7 @@
     html += '  <div style="font-size:14px;color:var(--sw-text-sec)">' + esc(_user.email || '') + '</div>';
     if (_user.phone) html += '<div style="font-size:14px;color:var(--sw-text-sec)">' + esc(_user.phone) + '</div>';
     if (_user.role) html += '<div style="font-size:12px;color:var(--sw-mid);text-transform:capitalize;margin-top:4px">' + esc(_user.role.replace(/_/g, ' ')) + '</div>';
+    html += '  <div style="margin-top:8px"><span class="tier-badge tier-' + _userTier + '">Tier ' + _userTier + ' — ' + esc(tierLabel(_userTier)) + '</span></div>';
     html += '</div>';
 
     // ── Hourly Rate ──
@@ -3614,7 +3939,7 @@
     html += '<button class="btn btn-danger" style="margin-top:24px" onclick="doLogout()">Sign Out</button>';
 
     // App version
-    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.2 · Trade Invoicing</div>';
+    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.3 · Tiers + Comms + Time Tracking</div>';
 
     container.innerHTML = html;
 
@@ -3682,6 +4007,400 @@
       if (status) { status.textContent = 'Updated just now'; status.style.color = 'var(--sw-green)'; }
     }).catch(function(err) {
       toast(friendlyError(err), true);
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // TIME TRACKING — State Machine + Timer UI
+  // ══════════════════════════════════════════════════
+
+  function renderTimerCard(myAssignment, job) {
+    var h = '';
+    var state = _timeTrackingState;
+
+    if (state === 'idle') {
+      h += '<div class="timer-label">Ready to start</div>';
+      h += '<div class="timer-btn-row">';
+      h += '  <button class="timer-btn timer-btn-travel" onclick="timerAction(\'start_travel\', \'' + myAssignment.id + '\')">';
+      h += '    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
+      h += '    Start Travel';
+      h += '  </button>';
+      h += '  <button class="timer-btn timer-btn-skip" onclick="timerAction(\'go_on_site\', \'' + myAssignment.id + '\')">';
+      h += '    On Site';
+      h += '  </button>';
+      h += '</div>';
+      if (canMessage()) {
+        var checked = _autoNotifyClient ? ' checked' : '';
+        h += '<label class="timer-auto-notify">';
+        h += '  <input type="checkbox" id="autoNotifyCheck"' + checked + ' onchange="_autoNotifyClient=this.checked"> Auto-notify client when travelling';
+        h += '</label>';
+      }
+    } else if (state === 'travelling') {
+      h += '<div class="timer-label">Travelling</div>';
+      h += '<div class="timer-elapsed" id="timerElapsed">' + formatElapsed(_travelStartTime) + '</div>';
+      h += '<div class="timer-btn-row">';
+      h += '  <button class="timer-btn timer-btn-arrive" onclick="timerAction(\'arrived\', \'' + myAssignment.id + '\')">';
+      h += '    Arrived';
+      h += '  </button>';
+      h += '</div>';
+    } else if (state === 'on_site') {
+      h += '<div class="timer-label">On Site</div>';
+      h += '<div class="timer-elapsed" id="timerElapsed">' + formatElapsed(_onSiteStartTime) + '</div>';
+      h += '<div class="timer-btn-row">';
+      h += '  <button class="timer-btn timer-btn-stop" onclick="timerAction(\'stop\', \'' + myAssignment.id + '\')">';
+      h += '    Stop';
+      h += '  </button>';
+      h += '</div>';
+    } else if (state === 'stopped') {
+      var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
+      var rounded = roundTo15(totalMins);
+      h += '<div class="timer-label">Stopped</div>';
+      h += '<div style="margin:8px 0">';
+      if (_stoppedTravelMins > 0) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Travel: ' + formatMins(_stoppedTravelMins) + '</div>';
+      h += '<div style="font-size:13px;color:var(--sw-text-sec)">On site: ' + formatMins(_stoppedOnsiteMins) + '</div>';
+      h += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-top:4px">Total: ' + formatMins(rounded) + ' (rounded to 15 min)</div>';
+      h += '</div>';
+      h += '<div class="timer-btn-row">';
+      h += '  <button class="timer-btn timer-btn-resume" onclick="timerAction(\'resume\', \'' + myAssignment.id + '\')">Resume</button>';
+      h += '  <button class="timer-btn timer-btn-done" onclick="timerAction(\'done\', \'' + myAssignment.id + '\')">Done for Today</button>';
+      h += '</div>';
+    }
+
+    return h;
+  }
+
+  function startTimerTick() {
+    clearInterval(_timerTickInterval);
+    if (_timeTrackingState === 'travelling' || _timeTrackingState === 'on_site') {
+      _timerTickInterval = setInterval(function() {
+        var el = document.getElementById('timerElapsed');
+        if (!el) { clearInterval(_timerTickInterval); return; }
+        var src = _timeTrackingState === 'travelling' ? _travelStartTime : _onSiteStartTime;
+        el.textContent = formatElapsed(src);
+      }, 10000);
+    }
+  }
+
+  window.timerAction = function(action, assignmentId) {
+    if (navigator.vibrate) navigator.vibrate(10);
+
+    if (action === 'start_travel') {
+      _timeTrackingState = 'travelling';
+      _travelStartTime = new Date().toISOString();
+      saveTimerState();
+      // Update assignment status to confirmed
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'confirmed' }).catch(function() {});
+      // GPS capture
+      captureGPS();
+      // Auto-SMS (Tier 2+)
+      if (canMessage() && _autoNotifyClient && _currentJob) {
+        var job = _currentJob.job;
+        if (job.ghl_contact_id) {
+          var firstName = (job.client_name || '').split(' ')[0] || 'there';
+          var msg = 'On my way — arriving in about 20 minutes';
+          // TODO: ops-api?action=send_sms — should log job_event, get_my_messages endpoint
+          api('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
+            toast('Auto-notified ' + firstName);
+          }).catch(function() { /* silently fail — edge function not ready yet */ });
+        }
+      }
+    } else if (action === 'go_on_site') {
+      _timeTrackingState = 'on_site';
+      _onSiteStartTime = new Date().toISOString();
+      saveTimerState();
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'in_progress' }).catch(function() {});
+      captureGPS();
+    } else if (action === 'arrived') {
+      // Stop travel timer, start on-site
+      _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
+      _timeTrackingState = 'on_site';
+      _onSiteStartTime = new Date().toISOString();
+      saveTimerState();
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'in_progress' }).catch(function() {});
+      captureGPS();
+      // Auto "arrived" SMS
+      if (canMessage() && _autoNotifyClient && _currentJob) {
+        var job = _currentJob.job;
+        if (job.ghl_contact_id) {
+          api('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).catch(function() {});
+        }
+      }
+    } else if (action === 'stop') {
+      _stoppedOnsiteMins = Math.round((Date.now() - new Date(_onSiteStartTime).getTime()) / 60000);
+      _timeTrackingState = 'stopped';
+      saveTimerState();
+    } else if (action === 'resume') {
+      _timeTrackingState = 'on_site';
+      _onSiteStartTime = new Date().toISOString();
+      saveTimerState();
+    } else if (action === 'done') {
+      var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
+      var rounded = roundTo15(totalMins);
+      var hours = (rounded / 60).toFixed(2);
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'complete' }).then(function() {
+        toast('Done — ' + formatMins(rounded) + ' logged');
+        clearTimerState();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+      });
+      captureGPS();
+    }
+
+    // Re-render timer card
+    var card = document.getElementById('timerCard');
+    if (card && _currentJob) {
+      var myAss = null;
+      var crew = _currentJob.crew || [];
+      for (var i = 0; i < crew.length; i++) {
+        if (crew[i].user_id === _user.id) { myAss = crew[i]; break; }
+      }
+      if (myAss) {
+        card.innerHTML = renderTimerCard(myAss, _currentJob.job);
+        startTimerTick();
+      }
+    }
+  };
+
+  function captureGPS() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        // GPS captured — could log to backend if needed
+      }, function() {}, { timeout: 5000, maximumAge: 60000 });
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  // CLIENT MESSAGING (Tier 2+)
+  // ══════════════════════════════════════════════════
+
+  var _msgJobId = null;
+  var _msgContactId = null;
+  var _msgClientName = '';
+
+  window.openMessageOverlay = function(jobId, contactId, clientName) {
+    _msgJobId = jobId;
+    _msgContactId = contactId;
+    _msgClientName = clientName;
+    var firstName = (clientName || '').split(' ')[0] || 'Client';
+
+    document.getElementById('msgOverlayTitle').textContent = 'Message ' + firstName;
+
+    var templates = [
+      'On my way — arriving in about 20 minutes',
+      "We've arrived at your property",
+      'Quick update — ',
+      'All done for today',
+      'Job complete — thanks for choosing SecureWorks!'
+    ];
+
+    var html = '<div style="padding:16px 0">';
+    html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:8px">Quick Messages</div>';
+    templates.forEach(function(t, i) {
+      var isCustom = t.indexOf('Quick update') === 0;
+      if (isCustom) return; // handled by compose
+      var msg = t.replace('{firstName}', firstName);
+      html += '<button class="msg-template" onclick="sendTemplateMessage(\'' + esc(msg.replace(/'/g, "\\'")) + '\')">';
+      html += '  <span style="margin-right:6px">&#9993;</span> ' + esc(msg);
+      html += '</button>';
+    });
+    html += '</div>';
+
+    // Custom compose
+    html += '<div class="msg-compose">';
+    html += '  <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:6px">Custom Message</div>';
+    html += '  <textarea id="msgCustomText" placeholder="Type a message to ' + esc(firstName) + '..."></textarea>';
+    html += '  <button class="btn btn-primary" style="width:100%" onclick="sendCustomMessage()">Send Message</button>';
+    html += '</div>';
+
+    // My sent messages
+    html += '<div style="margin-top:16px">';
+    html += '  <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:8px">My Messages</div>';
+    html += '  <div id="mySentMessages"><div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div></div>';
+    html += '</div>';
+
+    document.getElementById('msgOverlayContent').innerHTML = html;
+    document.getElementById('messageOverlay').style.display = 'block';
+
+    // Load sent messages
+    loadMyMessages();
+  };
+
+  window.closeMessageOverlay = function() {
+    document.getElementById('messageOverlay').style.display = 'none';
+    _msgJobId = null;
+    _msgContactId = null;
+  };
+
+  window.sendTemplateMessage = function(message) {
+    if (!_msgContactId || !_msgJobId) return;
+    toast('Sending...');
+    // TODO: ops-api?action=send_sms — should log job_event with user_id
+    api('send_sms', null, { contactId: _msgContactId, message: message, jobId: _msgJobId }).then(function() {
+      toast('Message sent');
+      if (navigator.vibrate) navigator.vibrate(50);
+      loadMyMessages();
+    }).catch(function(err) {
+      toast('Could not send — ' + friendlyError(err), true);
+    });
+  };
+
+  window.sendCustomMessage = function() {
+    var text = (document.getElementById('msgCustomText') || {}).value;
+    if (!text || !text.trim()) { toast('Enter a message', true); return; }
+    sendTemplateMessage(text.trim());
+    document.getElementById('msgCustomText').value = '';
+  };
+
+  function loadMyMessages() {
+    var container = document.getElementById('mySentMessages');
+    if (!container || !_msgJobId) return;
+    // TODO: ops-api?action=get_my_messages endpoint
+    api('get_my_messages', { jobId: _msgJobId }).then(function(data) {
+      var msgs = data.messages || [];
+      if (msgs.length === 0) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No messages sent yet</div>';
+        return;
+      }
+      var html = '';
+      msgs.forEach(function(m) {
+        html += '<div class="msg-sent-item">';
+        html += '  <div class="msg-sent-text">' + esc(m.message || m.text || '') + '</div>';
+        html += '  <div class="msg-sent-meta">' + timeAgo(m.created_at) + '</div>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }).catch(function() {
+      container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Coming soon</div>';
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // CLIENT CALLING — Post-call notes (Tier 2+)
+  // ══════════════════════════════════════════════════
+
+  var _callNotesJobId = null;
+  var _callInitiatedAt = null;
+
+  window.scheduleCallNotes = function(jobId) {
+    _callNotesJobId = jobId;
+    _callInitiatedAt = Date.now();
+    // TODO: Replace tel: link with ops-api?action=initiate_call — GHL Calling API bridge through virtual number
+  };
+
+  // Post-call detection: when user returns from call, offer to log notes
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && _callInitiatedAt) {
+      var elapsed = Date.now() - _callInitiatedAt;
+      _callInitiatedAt = null;
+      // Only show if they were away for at least 5 seconds (likely a real call)
+      if (elapsed > 5000 && _callNotesJobId) {
+        document.getElementById('callNotesOverlay').style.display = 'flex';
+        document.getElementById('callNotesText').value = '';
+        document.getElementById('callNotesText').focus();
+      }
+    }
+  });
+
+  window.closeCallNotes = function() {
+    document.getElementById('callNotesOverlay').style.display = 'none';
+    _callNotesJobId = null;
+  };
+
+  window.submitCallNotes = function() {
+    var text = (document.getElementById('callNotesText') || {}).value;
+    if (!text || !text.trim()) { closeCallNotes(); return; }
+    api('add_note', null, { jobId: _callNotesJobId, text: 'Call notes: ' + text.trim() }).then(function() {
+      toast('Call notes saved');
+      closeCallNotes();
+    }).catch(function(err) {
+      toast(friendlyError(err), true);
+      closeCallNotes();
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // CONVERSATION THREAD (Tier 3 — Division Managers)
+  // ══════════════════════════════════════════════════
+
+  function loadConversation(contactId) {
+    var container = document.getElementById('convThread');
+    if (!container) return;
+    // TODO: ops-api?action=get_conversation — GHL Conversations API — last 20 messages for contact
+    api('get_conversation', { contactId: contactId }).then(function(data) {
+      var msgs = data.messages || [];
+      if (msgs.length === 0) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No messages yet</div>';
+        return;
+      }
+      var html = '<div class="conv-thread">';
+      msgs.forEach(function(m) {
+        var isMine = m.direction === 'outbound' || (m.user_id && m.user_id === _user.id);
+        html += '<div class="conv-msg ' + (isMine ? 'conv-msg-mine' : 'conv-msg-other') + '">';
+        html += esc(m.body || m.message || '');
+        html += '<div class="conv-msg-meta">' + timeAgo(m.dateAdded || m.created_at) + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+      // Scroll to bottom
+      var thread = container.querySelector('.conv-thread');
+      if (thread) thread.scrollTop = thread.scrollHeight;
+    }).catch(function() {
+      container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Coming soon</div>';
+    });
+  }
+
+  window.sendConvMessage = function(contactId) {
+    var input = document.getElementById('convInput');
+    var text = (input || {}).value;
+    if (!text || !text.trim() || !_currentJobId) return;
+    input.value = '';
+    // TODO: ops-api?action=send_sms — should log as conversation message
+    api('send_sms', null, { contactId: contactId, message: text.trim(), jobId: _currentJobId }).then(function() {
+      toast('Sent');
+      loadConversation(contactId);
+    }).catch(function(err) {
+      toast('Could not send — ' + friendlyError(err), true);
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // CREW REASSIGNMENT (Tier 3)
+  // ══════════════════════════════════════════════════
+
+  var _reassignAssignmentId = null;
+
+  window.openReassignModal = function(assignmentId, currentName) {
+    _reassignAssignmentId = assignmentId;
+    document.getElementById('reassignLabel').textContent = 'Reassigning: ' + currentName;
+    document.getElementById('reassignContent').innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Loading crew list...</div>';
+    document.getElementById('reassignOverlay').style.display = 'flex';
+
+    // TODO: ops-api?action=reassign_crew — change user_id on job_assignments, check tier >= 3
+    // For now, show a simple dropdown with known crew
+    var html = '<select id="reassignSelect" style="width:100%;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font)">';
+    html += '  <option value="">Select crew member...</option>';
+    html += '</select>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:6px">Crew list will load from backend when available</div>';
+    document.getElementById('reassignContent').innerHTML = html;
+  };
+
+  window.closeReassignModal = function() {
+    document.getElementById('reassignOverlay').style.display = 'none';
+    _reassignAssignmentId = null;
+  };
+
+  window.submitReassignment = function() {
+    var select = document.getElementById('reassignSelect');
+    var newUserId = select ? select.value : '';
+    if (!newUserId) { toast('Select a crew member', true); return; }
+    // TODO: ops-api?action=reassign_crew
+    api('reassign_crew', null, { assignmentId: _reassignAssignmentId, newUserId: newUserId }).then(function() {
+      toast('Crew reassigned');
+      closeReassignModal();
+      if (_currentJobId) window.loadJobDetail(_currentJobId);
+    }).catch(function(err) {
+      toast('Could not reassign — ' + friendlyError(err), true);
     });
   };
 
@@ -4222,6 +4941,17 @@
     var banner = document.getElementById('installBanner');
     if (banner) banner.style.display = 'none';
   }
+
+  // ══════════════════════════════════════════════════
+  // EDGE FUNCTION TODOs — v1.3 Tier System + Comms
+  // ══════════════════════════════════════════════════
+  // TODO: ops-api?action=send_sms — Accept jobId + contactId + message, log as job_event with user_id
+  // TODO: ops-api?action=initiate_call — GHL Calling API — bridge call through virtual number
+  // TODO: ops-api?action=get_conversation — GHL Conversations API — last 20 messages for contact
+  // TODO: ops-api?action=get_my_messages — Return job_events where type=sms_sent and user_id=me
+  // TODO: ops-api?action=reassign_crew — Change user_id on job_assignments, check tier >= 3
+  // TODO: ops-api?action=trade_job_detail — Return quoted_amount, invoiced_amount, estimated_hours when tier >= 3
+  // TODO: DB migration — Add trade_tier field to users table (1=installer, 2=senior, 3=manager)
 })();
 </script>
 </body>
