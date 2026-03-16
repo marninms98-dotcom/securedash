@@ -8320,6 +8320,23 @@ async function markPOPaid(poId) {
 var _commsMode = 'sms'; // 'sms' | 'email'
 var _commsGHLBase = window.SUPABASE_URL + '/functions/v1/ghl-proxy';
 
+// GHL phone numbers — auto-select by job type
+var SW_PHONE_NUMBERS = [
+  { number: '+61489267771', display: '0489 267 771', label: 'SecureWorks Group Admin', types: [] },
+  { number: '+61489267772', display: '0489 267 772', label: 'SecureWorks Fencing Sales', types: ['fencing'] },
+  { number: '+61489267774', display: '0489 267 774', label: 'SecureWorks Patios', types: ['patio', 'decking'] },
+  { number: '+61489267776', display: '0489 267 776', label: 'SecureWorks Group Ops', types: ['miscellaneous'] },
+  { number: '+61489267778', display: '0489 267 778', label: 'SecureWorks Fencing Mgmt', types: [] },
+];
+
+function getCommsNumberForJob(job) {
+  var jobType = (job && job.type) || '';
+  for (var i = 0; i < SW_PHONE_NUMBERS.length; i++) {
+    if (SW_PHONE_NUMBERS[i].types.indexOf(jobType) >= 0) return SW_PHONE_NUMBERS[i];
+  }
+  return SW_PHONE_NUMBERS[0]; // Default: Group Admin
+}
+
 var COMMS_TEMPLATES = {
   scheduled:   'Hi {firstName}, your {jobType} project at {address} is scheduled for {date}. Our team will arrive between 7–8am. Please ensure clear access to the work area. Thanks, SecureWorks WA',
   materials:   'Hi {firstName}, materials are arriving for your {jobType} project at {address}. Build is on track. Thanks, SecureWorks WA',
@@ -8367,15 +8384,16 @@ function renderCommsView(data) {
     // Compose area
     html += '<div class="comms-compose">';
 
-    // Sending identity — clear who the message comes from
-    var smsIdentity = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-    var smsNumber = localStorage.getItem('sw_sms_number') || '0489 267 771';
-    var emailIdentity = localStorage.getItem('sw_email_identity') || 'admin@secureworkswa.com.au';
-    html += '<div id="commsSendingAs" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--sw-light);margin-bottom:8px;font-size:12px;">';
-    html += '<span style="color:var(--sw-mid);font-weight:600;">Sending as:</span>';
-    html += '<span id="commsSenderId" style="color:var(--sw-dark);font-weight:700;">' + escapeHtml(smsIdentity) + '</span>';
-    html += '<span id="commsSenderNum" style="color:var(--sw-mid);">(' + escapeHtml(smsNumber) + ')</span>';
-    html += '<button onclick="openCommsSenderSettings()" style="margin-left:auto;font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Change</button>';
+    // Sending identity — auto-select number by job type
+    var autoNum = getCommsNumberForJob(j);
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--sw-light);margin-bottom:8px;font-size:12px;">';
+    html += '<span style="color:var(--sw-mid);font-weight:600;">From:</span>';
+    html += '<select id="commsSenderSelect" style="font-size:12px;font-weight:600;color:var(--sw-dark);border:1px solid var(--sw-border);border-radius:3px;padding:3px 8px;background:var(--sw-card);flex:1;">';
+    SW_PHONE_NUMBERS.forEach(function(pn) {
+      var sel = pn.number === autoNum.number ? ' selected' : '';
+      html += '<option value="' + pn.number + '"' + sel + '>' + escapeHtml(pn.label) + ' — ' + pn.display + '</option>';
+    });
+    html += '</select>';
     html += '</div>';
 
     // To: line — who we're contacting
@@ -8582,20 +8600,10 @@ function setCommsMode(mode) {
   document.getElementById('commsCompSMS').style.display = mode === 'sms' ? 'block' : 'none';
   document.getElementById('commsCompEmail').style.display = mode === 'email' ? 'block' : 'none';
 
-  // Update sending identity + to line
+  // Update To: line for SMS vs Email
   var j = _currentJobData ? _currentJobData.job : {};
-  var senderId = document.getElementById('commsSenderId');
-  var senderNum = document.getElementById('commsSenderNum');
   var toDetail = document.getElementById('commsToDetail');
-  if (mode === 'sms') {
-    if (senderId) senderId.textContent = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_sms_number') || '0489 267 771') + ')';
-    if (toDetail) toDetail.textContent = j.client_phone || '';
-  } else {
-    if (senderId) senderId.textContent = localStorage.getItem('sw_email_identity') || 'SecureWorks WA';
-    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_email_from') || 'admin@secureworkswa.com.au') + ')';
-    if (toDetail) toDetail.textContent = j.client_email || 'No email on file';
-  }
+  if (toDetail) toDetail.textContent = mode === 'sms' ? (j.client_phone || '') : (j.client_email || 'No email on file');
 }
 
 function openCommsSenderSettings() {
