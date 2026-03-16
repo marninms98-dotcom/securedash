@@ -1284,6 +1284,36 @@
     }
 
     /* ══════════════════════════════════════════════════
+       JOB SEARCH & FILTER
+       ══════════════════════════════════════════════════ */
+    .job-search-bar {
+      margin-bottom: 12px;
+    }
+    .job-search-bar input {
+      width: 100%; padding: 10px 14px; border: 2px solid var(--sw-border);
+      border-radius: 10px; font-size: 14px; font-family: var(--sw-font);
+      background: var(--sw-card); color: var(--sw-text);
+      transition: border-color 0.15s;
+    }
+    .job-search-bar input:focus {
+      outline: none; border-color: var(--sw-mid);
+    }
+    .job-filter-chips {
+      display: flex; gap: 6px; margin-top: 8px; overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .filter-chip {
+      padding: 6px 14px; border: 1px solid var(--sw-border); border-radius: 20px;
+      font-size: 12px; font-weight: 600; font-family: var(--sw-font);
+      background: var(--sw-card); color: var(--sw-text-sec);
+      cursor: pointer; white-space: nowrap; transition: all 0.15s;
+      min-height: 32px;
+    }
+    .filter-chip.active {
+      background: var(--sw-dark); color: #fff; border-color: var(--sw-dark);
+    }
+
+    /* ══════════════════════════════════════════════════
        JOB COMPLETION WIZARD
        ══════════════════════════════════════════════════ */
     .wiz-overlay {
@@ -1451,8 +1481,20 @@
   <div class="pull-indicator" id="pullIndicator">
     <span id="pullText">Pull to refresh</span>
   </div>
-  <div class="container" id="myJobsList">
-    <div class="loading-screen"><div class="spinner"></div>Loading your jobs...</div>
+  <div class="container">
+    <div class="job-search-bar" id="jobSearchBar" style="display:none">
+      <input type="text" id="jobSearchInput" placeholder="Search jobs — name, suburb, job number..." oninput="filterMyJobs()">
+      <div class="job-filter-chips">
+        <button class="filter-chip active" data-filter="all" onclick="setJobFilter('all')">All</button>
+        <button class="filter-chip" data-filter="today" onclick="setJobFilter('today')">Today</button>
+        <button class="filter-chip" data-filter="thisWeek" onclick="setJobFilter('thisWeek')">This Week</button>
+        <button class="filter-chip" data-filter="active" onclick="setJobFilter('active')">Active</button>
+        <button class="filter-chip" data-filter="complete" onclick="setJobFilter('complete')">Completed</button>
+      </div>
+    </div>
+    <div id="myJobsList">
+      <div class="loading-screen"><div class="spinner"></div>Loading your jobs...</div>
+    </div>
   </div>
 </div>
 
@@ -2237,9 +2279,54 @@
     return 'https://www.google.com/maps/dir/?api=1&destination=' + dest;
   }
 
+  // ── Job Search & Filter State ──
+  var _jobFilter = 'all';
+  var _lastJobData = null;
+
+  window.setJobFilter = function(f) {
+    _jobFilter = f;
+    document.querySelectorAll('.filter-chip').forEach(function(c) {
+      c.classList.toggle('active', c.getAttribute('data-filter') === f);
+    });
+    if (_lastJobData) renderMyJobs(_lastJobData);
+  };
+
+  window.filterMyJobs = function() {
+    if (_lastJobData) renderMyJobs(_lastJobData);
+  };
+
+  function matchesSearch(a, query) {
+    if (!query) return true;
+    var job = a.jobs || {};
+    var haystack = [
+      job.client_name || '',
+      job.site_suburb || '',
+      job.site_address || '',
+      job.job_number || '',
+      job.type || '',
+      a.crew_name || ''
+    ].join(' ').toLowerCase();
+    return query.split(' ').every(function(w) { return haystack.indexOf(w) !== -1; });
+  }
+
+  function matchesFilter(a, filter) {
+    if (filter === 'all') return true;
+    if (filter === 'active') return a.status !== 'complete';
+    if (filter === 'complete') return a.status === 'complete';
+    // today/thisWeek are handled by section filtering in render
+    return true;
+  }
+
   function renderMyJobs(data) {
+    _lastJobData = data;
     var container = document.getElementById('myJobsList');
     var html = '';
+
+    // Show search bar once data is loaded
+    var searchBar = document.getElementById('jobSearchBar');
+    if (searchBar) searchBar.style.display = 'block';
+
+    var query = ((document.getElementById('jobSearchInput') || {}).value || '').toLowerCase().trim();
 
     // Cache all assignments for Camera/Schedule views
     _cachedMyJobs = [];
@@ -2247,9 +2334,9 @@
       (data[k] || []).forEach(function(a) { _cachedMyJobs.push(a); });
     });
 
-    // ── Today's Summary Card ──
+    // ── Today's Summary Card (hide when searching/filtering) ──
     var todayJobs = data.today || [];
-    if (todayJobs.length > 0) {
+    if (todayJobs.length > 0 && !query && _jobFilter === 'all') {
       var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
       var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       var now = new Date();
@@ -2285,9 +2372,17 @@
     sections.forEach(function(sec) {
       var items = data[sec.key] || [];
       if (items.length === 0) return;
+      // Apply filter: if filter is 'today' only show today section, 'thisWeek' only today+thisWeek
+      if (_jobFilter === 'today' && sec.key !== 'today') return;
+      if (_jobFilter === 'thisWeek' && sec.key !== 'today' && sec.key !== 'thisWeek') return;
+      // Apply search + status filter
+      var filtered = items.filter(function(a) {
+        return matchesSearch(a, query) && matchesFilter(a, _jobFilter);
+      });
+      if (filtered.length === 0) return;
       hasAny = true;
-      html += '<div class="section-label">' + sec.label + '</div>';
-      items.forEach(function(a) {
+      html += '<div class="section-label">' + sec.label + ' (' + filtered.length + ')</div>';
+      filtered.forEach(function(a) {
         var job = a.jobs || {};
         var type = job.type || 'patio';
         var statusClass = 'status-' + (a.status || 'scheduled');
