@@ -8330,11 +8330,8 @@ var SW_PHONE_NUMBERS = [
 ];
 
 function getCommsNumberForJob(job) {
-  var jobType = (job && job.type) || '';
-  for (var i = 0; i < SW_PHONE_NUMBERS.length; i++) {
-    if (SW_PHONE_NUMBERS[i].types.indexOf(jobType) >= 0) return SW_PHONE_NUMBERS[i];
-  }
-  return SW_PHONE_NUMBERS[0]; // Default: Group Admin
+  // Ops dashboard always sends from the Ops number
+  return SW_PHONE_NUMBERS.find(function(p) { return p.number === '+61489267776'; }) || SW_PHONE_NUMBERS[0];
 }
 
 var COMMS_TEMPLATES = {
