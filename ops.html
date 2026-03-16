@@ -8167,7 +8167,11 @@ function renderCommsView(data) {
   html += '<div class="comms-header">';
   if (j.client_phone) {
     html += '<span class="phone-num">' + j.client_phone + '</span>';
-    html += '<a href="tel:' + j.client_phone + '" class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</a>';
+    if (_isMobile) {
+      html += '<a href="tel:' + j.client_phone + '" class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</a>';
+    } else {
+      html += '<button class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</button>';
+    }
   }
   html += '<span style="flex:1;"></span>';
   if (j.ghl_contact_id) {
@@ -8411,10 +8415,117 @@ function addOptimisticMessage(body, type, subject) {
   setTimeout(function() { div.style.opacity = '1'; var meta = div.querySelector('.comms-msg-meta'); if (meta) meta.textContent = timeStr + ' &middot; Sent'; }, 2000);
 }
 
-// ── Call Logging ──
+// ── Call System (Bridge on desktop, tel: on mobile) ──
+var _isMobile = ('ontouchstart' in window) || window.innerWidth < 768;
+
 function scheduleCallLog() {
-  // Listen for visibility change (user returns from phone app)
-  document.addEventListener('visibilitychange', _onCallReturn, { once: true });
+  if (!_currentJobData) return;
+  var j = _currentJobData.job;
+
+  if (_isMobile) {
+    // Mobile: use tel: link (already navigating) + log on return
+    document.addEventListener('visibilitychange', _onCallReturn, { once: true });
+  } else {
+    // Desktop: show bridge calling modal
+    openCallBridgeModal(j);
+  }
+}
+
+function openCallBridgeModal(j) {
+  var userPhone = localStorage.getItem('sw_my_phone') || '';
+  var clientPhone = j.client_phone || '';
+  var firstName = (j.client_name || '').split(' ')[0] || 'client';
+
+  var html = '<div class="modal-title">Call ' + escapeHtml(j.client_name || 'Client') + '</div>';
+  html += '<div style="margin-bottom:12px;font-size:13px;color:var(--sw-text-sec);">You\'ll receive a call on your phone that connects you to the client.</div>';
+  html += '<div class="form-group"><label class="form-label">Client Number</label><input type="text" class="form-input" value="' + escapeHtml(clientPhone) + '" readonly style="background:var(--sw-light);"></div>';
+  html += '<div class="form-group"><label class="form-label">Your Phone Number</label><input type="tel" class="form-input" id="callBridgeUserPhone" value="' + escapeHtml(userPhone) + '" placeholder="04XX XXX XXX"></div>';
+  html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:12px;"><a href="#" onclick="event.preventDefault();document.getElementById(\'callSettingsRow\').style.display=\'block\';">Settings</a></div>';
+  html += '<div id="callSettingsRow" style="display:none;margin-bottom:12px;"><label class="form-label">Save as my default number</label><button class="btn btn-secondary btn-sm" onclick="localStorage.setItem(\'sw_my_phone\',document.getElementById(\'callBridgeUserPhone\').value);showToast(\'Saved\',\'success\');">Save</button></div>';
+  html += '<div id="callBridgeStatus" style="display:none;text-align:center;padding:16px;font-size:13px;color:var(--sw-mid);"></div>';
+  html += '<div class="modal-actions" id="callBridgeActions">';
+  html += '<button class="btn btn-secondary" onclick="closeModal(\'callBridgeModal\')">Cancel</button>';
+
+  // If bridge calling isn't available yet, offer fallback
+  html += '<button class="btn btn-cta" onclick="startBridgeCall()" style="background:var(--sw-green);border-color:var(--sw-green);">Start Call</button>';
+  html += '</div>';
+
+  // Create or update the modal
+  var modal = document.getElementById('callBridgeModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'callBridgeModal';
+    modal.innerHTML = '<div class="modal" style="max-width:400px;">' + html + '</div>';
+    document.body.appendChild(modal);
+  } else {
+    modal.querySelector('.modal').innerHTML = html;
+  }
+  modal.classList.add('active');
+}
+
+async function startBridgeCall() {
+  var j = _currentJobData?.job;
+  if (!j) return;
+  var userPhone = document.getElementById('callBridgeUserPhone').value.trim();
+  if (!userPhone) { showToast('Enter your phone number', 'warning'); return; }
+
+  // Save phone for next time
+  localStorage.setItem('sw_my_phone', userPhone);
+
+  var statusEl = document.getElementById('callBridgeStatus');
+  var actionsEl = document.getElementById('callBridgeActions');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<div>Connecting...</div><button class="btn btn-secondary btn-sm" onclick="closeModal(\'callBridgeModal\')" style="margin-top:8px;">Cancel</button>';
+  actionsEl.style.display = 'none';
+
+  try {
+    var resp = await fetch(_commsGHLBase + '?action=initiate_call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contactId: j.ghl_contact_id,
+        toNumber: j.client_phone,
+        userPhone: userPhone,
+      }),
+    });
+    var data = await resp.json();
+
+    if (data.success) {
+      statusEl.innerHTML = '<div style="color:var(--sw-green);font-weight:600;">Call connected</div><div style="font-size:11px;margin-top:4px;">Your phone should be ringing...</div>';
+      // After a delay, show call notes prompt
+      setTimeout(function() {
+        closeModal('callBridgeModal');
+        promptCallNotes();
+      }, 5000);
+    } else {
+      // Fallback: copy number + tel link
+      statusEl.innerHTML = '<div style="color:var(--sw-yellow);">Bridge calling not available yet</div>' +
+        '<div style="margin-top:8px;font-size:13px;">Call directly: <a href="tel:' + j.client_phone + '" style="font-weight:600;color:var(--sw-dark);">' + j.client_phone + '</a></div>' +
+        '<button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText(\'' + j.client_phone + '\');showToast(\'Copied\',\'success\')" style="margin-top:6px;">Copy Number</button>' +
+        '<button class="btn btn-secondary btn-sm" onclick="closeModal(\'callBridgeModal\');promptCallNotes()" style="margin-top:6px;">Log Call Notes</button>';
+    }
+  } catch (e) {
+    statusEl.innerHTML = '<div style="color:var(--sw-red);">Connection failed</div>' +
+      '<div style="margin-top:8px;font-size:13px;">Call directly: <a href="tel:' + j.client_phone + '">' + j.client_phone + '</a></div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText(\'' + j.client_phone + '\');showToast(\'Copied\',\'success\')" style="margin-top:6px;">Copy Number</button>';
+  }
+}
+
+function promptCallNotes() {
+  if (!_currentJobData) return;
+  var note = prompt('Log call notes? (leave blank to skip)');
+  if (note !== null && note.trim()) {
+    opsPost('add_note', {
+      job_id: _currentJobData.job.id,
+      note: 'Phone call: ' + note.trim(),
+      event_type: 'call_logged',
+    }).then(function() {
+      showToast('Call logged', 'success');
+      var cid = _currentJobData?.job?.ghl_contact_id;
+      if (cid) sessionStorage.removeItem('sw_convo_' + cid);
+    }).catch(function() {});
+  }
 }
 
 function _onCallReturn() {
@@ -8422,26 +8533,8 @@ function _onCallReturn() {
     document.addEventListener('visibilitychange', _onCallReturn, { once: true });
     return;
   }
-  // Small delay to let the UI settle
-  setTimeout(function() {
-    if (!_currentJobData) return;
-    var note = prompt('Log call notes? (leave blank to skip)');
-    if (note !== null && note.trim()) {
-      opsPost('add_note', {
-        job_id: _currentJobData.job.id,
-        note: 'Phone call: ' + note.trim(),
-        event_type: 'call_logged',
-      }).then(function() {
-        showToast('Call logged', 'success');
-        // Clear convo cache
-        var cid = _currentJobData?.job?.ghl_contact_id;
-        if (cid) sessionStorage.removeItem('sw_convo_' + cid);
-      }).catch(function() {});
-    }
-  }, 500);
+  setTimeout(function() { promptCallNotes(); }, 500);
 }
-
-// TODO: Future: GHL virtual number routing via initiate_call action
 
 // ════════════════════════════════════════════════════════════
 // PO EMAIL LOG
