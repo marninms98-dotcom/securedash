@@ -171,6 +171,52 @@
     .today-card-btn.green { background: var(--sw-green); color: #fff; border-color: var(--sw-green); }
     .today-card-btn.outline { background: var(--sw-card); color: var(--sw-text); }
 
+    /* AI Alerts Panel */
+    .ai-alerts-panel { margin-bottom: 20px; }
+    .ai-alert-narrative {
+      padding: 16px; background: var(--sw-card); border-radius: 8px;
+      box-shadow: var(--sw-shadow); margin-bottom: 12px;
+      border-left: 4px solid var(--sw-orange);
+      font-size: 14px; line-height: 1.6; color: var(--sw-text);
+    }
+    .ai-alert-narrative .narrative-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--sw-orange); margin-bottom: 6px;
+    }
+    .ai-alert-card {
+      background: var(--sw-card); border-radius: 6px; padding: 12px 14px;
+      box-shadow: var(--sw-shadow); margin-bottom: 6px;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .ai-alert-card.red { border-left: 4px solid var(--sw-red); }
+    .ai-alert-card.amber { border-left: 4px solid #D97706; }
+    .ai-alert-icon {
+      width: 28px; height: 28px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+    .ai-alert-icon.red { background: rgba(231,76,60,0.1); color: var(--sw-red); }
+    .ai-alert-icon.amber { background: rgba(217,119,6,0.1); color: #D97706; }
+    .ai-alert-body { flex: 1; min-width: 0; }
+    .ai-alert-title { font-size: 13px; font-weight: 600; color: var(--sw-text); }
+    .ai-alert-detail { font-size: 12px; color: var(--sw-text-sec); margin-top: 2px; line-height: 1.4; }
+    .ai-alert-action { font-size: 11px; color: var(--sw-mid); margin-top: 4px; font-style: italic; }
+    .ai-alert-dismiss {
+      padding: 4px 10px; font-size: 11px; border: 1px solid var(--sw-border);
+      border-radius: 4px; background: var(--sw-light); color: var(--sw-text-sec);
+      cursor: pointer; white-space: nowrap; flex-shrink: 0; min-height: 28px;
+    }
+    .ai-alert-dismiss:hover { background: var(--sw-border); }
+    .ai-alerts-toggle {
+      font-size: 12px; color: var(--sw-mid); cursor: pointer; padding: 6px 0;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .ai-alert-green {
+      padding: 14px 16px; background: #E8F8EF; border-radius: 8px;
+      border-left: 4px solid var(--sw-green); font-size: 14px; color: #15803d;
+      margin-bottom: 12px;
+    }
+
     /* ── Section Heading ── */
     .section-heading {
       font-size: 14px;
@@ -1653,6 +1699,16 @@
         </div>
       </div>
 
+      <!-- AI Alerts Panel -->
+      <div id="aiAlertsPanel" class="ai-alerts-panel" style="display:none;">
+        <div id="aiNarrative"></div>
+        <div id="aiRedAlerts"></div>
+        <div id="aiAmberToggle" class="ai-alerts-toggle" style="display:none;" onclick="toggleAmberAlerts()">
+          <span id="amberToggleIcon">&#9662;</span> <span id="amberToggleText">Show amber alerts</span>
+        </div>
+        <div id="aiAmberAlerts" style="display:none;"></div>
+      </div>
+
       <div class="stat-grid" id="todayStats">
         <div class="stat-card" id="statJobsWeek">
           <div class="stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
@@ -2608,6 +2664,10 @@
 var cloud = null;
 // Demo mode removed — all data from live API
 var _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+var _digestBase = window.SUPABASE_URL + '/functions/v1/daily-digest';
+var _digestCache = null;
+var _digestCacheTime = 0;
+var _amberExpanded = false;
 var _calView = 'crew'; // 'crew', 'week', or 'month'
 var _unschedJobs = []; // Unscheduled jobs for crew sidebar
 var _calDate = new Date(); // current focus date for calendar
@@ -2856,6 +2916,100 @@ document.addEventListener('click', function(e) {
 // TODAY TAB
 // ════════════════════════════════════════════════════════════
 
+async function loadAiAlerts() {
+  try {
+    // Cache for 30 minutes
+    if (_digestCache && Date.now() - _digestCacheTime < 30 * 60 * 1000) {
+      renderAiAlerts(_digestCache);
+      return;
+    }
+
+    var resp = await fetch(_digestBase, {
+      headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY }
+    });
+    if (!resp.ok) throw new Error('Digest API error: ' + resp.status);
+    var digest = await resp.json();
+    _digestCache = digest;
+    _digestCacheTime = Date.now();
+    renderAiAlerts(digest);
+  } catch (e) {
+    console.error('loadAiAlerts error:', e);
+    // Don't show panel if digest fails — non-critical
+  }
+}
+
+function renderAiAlerts(digest) {
+  var panel = document.getElementById('aiAlertsPanel');
+  if (!digest || !digest.alerts) return;
+
+  var alerts = digest.alerts || [];
+  var narrative = digest.ai_narrative || digest.summary_text || '';
+  var redAlerts = alerts.filter(function(a) { return a.severity === 'critical'; });
+  var amberAlerts = alerts.filter(function(a) { return a.severity === 'warning'; });
+
+  // If no alerts and no narrative, show green "all clear"
+  if (alerts.length === 0) {
+    document.getElementById('aiNarrative').innerHTML = '<div class="ai-alert-green">&#9989; All clear — no issues detected this morning.' + (narrative ? ' ' + narrative : '') + '</div>';
+    panel.style.display = 'block';
+    return;
+  }
+
+  // Render narrative
+  var narHtml = '';
+  if (narrative) {
+    narHtml = '<div class="ai-alert-narrative"><div class="narrative-label">AI Morning Brief</div>' + narrative + '</div>';
+  }
+  document.getElementById('aiNarrative').innerHTML = narHtml;
+
+  // Render red alerts (always visible)
+  var redHtml = '';
+  redAlerts.forEach(function(a) {
+    redHtml += renderAlertCard(a, 'red');
+  });
+  document.getElementById('aiRedAlerts').innerHTML = redHtml;
+
+  // Render amber alerts (collapsed by default)
+  if (amberAlerts.length > 0) {
+    var amberHtml = '';
+    amberAlerts.forEach(function(a) {
+      amberHtml += renderAlertCard(a, 'amber');
+    });
+    document.getElementById('aiAmberAlerts').innerHTML = amberHtml;
+    document.getElementById('aiAmberToggle').style.display = 'flex';
+    document.getElementById('amberToggleText').textContent = amberAlerts.length + ' amber alert' + (amberAlerts.length > 1 ? 's' : '');
+  }
+
+  panel.style.display = 'block';
+}
+
+function renderAlertCard(alert, severity) {
+  var icon = severity === 'red' ? '&#128308;' : '&#128992;';
+  var impact = alert.data && (alert.data.total_value || alert.data.total) ? ' — ' + fmt$(alert.data.total_value || alert.data.total) + ' at risk' : '';
+  return '<div class="ai-alert-card ' + severity + '">' +
+    '<div class="ai-alert-icon ' + severity + '">' + icon + '</div>' +
+    '<div class="ai-alert-body">' +
+      '<div class="ai-alert-title">' + (alert.title || alert.message || '') + impact + '</div>' +
+      '<div class="ai-alert-detail">' + (alert.detail || '') + '</div>' +
+      '<div class="ai-alert-action">' + (alert.action || alert.recommended_action || '') + '</div>' +
+    '</div>' +
+    '<button class="ai-alert-dismiss" onclick="dismissAlert(this, \'' + (alert.id || '') + '\')">Dismiss</button>' +
+  '</div>';
+}
+
+function toggleAmberAlerts() {
+  _amberExpanded = !_amberExpanded;
+  document.getElementById('aiAmberAlerts').style.display = _amberExpanded ? 'block' : 'none';
+  document.getElementById('amberToggleIcon').innerHTML = _amberExpanded ? '&#9652;' : '&#9662;';
+}
+
+function dismissAlert(btn, alertId) {
+  btn.closest('.ai-alert-card').style.display = 'none';
+  if (alertId) {
+    // Fire-and-forget dismiss to ai_alerts table via ops-api
+    opsPost('dismiss_alert', { alert_id: alertId }).catch(function() {});
+  }
+}
+
 async function loadToday() {
   try {
     // Fetch summary + pipeline + POs in parallel (2 calls, max efficiency)
@@ -2872,6 +3026,8 @@ async function loadToday() {
     renderPipelineOverview(data.stat_cards.pipeline);
     // Feature 2: Trigger morning brief (non-blocking)
     loadMorningBrief();
+    // AI alerts from daily-digest
+    loadAiAlerts();
   } catch (e) {
     console.error('loadToday error:', e);
   }
