@@ -1963,6 +1963,12 @@
         <button class="btn btn-primary btn-sm" onclick="openPOModal()">+ New PO</button>
       </div>
 
+      <!-- Pending Price Reviews -->
+      <div id="pendingPricesPanel" style="display:none; margin-bottom:20px;">
+        <div class="section-heading">Supplier Price Updates <span class="badge" id="pendingPriceCount">0</span></div>
+        <div id="pendingPricesList"></div>
+      </div>
+
       <!-- Threshold alerts -->
       <div id="matAlerts" style="margin-bottom:8px;"></div>
 
@@ -4599,9 +4605,65 @@ async function loadMaterials() {
     var data = await opsFetch('list_pos');
     _allPOs = data.purchase_orders || [];
     renderMaterialsKanban();
+    loadPendingPrices();
   } catch (e) {
     console.error('loadMaterials error:', e);
   }
+}
+
+async function loadPendingPrices() {
+  try {
+    var data = await opsFetch('pending_prices');
+    var prices = data.pending_prices || [];
+    var panel = document.getElementById('pendingPricesPanel');
+    var list = document.getElementById('pendingPricesList');
+    var badge = document.getElementById('pendingPriceCount');
+
+    if (prices.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    badge.textContent = prices.length;
+    var html = '';
+    prices.forEach(function(p) {
+      html += '<div class="today-action-card action" id="price-' + p.id + '" style="margin-bottom:6px;">';
+      html += '<div class="today-card-main">';
+      html += '<div class="today-card-title">' + (p.supplier_name || '') + ' — ' + (p.item_description || '').substring(0, 60) + '</div>';
+      html += '<div class="today-card-detail">' + (p.material_category || 'uncategorized') + (p.material_code ? ' · ' + p.material_code : '') + ' · ' + (p.unit || '') + '</div>';
+      html += '<div class="today-card-meta">$' + Number(p.unit_price || 0).toFixed(2) + ' per ' + (p.unit || 'unit') + '</div>';
+      html += '</div>';
+      html += '<button class="today-card-btn green" onclick="confirmPriceItem(\'' + p.id + '\')">Confirm</button>';
+      html += '<button class="today-card-btn outline" onclick="dismissPriceItem(\'' + p.id + '\')">Dismiss</button>';
+      html += '</div>';
+    });
+    list.innerHTML = html;
+    panel.style.display = 'block';
+  } catch (e) {
+    console.error('loadPendingPrices error:', e);
+  }
+}
+
+function confirmPriceItem(id) {
+  document.getElementById('price-' + id).style.opacity = '0.5';
+  opsPost('confirm_price', { ledger_id: id }).then(function() {
+    document.getElementById('price-' + id).style.display = 'none';
+    showToast('Price confirmed', 'success');
+  }).catch(function(e) {
+    document.getElementById('price-' + id).style.opacity = '1';
+    showToast('Failed to confirm: ' + e.message, 'error');
+  });
+}
+
+function dismissPriceItem(id) {
+  var reason = prompt('Reason for dismissal? (optional)');
+  document.getElementById('price-' + id).style.opacity = '0.5';
+  opsPost('dismiss_price', { ledger_id: id, reason: reason || '' }).then(function() {
+    document.getElementById('price-' + id).style.display = 'none';
+    showToast('Price dismissed', 'info');
+  }).catch(function(e) {
+    document.getElementById('price-' + id).style.opacity = '1';
+  });
 }
 
 // ── Materials Advanced Filter State ──
