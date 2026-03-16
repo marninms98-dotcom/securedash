@@ -13,7 +13,7 @@
     window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
   </script>
   <!-- jsPDF (for Quick Quote PDF) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <!-- Shared modules -->
   <script src="shared/brand.js"></script>
   <script src="shared/cloud.js"></script>
@@ -5297,11 +5297,8 @@ async function openJobDetail(jobId) {
 
   // Show loading
   document.getElementById('jdHealthTop').innerHTML = '<div class="loading" style="padding:8px;">Loading...</div>';
-  document.getElementById('jdStepper').innerHTML = '';
-  document.getElementById('jdStageDays').innerHTML = '';
-  document.getElementById('jdProfitRow').innerHTML = '';
-  document.getElementById('jdAlerts').innerHTML = '';
-  document.getElementById('jdTimeline').innerHTML = '';
+  var _clrIds = ['jdOverview','jdMoney','jdBuild','jdFiles','jdComms','jdHistory'];
+  _clrIds.forEach(function(id) { var el = document.getElementById(id); if (el) el.innerHTML = ''; });
 
   try {
     var data = await opsFetch('job_detail', { jobId: jobId });
@@ -5686,8 +5683,8 @@ function renderTimelineView(data) {
 
   html += '</div>';
 
-  // Pagination — show first 30, then "Show more"
-  document.getElementById('jdTimeline').innerHTML = html;
+  var tlEl = document.getElementById('jdTimeline') || document.getElementById('jdHistory');
+  if (tlEl) tlEl.innerHTML = html;
 }
 
 function buildTimelineEvents(data) {
