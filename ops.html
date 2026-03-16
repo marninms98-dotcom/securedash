@@ -5871,6 +5871,13 @@ function renderMoneyView(data) {
       html += '</div></div>';
     });
   }
+  // Invoice action buttons
+  html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">';
+  html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
+  if (j.status === 'accepted' || j.status === 'scheduled') {
+    html += '<button class="btn btn-secondary btn-sm" onclick="openDepositModal()">+ Deposit Invoice</button>';
+  }
+  html += '</div>';
   html += '</div>';
 
   // Costs column
@@ -5901,6 +5908,9 @@ function renderMoneyView(data) {
       html += '</div></div>';
     });
   }
+
+  // PO action button
+  html += '<div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="closeJobDetail();openPOModal(\'' + j.id + '\')">+ New PO</button></div>';
 
   // Xero project
   if (data.xero_project) {
@@ -5958,7 +5968,7 @@ function renderBuildView(data) {
   }
 
   // Materials readiness
-  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Materials Readiness</div>';
+  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">Materials Readiness <button class="btn btn-secondary btn-sm" onclick="closeJobDetail();openPOModal(\'' + j.id + '\')" style="font-size:10px;">+ New PO</button></div>';
   var categories = getMaterialCategories(j);
   var materialsHtml = '<div class="jd-materials-grid">';
   categories.forEach(function(cat) {
@@ -5993,7 +6003,7 @@ function renderBuildView(data) {
   }
 
   // Assignments
-  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Crew Assignments (' + (data.assignments || []).length + ')</div>';
+  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">Crew Assignments (' + (data.assignments || []).length + ') <button class="btn btn-secondary btn-sm" onclick="openActionSheet(\'Assign\')" style="font-size:10px;">+ Assign Crew</button></div>';
   if ((data.assignments || []).length > 0) {
     data.assignments.forEach(function(a) {
       html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
