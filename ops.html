@@ -1075,49 +1075,7 @@
     }
     .jd-quick-btn:hover { background: var(--sw-light); border-color: var(--sw-mid); color: var(--sw-text); }
 
-    /* Stepper */
-    .jd-stepper-row {
-      display: flex; align-items: center; gap: 0;
-      padding: 8px 20px;
-      overflow-x: auto;
-      border-top: 1px solid var(--sw-border);
-    }
-    .jd-step {
-      display: flex; align-items: center; gap: 0;
-      font-size: 11px; font-weight: 500; color: var(--sw-text-sec);
-      white-space: nowrap; cursor: pointer;
-    }
-    .jd-step-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--sw-border); flex-shrink: 0;
-      transition: all 0.15s;
-    }
-    .jd-step.done .jd-step-dot { background: var(--sw-green); }
-    .jd-step.current .jd-step-dot { background: var(--sw-orange); width: 12px; height: 12px; box-shadow: 0 0 0 3px rgba(241,90,41,0.2); }
-    .jd-step.future .jd-step-dot { background: var(--sw-border); }
-    .jd-step-line { width: 20px; height: 2px; background: var(--sw-border); flex-shrink: 0; }
-    .jd-step.done + .jd-step .jd-step-line,
-    .jd-step.done .jd-step-line { background: var(--sw-green); }
-    .jd-step-label { margin-left: 4px; margin-right: 4px; }
-    .jd-step.current .jd-step-label { color: var(--sw-orange); font-weight: 700; }
-    .jd-step.done .jd-step-label { color: var(--sw-green); }
-    .jd-stage-days { padding: 0 20px 4px; font-size: 11px; color: var(--sw-text-sec); }
-
-    /* Profitability bar */
-    .jd-profit-row {
-      display: flex; align-items: center; gap: 16px;
-      padding: 6px 20px 8px;
-      font-size: 13px;
-      border-top: 1px solid var(--sw-border);
-    }
-    .jd-profit-item { display: flex; align-items: center; gap: 4px; }
-    .jd-profit-label { color: var(--sw-text-sec); font-size: 12px; }
-    .jd-profit-value { font-weight: 700; }
-    .jd-cost-bar {
-      flex: 1; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden;
-      max-width: 200px;
-    }
-    .jd-cost-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    /* Stepper + profitability bar CSS removed — replaced by Overview tab checklist */
 
     /* Alerts */
     .jd-alerts {
@@ -1375,9 +1333,7 @@
     @media (max-width: 768px) {
       .jd-health-top { padding: 8px 12px; gap: 8px; }
       .jd-quick-actions { margin-left: 0; width: 100%; overflow-x: auto; }
-      .jd-stepper-row { padding: 6px 12px; }
-      .jd-profit-row { padding: 6px 12px; flex-wrap: wrap; gap: 8px; }
-      .jd-cost-bar { max-width: none; }
+      /* stepper/profit removed */
       .jd-alerts { padding: 6px 12px; }
       .jd-tabs { padding: 8px 12px 0; }
       .jd-tab { padding: 6px 12px; font-size: 12px; }
@@ -3897,13 +3853,9 @@ function highlightConflicts() {
 
 // TODO: ops-api?action=get_crew_availability — returns { user_id, date, status, note } for all crew in date range
 
-// Old renderMonthView, renderCrewView, renderUnschedSidebar removed — replaced by renderSwimlaneView above
-
-// Stub for backward compat (old views removed)
+// Legacy stubs (old calendar views removed — now unified swimlane)
 function renderMonthView() {}
 function renderWeekView() {}
-
-// Legacy: keep setCalView for any old callers
 function setCalView(v) { setCalRange(v === 'crew' ? '1w' : v === 'week' ? '1w' : 'month'); }
 function switchToWeekView(dateStr) { _calDate = new Date(dateStr + 'T00:00:00'); setCalRange('1w'); }
 
@@ -3912,251 +3864,7 @@ function switchToWeekView(dateStr) { _calDate = new Date(dateStr + 'T00:00:00');
 // renderMonthView, renderWeekView (week column view), renderCrewView, renderUnschedSidebar
 // These are now handled by the unified renderSwimlaneView + renderCalUnschedSidebar
 
-/* REMOVED OLD FUNCTIONS (renderMonthView, renderCrewView, renderUnschedSidebar) */
-/* OLD:
-function renderMonthView_REMOVED(container) {
-  var todayStr = new Date().toISOString().slice(0, 10);
-  var y = _calDate.getFullYear();
-  var m = _calDate.getMonth();
-  var firstDay = new Date(y, m, 1).getDay() || 7; // Monday=1
-  var daysInMonth = new Date(y, m + 1, 0).getDate();
 
-  var html = '<div class="cal-grid">';
-  DAYS.forEach(function(d) { html += '<div class="cal-header-cell">' + d + '</div>'; });
-
-  // Empty cells before first day
-  for (var i = 1; i < firstDay; i++) {
-    html += '<div class="cal-cell other-month"></div>';
-  }
-
-  for (var day = 1; day <= daysInMonth; day++) {
-    var dateStr = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-    var isToday = dateStr === todayStr;
-
-    html += '<div class="cal-cell' + (isToday ? ' today' : '') + '">';
-    html += '<div class="cal-date">' + day + '</div>';
-
-    var dayEvents = _calEvents.filter(function(ev) { return ev.scheduled_date === dateStr; });
-    var dayDeliveries = _calDeliveries.filter(function(del) { return del.delivery_date === dateStr; });
-    var shown = 0;
-
-    dayEvents.forEach(function(ev) {
-      if (shown < 3) {
-        html += '<div class="cal-event ' + (ev.job_type || '') + '" onclick="openJobPeek(\'' + ev.job_id + '\')">' +
-          (ev.client_name || 'Job') + '</div>';
-      }
-      shown++;
-    });
-
-    dayDeliveries.forEach(function(del) {
-      if (shown < 3) {
-        html += '<div class="cal-event delivery">' + del.supplier_name + '</div>';
-      }
-      shown++;
-    });
-
-    var total = dayEvents.length + dayDeliveries.length;
-    if (total > 3) {
-      html += '<div class="cal-more" onclick="event.stopPropagation(); switchToWeekView(\'' + dateStr + '\')" style="cursor:pointer;">+' + (total - 3) + ' more</div>';
-    }
-
-    html += '</div>';
-  }
-
-  // Pad end of month
-  var totalCells = (firstDay - 1) + daysInMonth;
-  var remaining = 7 - (totalCells % 7);
-  if (remaining < 7) {
-    for (var j = 0; j < remaining; j++) html += '<div class="cal-cell other-month"></div>';
-  }
-
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-
-// ════════════════════════════════════════════════════════════
-// CREW VIEW (Trade Calendar — Tradify Replacement)
-// ════════════════════════════════════════════════════════════
-
-function renderCrewView(container, range) {
-  var todayStr = new Date().toISOString().slice(0, 10);
-
-  // Build array of dates in range (Mon-Sun)
-  var dates = [];
-  var d = new Date(range.from + 'T00:00:00');
-  for (var i = 0; i < 7; i++) {
-    dates.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 1);
-  }
-
-  // Group events by crew_name (or assigned_to)
-  var crewMap = {}; // { crewName: { dateStr: [events] } }
-  _calEvents.forEach(function(ev) {
-    var crew = ev.crew_name || ev.assigned_to || 'Unassigned';
-    if (!crewMap[crew]) crewMap[crew] = {};
-
-    // Handle multi-day jobs: if scheduled_end > scheduled_date, span across days
-    var startDate = ev.scheduled_date;
-    var endDate = ev.scheduled_end || ev.scheduled_date;
-    dates.forEach(function(dateStr) {
-      if (dateStr >= startDate && dateStr <= endDate) {
-        if (!crewMap[crew][dateStr]) crewMap[crew][dateStr] = [];
-        // Tag position for multi-day styling
-        var pos = 'multi-single';
-        if (startDate !== endDate) {
-          if (dateStr === startDate) pos = 'multi-start';
-          else if (dateStr === endDate) pos = 'multi-end';
-          else pos = 'multi-mid';
-        }
-        crewMap[crew][dateStr].push({ ev: ev, pos: pos });
-      }
-    });
-  });
-
-  // Sort crew alphabetically, but put Unassigned last
-  var crewNames = Object.keys(crewMap).sort(function(a, b) {
-    if (a === 'Unassigned') return 1;
-    if (b === 'Unassigned') return -1;
-    return a.localeCompare(b);
-  });
-
-  // If no crew data, show at least a message
-  if (crewNames.length === 0) {
-    crewNames = ['No assignments'];
-  }
-
-  // Build delivery lookup: { dateStr: [deliveries] }
-  var deliveryMap = {};
-  _calDeliveries.forEach(function(del) {
-    if (!deliveryMap[del.delivery_date]) deliveryMap[del.delivery_date] = [];
-    deliveryMap[del.delivery_date].push(del);
-  });
-
-  // Build event start date lookup for delivery warnings
-  var jobStartDates = {}; // { job_id: earliest scheduled_date }
-  _calEvents.forEach(function(ev) {
-    if (!jobStartDates[ev.job_id] || ev.scheduled_date < jobStartDates[ev.job_id]) {
-      jobStartDates[ev.job_id] = ev.scheduled_date;
-    }
-  });
-
-  // Grid: (crewNames.length + 1) rows x (dates.length + 1) cols
-  var numCols = dates.length + 1;
-  var html = '<div class="crew-cal-grid" style="grid-template-columns: 130px repeat(' + dates.length + ', 1fr);">';
-
-  // Header row: corner + day headers
-  html += '<div class="crew-cal-corner">Crew</div>';
-  dates.forEach(function(dateStr) {
-    var dd = new Date(dateStr + 'T00:00:00');
-    var dayIdx = (dd.getDay() + 6) % 7; // 0=Mon
-    var isToday = dateStr === todayStr;
-    var isWeekend = dayIdx >= 5;
-    html += '<div class="crew-cal-day-header' + (isToday ? ' today' : '') + '">';
-    html += '<div class="day-name">' + DAYS[dayIdx] + '</div>';
-    html += '<div class="day-num">' + dd.getDate() + '</div>';
-    html += '</div>';
-  });
-
-  // Crew rows
-  crewNames.forEach(function(crew) {
-    // Row label with deterministic colour
-    var initial = crew.charAt(0).toUpperCase();
-    var crewBg = crewColor(crew);
-    html += '<div class="crew-cal-row-label">';
-    html += '<span class="crew-initial" style="background:' + crewBg + '">' + initial + '</span>';
-    html += '<span>' + crew + '</span>';
-    html += '</div>';
-
-    // Day cells
-    dates.forEach(function(dateStr) {
-      var dd = new Date(dateStr + 'T00:00:00');
-      var dayIdx = (dd.getDay() + 6) % 7;
-      var isToday = dateStr === todayStr;
-      var isWeekend = dayIdx >= 5;
-      var cellClass = 'crew-cal-cell';
-      if (isWeekend) cellClass += ' weekend';
-      if (isToday) cellClass += ' today-col';
-
-      html += '<div class="' + cellClass + '" onclick="openAssignmentModal(null,\'' + dateStr + '\',\'' + crew.replace(/'/g, "\\'") + '\')" data-date="' + dateStr + '" data-crew="' + crew + '">';
-
-      var entries = (crewMap[crew] && crewMap[crew][dateStr]) || [];
-      entries.forEach(function(entry) {
-        var ev = entry.ev;
-        var multiClass = 'crew-cal-event ' + (ev.job_type || '');
-        if (entry.pos !== 'multi-single') multiClass += ' crew-cal-multi ' + entry.pos;
-        else multiClass += ' crew-cal-multi multi-single';
-        html += '<div class="' + multiClass + '" onclick="event.stopPropagation(); openJobPeek(\'' + ev.job_id + '\')" title="' + (ev.client_name || '') + ' — ' + (ev.site_suburb || '') + '">';
-        html += (ev.client_name || 'Job');
-        if (ev.start_time) html += ' ' + fmtTime(ev.start_time);
-        html += '</div>';
-      });
-
-      html += '</div>';
-    });
-  });
-
-  // Delivery row at the bottom
-  var hasDeliveries = dates.some(function(ds) { return deliveryMap[ds] && deliveryMap[ds].length > 0; });
-  if (hasDeliveries) {
-    html += '<div class="crew-cal-row-label" style="color:var(--sw-purple);">';
-    html += '<span class="crew-initial" style="background:var(--sw-purple);">D</span>';
-    html += '<span>Deliveries</span>';
-    html += '</div>';
-
-    dates.forEach(function(dateStr) {
-      var dd = new Date(dateStr + 'T00:00:00');
-      var dayIdx = (dd.getDay() + 6) % 7;
-      var isToday = dateStr === todayStr;
-      var isWeekend = dayIdx >= 5;
-      var cellClass = 'crew-cal-cell';
-      if (isWeekend) cellClass += ' weekend';
-      if (isToday) cellClass += ' today-col';
-
-      html += '<div class="' + cellClass + '">';
-      var dels = deliveryMap[dateStr] || [];
-      dels.forEach(function(del) {
-        // Check for delivery warning: material delivery AFTER install start
-        var isWarning = false;
-        if (del.job_id && jobStartDates[del.job_id] && del.delivery_date > jobStartDates[del.job_id]) {
-          isWarning = true;
-        }
-        var cls = isWarning ? 'crew-cal-event delivery-warning' : 'crew-cal-event delivery-marker';
-        html += '<div class="' + cls + '" title="' + del.po_number + ' — ' + del.supplier_name + (isWarning ? ' ⚠ AFTER install start!' : '') + '">';
-        html += del.supplier_name;
-        if (isWarning) html += ' &#9888;';
-        html += '</div>';
-      });
-      html += '</div>';
-    });
-  }
-
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function renderUnschedSidebar(container) {
-  var html = '<div class="unsched-sidebar">';
-  html += '<div class="unsched-header">Unscheduled<span class="count">' + _unschedJobs.length + '</span></div>';
-  html += '<div class="unsched-body">';
-
-  if (_unschedJobs.length === 0) {
-    html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">All jobs scheduled</div>';
-  }
-
-  _unschedJobs.forEach(function(j) {
-    var val = j.value || 0;
-    html += '<div class="unsched-card ' + (j.type || '') + '" onclick="openAssignmentModal(\'' + j.id + '\')">';
-    html += '<div class="unsched-card-client">' + (j.client_name || 'Unknown') + '</div>';
-    html += '<div class="unsched-card-detail">' + (j.site_suburb || '') + ' &middot; <span class="type-badge ' + (j.type || '') + '">' + typeBadgeLabel(j.type) + '</span></div>';
-    if (val > 0) html += '<div class="unsched-card-value">' + fmt$(val) + '</div>';
-    html += '</div>';
-  });
-
-  html += '</div></div>';
-  container.innerHTML = html;
-}
-END OLD */
 
 
 // ════════════════════════════════════════════════════════════
@@ -8601,44 +8309,6 @@ function setCommsMode(mode) {
   var j = _currentJobData ? _currentJobData.job : {};
   var toDetail = document.getElementById('commsToDetail');
   if (toDetail) toDetail.textContent = mode === 'sms' ? (j.client_phone || '') : (j.client_email || 'No email on file');
-}
-
-function openCommsSenderSettings() {
-  var smsName = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-  var smsNum = localStorage.getItem('sw_sms_number') || '0489 267 771';
-  var emailFrom = localStorage.getItem('sw_email_from') || 'admin@secureworkswa.com.au';
-
-  var html = '<div class="modal-title">Sending Identity</div>';
-  html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px;">These control how the client sees your messages. GHL routes through your configured phone number.</div>';
-  html += '<div class="form-group"><label class="form-label">SMS Display Name</label><input type="text" class="form-input" id="settSmsName" value="' + escapeHtml(smsName) + '"></div>';
-  html += '<div class="form-group"><label class="form-label">SMS Number (display only)</label><input type="text" class="form-input" id="settSmsNum" value="' + escapeHtml(smsNum) + '"></div>';
-  html += '<div class="form-group"><label class="form-label">Email From Address (display only)</label><input type="text" class="form-input" id="settEmailFrom" value="' + escapeHtml(emailFrom) + '"></div>';
-  html += '<div class="modal-actions">';
-  html += '<button class="btn btn-secondary" onclick="closeModal(\'commsSenderModal\')">Cancel</button>';
-  html += '<button class="btn btn-primary" onclick="saveCommsSenderSettings()">Save</button>';
-  html += '</div>';
-
-  var modal = document.getElementById('commsSenderModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.id = 'commsSenderModal';
-    modal.innerHTML = '<div class="modal" style="max-width:380px;">' + html + '</div>';
-    document.body.appendChild(modal);
-  } else {
-    modal.querySelector('.modal').innerHTML = html;
-  }
-  modal.classList.add('active');
-}
-
-function saveCommsSenderSettings() {
-  localStorage.setItem('sw_sms_identity', document.getElementById('settSmsName').value);
-  localStorage.setItem('sw_sms_number', document.getElementById('settSmsNum').value);
-  localStorage.setItem('sw_email_from', document.getElementById('settEmailFrom').value);
-  closeModal('commsSenderModal');
-  showToast('Sender identity saved', 'success');
-  // Refresh the display
-  setCommsMode(_commsMode);
 }
 
 function updateCommsCharCount() {
