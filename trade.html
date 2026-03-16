@@ -1413,7 +1413,7 @@
   function determineTier(email) {
     if (!email) return 1;
     var local = email.split('@')[0].toLowerCase();
-    if (local === 'henry' || local === 'marnin') return 3;
+    if (local === 'henry' || local === 'marnin' || local === 'shaun') return 3;
     if (local === 'jan' || local === 'isaac') return 2;
     return 1;
   }
@@ -3929,6 +3929,40 @@
     html += '  <div id="rateStatus" style="font-size:12px;color:var(--sw-text-sec);margin-top:6px"></div>';
     html += '</div>';
 
+    // ── My Details (for invoices / PDF) ──
+    var saved = loadTradeDetails();
+    html += '<div style="margin-top:16px;padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow)">';
+    html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:4px">My Details</div>';
+    html += '  <div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px">Used on your invoice PDFs</div>';
+
+    var fields = [
+      { id: 'tdFullName',    label: 'Full Name / Business Name', placeholder: 'e.g. J. Smith Carpentry', val: saved.fullName || '' },
+      { id: 'tdPhone',       label: 'Phone', placeholder: '04XX XXX XXX', type: 'tel', val: saved.phone || '' },
+      { id: 'tdEmail',       label: 'Invoice Email', placeholder: 'you@email.com', type: 'email', val: saved.email || '' },
+      { id: 'tdAbn',         label: 'ABN', placeholder: 'XX XXX XXX XXX', val: saved.abn || '' },
+      { id: 'tdBsb',         label: 'BSB', placeholder: 'XXX-XXX', val: saved.bsb || '' },
+      { id: 'tdAccountNo',   label: 'Account Number', placeholder: '', val: saved.accountNo || '' },
+      { id: 'tdAccountName', label: 'Account Name', placeholder: '', val: saved.accountName || '' },
+      { id: 'tdLicence',     label: "Driver's Licence No.", placeholder: '', val: saved.licence || '' },
+    ];
+
+    fields.forEach(function(f) {
+      html += '<div style="margin-bottom:10px">';
+      html += '  <label style="font-size:12px;color:var(--sw-text-sec);display:block;margin-bottom:3px">' + f.label + '</label>';
+      html += '  <input type="' + (f.type || 'text') + '" id="' + f.id + '" placeholder="' + (f.placeholder || '') + '" value="' + esc(f.val) + '" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" />';
+      html += '</div>';
+    });
+
+    // GST registered toggle
+    html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">';
+    html += '  <input type="checkbox" id="tdGstRegistered" style="accent-color:var(--sw-orange);width:18px;height:18px"' + (saved.gstRegistered ? ' checked' : '') + '>';
+    html += '  <label for="tdGstRegistered" style="font-size:14px;color:var(--sw-dark)">Registered for GST</label>';
+    html += '</div>';
+
+    html += '<button onclick="saveTradeDetails()" style="width:100%;padding:12px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font)">Save Details</button>';
+    html += '<div id="tdSaveStatus" style="font-size:12px;color:var(--sw-text-sec);margin-top:6px;text-align:center"></div>';
+    html += '</div>';
+
     // ── Invoice History ──
     html += '<div style="margin-top:16px;padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow)">';
     html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">My Invoices</div>';
@@ -4401,6 +4435,46 @@
       if (_currentJobId) window.loadJobDetail(_currentJobId);
     }).catch(function(err) {
       toast('Could not reassign — ' + friendlyError(err), true);
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // TRADE DETAILS — localStorage + API sync
+  // ══════════════════════════════════════════════════
+
+  function loadTradeDetails() {
+    try {
+      var raw = localStorage.getItem('sw_trade_details');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+
+  window.saveTradeDetails = function() {
+    var details = {
+      fullName:      (document.getElementById('tdFullName') || {}).value || '',
+      phone:         (document.getElementById('tdPhone') || {}).value || '',
+      email:         (document.getElementById('tdEmail') || {}).value || '',
+      abn:           (document.getElementById('tdAbn') || {}).value || '',
+      bsb:           (document.getElementById('tdBsb') || {}).value || '',
+      accountNo:     (document.getElementById('tdAccountNo') || {}).value || '',
+      accountName:   (document.getElementById('tdAccountName') || {}).value || '',
+      licence:       (document.getElementById('tdLicence') || {}).value || '',
+      gstRegistered: !!(document.getElementById('tdGstRegistered') || {}).checked,
+    };
+
+    // Save to localStorage immediately
+    try { localStorage.setItem('sw_trade_details', JSON.stringify(details)); } catch (e) {}
+
+    var status = document.getElementById('tdSaveStatus');
+
+    // Try to sync to backend (graceful failure)
+    // TODO: ops-api?action=update_trade_profile — save ABN, GST status, bank details, licence to users table
+    api('update_trade_profile', null, details).then(function() {
+      if (status) { status.textContent = 'Saved'; status.style.color = 'var(--sw-green)'; }
+      toast('Details saved');
+    }).catch(function() {
+      if (status) { status.textContent = 'Saved locally — will sync when backend is ready'; status.style.color = 'var(--sw-yellow)'; }
+      toast('Details saved locally');
     });
   };
 
