@@ -2208,9 +2208,23 @@
         <div style="font-size:13px; font-weight:700; font-family:var(--sw-font-num);">Total: <span id="poLineTotal">$0</span></div>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <textarea class="form-textarea" id="poNotes" placeholder="Delivery instructions, special requirements..."></textarea>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="poNotes" placeholder="Delivery instructions, special requirements..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Why this supplier? <span style="font-size:10px;color:var(--sw-text-sec);">(optional — feeds AI)</span></label>
+        <select class="form-select" id="poReason">
+          <option value="">— Select reason —</option>
+          <option value="price">Best price</option>
+          <option value="availability">Stock availability</option>
+          <option value="speed">Fastest delivery</option>
+          <option value="relationship">Existing relationship</option>
+          <option value="only_option">Only supplier for this</option>
+          <option value="quality">Quality / preference</option>
+        </select>
+      </div>
     </div>
     <!-- Mode 1: New PO actions -->
     <div class="modal-actions" id="poActionsNew">
@@ -6376,11 +6390,22 @@ async function changeJobStatus(jobId, status) {
 }
 
 async function markJobLost(jobId) {
-  if (!confirm('Mark this job as Lost? This will update GHL and cannot be easily undone.')) return;
+  // Capture lost reason for AI conversion intelligence
+  var reasons = ['Too expensive', 'Wrong timing', 'Chose competitor', 'Project cancelled', 'No response', 'Other'];
+  var reasonHtml = reasons.map(function(r, i) { return (i + 1) + '. ' + r; }).join('\n');
+  var choice = prompt('Why was this job lost?\n\n' + reasonHtml + '\n\nEnter number (1-6) or type a reason:');
+  if (choice === null) return; // cancelled
+  var lostReason = '';
+  var num = parseInt(choice);
+  if (num >= 1 && num <= reasons.length) {
+    lostReason = reasons[num - 1];
+  } else {
+    lostReason = choice.trim() || 'Not specified';
+  }
   try {
-    await opsPost('update_job_status', { jobId: jobId, status: 'lost' });
+    await opsPost('update_job_status', { jobId: jobId, status: 'lost', lost_reason: lostReason });
     closeSlidePanel();
-    showToast('Job marked as lost', 'info');
+    showToast('Job marked as lost — ' + lostReason, 'info');
     refreshActiveView();
   } catch (e) {
     alert('Failed to mark job as lost: ' + e.message);
@@ -6768,6 +6793,7 @@ function gatherPOData() {
     delivery_address: document.getElementById('poDeliveryAddress').value || null,
     reference: document.getElementById('poReference').value || null,
     notes: (fulfilmentNote ? fulfilmentNote + '\n' : '') + notesVal || null,
+    supplier_reason: document.getElementById('poReason').value || null,
   };
 }
 
