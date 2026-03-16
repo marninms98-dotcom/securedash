@@ -8246,7 +8246,7 @@ async function generateQuickQuotePDF(savedJob) {
   doc.setFontSize(7.5);
   doc.setTextColor(200, 210, 220);
   doc.text('SecureWorks Group Pty Ltd | ABN 31 672 816 729', M, y + 6);
-  doc.text('0450 625 225 | admin@secureworkswa.com.au', M, y + 10);
+  doc.text('0489 267 771 | admin@secureworkswa.com.au', M, y + 10);
   doc.text('secureworkswa.com.au', M, y + 14);
 
   // Page numbers
@@ -8369,7 +8369,7 @@ function renderCommsView(data) {
 
     // Sending identity — clear who the message comes from
     var smsIdentity = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-    var smsNumber = localStorage.getItem('sw_sms_number') || '0450 625 225';
+    var smsNumber = localStorage.getItem('sw_sms_number') || '0489 267 771';
     var emailIdentity = localStorage.getItem('sw_email_identity') || 'admin@secureworkswa.com.au';
     html += '<div id="commsSendingAs" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--sw-light);margin-bottom:8px;font-size:12px;">';
     html += '<span style="color:var(--sw-mid);font-weight:600;">Sending as:</span>';
@@ -8589,7 +8589,7 @@ function setCommsMode(mode) {
   var toDetail = document.getElementById('commsToDetail');
   if (mode === 'sms') {
     if (senderId) senderId.textContent = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_sms_number') || '0450 625 225') + ')';
+    if (senderNum) senderNum.textContent = '(' + (localStorage.getItem('sw_sms_number') || '0489 267 771') + ')';
     if (toDetail) toDetail.textContent = j.client_phone || '';
   } else {
     if (senderId) senderId.textContent = localStorage.getItem('sw_email_identity') || 'SecureWorks WA';
@@ -8600,7 +8600,7 @@ function setCommsMode(mode) {
 
 function openCommsSenderSettings() {
   var smsName = localStorage.getItem('sw_sms_identity') || 'SecureWorks WA';
-  var smsNum = localStorage.getItem('sw_sms_number') || '0450 625 225';
+  var smsNum = localStorage.getItem('sw_sms_number') || '0489 267 771';
   var emailFrom = localStorage.getItem('sw_email_from') || 'admin@secureworkswa.com.au';
 
   var html = '<div class="modal-title">Sending Identity</div>';
