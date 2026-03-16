@@ -100,39 +100,55 @@
 
     /* ── Stat Cards ── */
     .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
-      margin-bottom: 24px;
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
     }
     .stat-card {
-      background: var(--sw-card);
-      border-radius: var(--sw-radius);
-      padding: 12px;
-      box-shadow: var(--sw-shadow);
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      border-left: 4px solid var(--sw-border);
-      transition: box-shadow 0.2s;
+      background: var(--sw-card); border-radius: 6px; padding: 8px 12px;
+      box-shadow: var(--sw-shadow); display: flex; align-items: center; gap: 8px;
+      border-left: 3px solid var(--sw-border); flex: 1; min-width: 120px;
     }
     .stat-card:hover { box-shadow: var(--sw-shadow-hover); }
     .stat-card.rag-green { border-left-color: var(--sw-green); }
     .stat-card.rag-amber { border-left-color: var(--sw-yellow); }
     .stat-card.rag-red { border-left-color: var(--sw-red); }
-    .stat-icon {
-      width: 28px; height: 28px;
-      border-radius: 6px;
-      background: var(--sw-light);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 700; color: var(--sw-mid);
-      flex-shrink: 0;
-    }
+    .stat-icon { display: none; } /* Hidden for compact mode */
     .stat-icon svg { width: 16px; height: 16px; stroke: var(--sw-mid); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .stat-body { flex: 1; min-width: 0; }
-    .stat-label { font-size: 11px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    .stat-value { font-size: 18px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); line-height: 1.2; margin-top: 2px; }
-    .stat-sub { font-size: 11px; color: var(--sw-text-sec); margin-top: 2px; }
+    .stat-label { font-size: 10px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; }
+    .stat-value { font-size: 16px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); line-height: 1.1; }
+    .stat-sub { font-size: 10px; color: var(--sw-text-sec); }
+
+    /* Action sections for Today tab */
+    .today-section { margin-bottom: 16px; }
+    .today-section-header {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0; margin-bottom: 8px;
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .today-section-header.urgent { color: #b91c1c; }
+    .today-section-header.action { color: #b45309; }
+    .today-section-header.schedule { color: #15803d; }
+    .today-action-card {
+      background: var(--sw-card); border-radius: 6px; padding: 10px 12px;
+      box-shadow: var(--sw-shadow); margin-bottom: 6px;
+      display: flex; align-items: center; gap: 10px; cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .today-action-card:hover { transform: translateX(3px); box-shadow: var(--sw-shadow-hover); }
+    .today-action-card.urgent { border-left: 3px solid var(--sw-red); }
+    .today-action-card.action { border-left: 3px solid #D97706; }
+    .today-action-card.schedule { border-left: 3px solid var(--sw-green); }
+    .today-card-main { flex: 1; min-width: 0; }
+    .today-card-title { font-size: 13px; font-weight: 600; }
+    .today-card-detail { font-size: 11px; color: var(--sw-text-sec); margin-top: 1px; }
+    .today-card-meta { font-size: 11px; font-family: var(--sw-font-num); color: var(--sw-mid); margin-top: 2px; }
+    .today-card-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 4px;
+      cursor: pointer; border: 1px solid; white-space: nowrap; flex-shrink: 0;
+    }
+    .today-card-btn.red { background: var(--sw-red); color: #fff; border-color: var(--sw-red); }
+    .today-card-btn.amber { background: #D97706; color: #fff; border-color: #D97706; }
+    .today-card-btn.green { background: var(--sw-green); color: #fff; border-color: var(--sw-green); }
+    .today-card-btn.outline { background: var(--sw-card); color: var(--sw-text); }
 
     /* ── Section Heading ── */
     .section-heading {
@@ -1570,35 +1586,28 @@
         </div>
       </div>
 
-      <div class="two-col">
-        <!-- Left: Today's Schedule -->
-        <div>
-          <div class="panel">
-            <div class="panel-title">Today's Schedule</div>
-            <div id="todayScheduleList" class="loading">Loading schedule...</div>
-          </div>
+      <!-- Actionable attention items (generated client-side from pipeline data) -->
+      <div id="todayUrgent" class="today-section"></div>
+      <div id="todayAction" class="today-section"></div>
 
-          <!-- Pipeline Overview -->
-          <div class="panel">
-            <div class="panel-title">Pipeline Overview</div>
-            <div id="pipelineOverview" style="display:flex; gap:12px; flex-wrap:wrap;"></div>
-          </div>
+      <!-- Today's Schedule -->
+      <div class="today-section">
+        <div class="today-section-header schedule">&#9989; Today's Schedule</div>
+        <div id="todayScheduleList" class="loading">Loading schedule...</div>
+      </div>
+
+      <!-- Pipeline Overview (compact) + Quick Actions -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:16px;">
+        <div class="panel" style="flex:1; min-width:200px;">
+          <div class="panel-title">Pipeline</div>
+          <div id="pipelineOverview" style="display:flex; gap:12px; flex-wrap:wrap;"></div>
         </div>
-
-        <!-- Right: Attention Items -->
-        <div>
-          <div class="panel">
-            <div class="panel-title">Needs Attention <span id="attentionBadge" style="display:none; background:var(--sw-red); color:#fff; font-size:10px; padding:2px 6px; border-radius:8px; margin-left:6px; vertical-align:middle;"></span></div>
-            <div id="attentionList"></div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-title">Quick Actions</div>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <button class="btn btn-primary" onclick="showView('calendar'); openAssignmentModal();">+ Schedule Job</button>
-              <button class="btn btn-secondary" onclick="showView('financials'); showSubTab('pos');">+ New Purchase Order</button>
-              <button class="btn btn-secondary" onclick="showView('financials'); showSubTab('workorders');">+ New Work Order</button>
-            </div>
+        <div class="panel" style="min-width:180px;">
+          <div class="panel-title">Quick Actions</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <button class="btn btn-primary btn-sm" onclick="showView('calendar'); openAssignmentModal();">+ Schedule Job</button>
+            <button class="btn btn-secondary btn-sm" onclick="openQuickQuote();">+ Quick Quote</button>
+            <button class="btn btn-secondary btn-sm" onclick="showView('materials'); openPOModal();">+ New PO</button>
           </div>
         </div>
       </div>
@@ -2635,10 +2644,17 @@ document.addEventListener('click', function(e) {
 
 async function loadToday() {
   try {
-    var data = await opsFetch('ops_summary');
+    // Fetch summary + pipeline + POs in parallel (2 calls, max efficiency)
+    var results = await Promise.all([
+      opsFetch('ops_summary'),
+      opsFetch('pipeline'),
+    ]);
+    var data = results[0];
+    var pipelineData = results[1];
+
     renderTodayStats(data.stat_cards, data.kpis);
-    renderTodaySchedule(data.today_schedule);
-    renderAttention(data.attention);
+    renderTodaySchedule(data.today_schedule, data.deliveries_today);
+    renderActionableItems(pipelineData, data);
     renderPipelineOverview(data.stat_cards.pipeline);
     // Feature 2: Trigger morning brief (non-blocking)
     loadMorningBrief();
@@ -2668,31 +2684,208 @@ function renderTodayStats(stats, kpis) {
   statCompleted.className = 'stat-card ' + (pct >= dayPct ? 'rag-green' : pct >= dayPct * 0.6 ? 'rag-amber' : 'rag-red');
 }
 
-function renderTodaySchedule(schedule) {
+function renderTodaySchedule(schedule, deliveries) {
   var container = document.getElementById('todayScheduleList');
-  if (!schedule || schedule.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128197;</div><div class="empty-state-text">No jobs scheduled for today</div></div>';
+  var items = (schedule || []);
+  var dels = (deliveries || []);
+
+  if (items.length === 0 && dels.length === 0) {
+    container.innerHTML = '<div style="padding:12px;color:var(--sw-text-sec);font-size:12px;text-align:center;">No jobs or deliveries scheduled for today</div>';
     return;
   }
 
   var html = '';
-  schedule.forEach(function(ev) {
-    html += '<div class="schedule-item" onclick="openJobPeek(\'' + ev.job_id + '\')">' +
-      '<div class="schedule-time">' + fmtTime(ev.start_time) + '</div>' +
-      '<div class="status-dot ' + ev.assignment_status + '"></div>' +
-      '<div class="schedule-info">' +
-        '<div class="schedule-client">' + (ev.client_name || 'Unknown') + '</div>' +
-        '<div class="schedule-detail">' + (ev.site_suburb || '') + (ev.crew_name ? ' &middot; ' + ev.crew_name : '') + '</div>' +
-      '</div>' +
-      '<div class="schedule-badges">' +
-        '<span class="type-badge ' + ev.job_type + '">' + ev.job_type + '</span>' +
-        '<span class="type-badge ' + ev.assignment_type + '">' + ev.assignment_type + '</span>' +
-      '</div>' +
-    '</div>';
+  items.forEach(function(ev) {
+    html += '<div class="today-action-card schedule" onclick="openJobQuickView(\'' + ev.job_id + '\')">';
+    html += '<div class="status-dot ' + ev.assignment_status + '"></div>';
+    html += '<div class="today-card-main">';
+    html += '<div class="today-card-title">' + (ev.job_number || '') + (ev.job_number && ev.client_name ? ' — ' : '') + (ev.client_name || 'Unknown') + '</div>';
+    html += '<div class="today-card-detail">' + (ev.site_address || ev.site_suburb || '') + (ev.crew_name ? ' &middot; ' + ev.crew_name : '') + '</div>';
+    html += '</div>';
+    html += '<span class="type-badge ' + (ev.job_type || '') + '">' + typeBadgeLabel(ev.job_type) + '</span>';
+    if (ev.start_time) html += '<span style="font-size:11px;color:var(--sw-mid);font-family:var(--sw-font-num);">' + fmtTime(ev.start_time) + '</span>';
+    html += '</div>';
   });
+
+  // Deliveries today
+  dels.forEach(function(del) {
+    html += '<div class="today-action-card schedule" style="border-left-color:var(--sw-purple);">';
+    html += '<span style="font-size:14px;">&#128666;</span>';
+    html += '<div class="today-card-main">';
+    html += '<div class="today-card-title">' + escapeHtml(del.supplier_name || '') + '</div>';
+    html += '<div class="today-card-detail">' + (del.po_number || '') + (del.job_number ? ' &middot; ' + del.job_number : '') + '</div>';
+    html += '</div>';
+    if (del.delivery_time) html += '<span style="font-size:11px;color:var(--sw-mid);">' + del.delivery_time + '</span>';
+    html += '</div>';
+  });
+
   container.innerHTML = html;
 }
 
+// ── Actionable Attention Items (client-side from pipeline data) ──
+function renderActionableItems(pipelineData, summaryData) {
+  var cols = pipelineData.columns || {};
+  var allJobs = [];
+  Object.keys(cols).forEach(function(s) { allJobs = allJobs.concat(cols[s]); });
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var now = Date.now();
+
+  var urgent = [];  // 🔴
+  var action = [];  // 🟡
+
+  // ── 🔴 URGENT ──
+
+  // 1. Jobs complete but not invoiced
+  var completeJobs = cols.complete || [];
+  completeJobs.forEach(function(j) {
+    var daysSince = j.completed_at ? Math.floor((now - new Date(j.completed_at).getTime()) / 86400000) : 0;
+    var quoteVal = j.value || j.pricing_json?.totalIncGST || 0;
+    urgent.push({
+      title: (j.job_number || '') + (j.job_number && j.client_name ? ' — ' : '') + (j.client_name || 'Unknown'),
+      detail: fmt$(quoteVal) + ' &middot; ' + daysSince + 'd since completion',
+      type: 'not_invoiced',
+      jobId: j.id,
+      btnLabel: 'Create Invoice',
+      btnClass: 'red',
+      btnAction: 'openCascadeModal(\'' + j.id + '\')',
+    });
+  });
+
+  // 2. Overdue invoices (from summary data)
+  var attentionItems = summaryData.attention || [];
+  attentionItems.forEach(function(item) {
+    if (item.type === 'overdue_invoice' || (item.type || '').indexOf('overdue') !== -1) {
+      if (item.severity === 'red') {
+        urgent.push({
+          title: item.title,
+          detail: '',
+          type: 'overdue_invoice',
+          jobId: (item.job_ids && item.job_ids[0]) || null,
+          btnLabel: 'View Invoices',
+          btnClass: 'red',
+          btnAction: 'showView(\'financials\'); showSubTab(\'invoices\')',
+        });
+      }
+    }
+  });
+
+  // 3. Materials not ordered but build within 5 days
+  var scheduledJobs = (cols.scheduled || []).concat(cols.accepted || []);
+  scheduledJobs.forEach(function(j) {
+    if (j.scheduled_at) {
+      var buildDate = new Date(j.scheduled_at);
+      var daysUntil = Math.floor((buildDate.getTime() - now) / 86400000);
+      if (daysUntil <= 5 && daysUntil >= 0 && (j.po_count || 0) === 0 && j.scope_json) {
+        urgent.push({
+          title: (j.job_number || '') + (j.job_number && j.client_name ? ' — ' : '') + (j.client_name || 'Unknown'),
+          detail: 'Build in ' + daysUntil + ' days &middot; No materials ordered',
+          type: 'materials_urgent',
+          jobId: j.id,
+          btnLabel: 'Create PO',
+          btnClass: 'red',
+          btnAction: 'showView(\'materials\'); openPOModal(\'' + j.id + '\')',
+        });
+      }
+    }
+  });
+
+  // ── 🟡 ACTION NEEDED ──
+
+  // 4. Accepted jobs with no crew assigned
+  var acceptedJobs = cols.accepted || [];
+  acceptedJobs.forEach(function(j) {
+    if ((j.assignment_count || 0) === 0) {
+      var daysSince = j.accepted_at ? Math.floor((now - new Date(j.accepted_at).getTime()) / 86400000) : 0;
+      action.push({
+        title: (j.job_number || '') + (j.job_number && j.client_name ? ' — ' : '') + (j.client_name || 'Unknown'),
+        detail: daysSince + 'd since accepted &middot; No crew assigned',
+        type: 'unassigned',
+        jobId: j.id,
+        btnLabel: 'Assign Crew',
+        btnClass: 'amber',
+        btnAction: 'showView(\'calendar\'); openAssignmentModal(\'' + j.id + '\')',
+      });
+    }
+  });
+
+  // 5. POs awaiting invoice (from attention items)
+  attentionItems.forEach(function(item) {
+    if ((item.type || '').indexOf('po') !== -1 && item.severity === 'amber') {
+      action.push({
+        title: item.title,
+        detail: '',
+        type: 'po_attention',
+        jobId: (item.job_ids && item.job_ids[0]) || null,
+        btnLabel: 'View POs',
+        btnClass: 'outline',
+        btnAction: 'showView(\'materials\')',
+      });
+    }
+  });
+
+  // 6. Quotes with no response in 14+ days
+  var quotedJobs = cols.quoted || [];
+  quotedJobs.forEach(function(j) {
+    var daysSince = j.created_at ? Math.floor((now - new Date(j.created_at).getTime()) / 86400000) : 0;
+    if (daysSince >= 14) {
+      var quoteVal = j.value || j.pricing_json?.totalIncGST || 0;
+      action.push({
+        title: (j.job_number || '') + (j.job_number && j.client_name ? ' — ' : '') + (j.client_name || 'Unknown'),
+        detail: fmt$(quoteVal) + ' &middot; Sent ' + daysSince + ' days ago',
+        type: 'stale_quote',
+        jobId: j.id,
+        btnLabel: 'Follow Up',
+        btnClass: 'outline',
+        btnAction: 'openJobQuickView(\'' + j.id + '\')',
+      });
+    }
+  });
+
+  // 7. Other amber attention items from backend
+  attentionItems.forEach(function(item) {
+    if (item.severity === 'amber' && (item.type || '').indexOf('po') === -1) {
+      var existing = action.some(function(a) { return a.title === item.title; });
+      if (!existing) {
+        action.push({
+          title: item.title,
+          detail: '',
+          type: item.type,
+          jobId: (item.job_ids && item.job_ids[0]) || null,
+          btnLabel: 'View',
+          btnClass: 'outline',
+          btnAction: item.job_ids && item.job_ids[0] ? 'openJobQuickView(\'' + item.job_ids[0] + '\')' : '',
+        });
+      }
+    }
+  });
+
+  // ── Render ──
+  renderTodaySection('todayUrgent', '&#128308; Urgent', 'urgent', urgent);
+  renderTodaySection('todayAction', '&#128992; Action Needed', 'action', action);
+}
+
+function renderTodaySection(containerId, headerText, cssClass, items) {
+  var el = document.getElementById(containerId);
+  if (items.length === 0) { el.innerHTML = ''; return; }
+
+  var html = '<div class="today-section-header ' + cssClass + '">' + headerText + ' <span style="font-size:11px;font-weight:400;color:var(--sw-text-sec);">(' + items.length + ')</span></div>';
+  items.forEach(function(item) {
+    html += '<div class="today-action-card ' + cssClass + '"';
+    if (item.jobId) html += ' onclick="openJobQuickView(\'' + item.jobId + '\')"';
+    html += '>';
+    html += '<div class="today-card-main">';
+    html += '<div class="today-card-title">' + item.title + '</div>';
+    if (item.detail) html += '<div class="today-card-detail">' + item.detail + '</div>';
+    html += '</div>';
+    if (item.btnLabel && item.btnAction) {
+      html += '<button class="today-card-btn ' + item.btnClass + '" onclick="event.stopPropagation();' + item.btnAction + '">' + item.btnLabel + '</button>';
+    }
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// Legacy — kept for backward compat but no longer rendered as the primary view
 function renderAttention(items) {
   var container = document.getElementById('attentionList');
   if (!items || items.length === 0) {
