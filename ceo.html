@@ -243,6 +243,20 @@
     }
     .alert-card.critical { background: rgba(231,76,60,0.06); border-left-color: var(--sw-red); }
     .alert-card.warning { background: rgba(230,126,34,0.06); border-left-color: var(--sw-yellow); }
+    .ceo-narrative {
+      padding: 16px; background: var(--sw-card); border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(41,60,70,0.06); margin-bottom: 12px;
+      border-left: 4px solid var(--sw-orange); font-size: 14px; line-height: 1.65;
+    }
+    .ceo-narrative .nar-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--sw-orange); margin-bottom: 6px;
+    }
+    .ceo-alert-dismiss {
+      padding: 3px 8px; font-size: 10px; border: 1px solid var(--sw-border);
+      border-radius: 4px; background: var(--sw-light); color: var(--sw-text-sec);
+      cursor: pointer; float: right;
+    }
     .alert-card.success { background: rgba(39,174,96,0.06); border-left-color: var(--sw-green); }
     .alert-card.info { background: rgba(52,152,219,0.06); border-left-color: var(--sw-blue); }
     .alert-title { font-weight: 600; }
@@ -583,6 +597,18 @@
   <div class="container" id="reportContent" style="display:none;">
 
     <!-- ════════════════════════════════════════ -->
+    <!-- AI ALERTS PANEL                         -->
+    <!-- ════════════════════════════════════════ -->
+    <div id="ceoAlertsPanel" style="display:none; margin-bottom:24px;">
+      <div id="ceoNarrative"></div>
+      <div id="ceoRedAlerts"></div>
+      <div id="ceoAmberToggle" style="display:none; font-size:12px; color:var(--sw-mid); cursor:pointer; padding:6px 0; display:flex; align-items:center; gap:4px;" onclick="toggleCeoAmber()">
+        <span id="ceoAmberIcon">&#9662;</span> <span id="ceoAmberText">Show warnings</span>
+      </div>
+      <div id="ceoAmberAlerts" style="display:none;"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
     <!-- SECTION 1: OVERVIEW                     -->
     <!-- ════════════════════════════════════════ -->
     <div class="section" id="overview">
@@ -903,6 +929,58 @@ function makeChart(canvasId, config) {
   return _charts[canvasId];
 }
 
+// ── AI Alerts for CEO ──
+var _ceoAmberOpen = false;
+async function loadCeoAlerts() {
+  try {
+    var digestUrl = window.SUPABASE_URL + '/functions/v1/daily-digest';
+    var resp = await fetch(digestUrl, { headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } });
+    if (!resp.ok) return;
+    var digest = await resp.json();
+    var alerts = digest.alerts || [];
+    var narrative = digest.ai_narrative || digest.summary_text || '';
+    var panel = document.getElementById('ceoAlertsPanel');
+
+    if (alerts.length === 0 && !narrative) return;
+
+    // Narrative
+    if (narrative) {
+      document.getElementById('ceoNarrative').innerHTML = '<div class="ceo-narrative"><div class="nar-label">AI Morning Brief</div>' + narrative + '</div>';
+    }
+
+    // Red alerts
+    var reds = alerts.filter(function(a) { return a.severity === 'critical'; });
+    var ambers = alerts.filter(function(a) { return a.severity === 'warning'; });
+
+    var redHtml = '';
+    reds.forEach(function(a) {
+      var impact = a.data && (a.data.total_value || a.data.total) ? ' — $' + Math.round(a.data.total_value || a.data.total).toLocaleString() + ' at risk' : '';
+      redHtml += '<div class="alert-card critical"><button class="ceo-alert-dismiss" onclick="this.parentElement.style.display=\'none\'">Dismiss</button><strong>' + (a.title || '') + impact + '</strong><br><span style="font-size:12px;color:var(--sw-text-sec);">' + (a.detail || '') + '</span><br><em style="font-size:11px;color:var(--sw-mid);">' + (a.action || '') + '</em></div>';
+    });
+    document.getElementById('ceoRedAlerts').innerHTML = redHtml;
+
+    // Amber alerts
+    if (ambers.length > 0) {
+      var amberHtml = '';
+      ambers.forEach(function(a) {
+        amberHtml += '<div class="alert-card warning"><button class="ceo-alert-dismiss" onclick="this.parentElement.style.display=\'none\'">Dismiss</button><strong>' + (a.title || '') + '</strong><br><span style="font-size:12px;color:var(--sw-text-sec);">' + (a.detail || '') + '</span></div>';
+      });
+      document.getElementById('ceoAmberAlerts').innerHTML = amberHtml;
+      document.getElementById('ceoAmberToggle').style.display = 'flex';
+      document.getElementById('ceoAmberText').textContent = ambers.length + ' warning' + (ambers.length > 1 ? 's' : '');
+    }
+
+    panel.style.display = 'block';
+  } catch (e) {
+    console.error('CEO alerts error:', e);
+  }
+}
+function toggleCeoAmber() {
+  _ceoAmberOpen = !_ceoAmberOpen;
+  document.getElementById('ceoAmberAlerts').style.display = _ceoAmberOpen ? 'block' : 'none';
+  document.getElementById('ceoAmberIcon').innerHTML = _ceoAmberOpen ? '&#9652;' : '&#9662;';
+}
+
 async function loadReport() {
   try {
     const res = await fetch(
@@ -933,6 +1011,8 @@ async function loadReport() {
         if (el) el.innerHTML += '<div class="alert-card critical" style="margin-top:12px;">Failed to render this section: ' + e.message + '</div>';
       }
     }
+    // Load AI alerts (non-blocking)
+    loadCeoAlerts();
   } catch (err) {
     document.getElementById('loadingState').innerHTML =
       '<div style="color:var(--sw-red);">Failed to load report: ' + err.message + '</div>';
