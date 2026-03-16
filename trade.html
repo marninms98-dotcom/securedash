@@ -1900,6 +1900,28 @@
   // API HELPER — JWT auth + timeout
   // ══════════════════════════════════════════════════
 
+  // GHL comms API — uses ghl-proxy edge function (same as Ops dashboard)
+  var _ghlBase = window.SUPABASE_URL + '/functions/v1/ghl-proxy';
+
+  function ghlApi(action, params, postBody) {
+    return getAuthToken().then(function(token) {
+      var url = _ghlBase + '?action=' + action;
+      if (params) {
+        Object.keys(params).forEach(function(k) {
+          if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
+        });
+      }
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      var opts = { headers: headers };
+      if (postBody) { opts.method = 'POST'; opts.body = JSON.stringify(postBody); }
+      return fetch(url, opts).then(function(r) {
+        if (!r.ok) return r.json().catch(function() { return {}; }).then(function(e) { throw new Error(e.error || e.msg || 'Request failed'); });
+        return r.json();
+      });
+    });
+  }
+
   function api(action, params, postBody) {
     return getAuthToken().then(function(token) {
       var url = _opsApiBase + '?action=' + action;
@@ -4796,7 +4818,7 @@
           var firstName = (job.client_name || '').split(' ')[0] || 'there';
           var msg = 'On my way — arriving in about 20 minutes';
           // TODO: ops-api?action=send_sms — should log job_event, get_my_messages endpoint
-          api('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
+          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
             toast('Auto-notified ' + firstName);
           }).catch(function() { /* silently fail — edge function not ready yet */ });
         }
@@ -4819,7 +4841,7 @@
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
         if (job.ghl_contact_id) {
-          api('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).catch(function() {});
+          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).catch(function() {});
         }
       }
     } else if (action === 'stop') {
@@ -4932,7 +4954,7 @@
     if (!_msgContactId || !_msgJobId) return;
     toast('Sending...');
     // TODO: ops-api?action=send_sms — should log job_event with user_id
-    api('send_sms', null, { contactId: _msgContactId, message: message, jobId: _msgJobId }).then(function() {
+    ghlApi('send_sms', null, { contactId: _msgContactId, message: message, jobId: _msgJobId }).then(function() {
       toast('Message sent');
       if (navigator.vibrate) navigator.vibrate(50);
       loadMyMessages();
@@ -4952,7 +4974,7 @@
     var container = document.getElementById('mySentMessages');
     if (!container || !_msgJobId) return;
     // TODO: ops-api?action=get_my_messages endpoint
-    api('get_my_messages', { jobId: _msgJobId }).then(function(data) {
+    ghlApi('get_my_messages', { jobId: _msgJobId }).then(function(data) {
       var msgs = data.messages || [];
       if (msgs.length === 0) {
         container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No messages sent yet</div>';
@@ -5023,7 +5045,7 @@
     var container = document.getElementById('convThread');
     if (!container) return;
     // TODO: ops-api?action=get_conversation — GHL Conversations API — last 20 messages for contact
-    api('get_conversation', { contactId: contactId }).then(function(data) {
+    ghlApi('get_conversation', { contactId: contactId }).then(function(data) {
       var msgs = data.messages || [];
       if (msgs.length === 0) {
         container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No messages yet</div>';
@@ -5053,7 +5075,7 @@
     if (!text || !text.trim() || !_currentJobId) return;
     input.value = '';
     // TODO: ops-api?action=send_sms — should log as conversation message
-    api('send_sms', null, { contactId: contactId, message: text.trim(), jobId: _currentJobId }).then(function() {
+    ghlApi('send_sms', null, { contactId: contactId, message: text.trim(), jobId: _currentJobId }).then(function() {
       toast('Sent');
       loadConversation(contactId);
     }).catch(function(err) {
@@ -5578,7 +5600,7 @@
     var job = _currentJob ? _currentJob.job : {};
     if (!job.ghl_contact_id) return;
     var msg = 'Thanks for choosing SecureWorks! We would love your feedback — please leave us a review: ' + GOOGLE_REVIEW_URL;
-    api('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
+    ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
       toast('Review link sent');
     }).catch(function() {
       toast('Could not send — try again later', true);
