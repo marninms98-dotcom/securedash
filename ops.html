@@ -945,6 +945,41 @@
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
+    /* ── PO Email Compose ── */
+    .po-compose-to { display:flex; gap:8px; align-items:center; }
+    .po-compose-to input { flex:1; }
+    .po-compose-template { margin-bottom:12px; }
+    .po-compose-attach { display:flex; align-items:center; gap:12px; margin:8px 0; font-size:12px; }
+    .po-compose-attach label { cursor:pointer; display:flex; align-items:center; gap:4px; }
+    .po-compose-files { font-size:11px; color:var(--sw-text-sec); }
+
+    /* ── PO Email Thread ── */
+    .po-email-thread-toggle { font-size:11px; color:var(--sw-text-sec); cursor:pointer; margin-top:6px; padding:4px 0; border-top:1px solid var(--sw-border); }
+    .po-email-thread-toggle:hover { color:var(--sw-blue-mid); }
+    .po-email-count { font-weight:600; }
+    .po-email-thread { max-height:300px; overflow-y:auto; padding:8px 0; }
+    .po-email-item { padding:8px 10px; margin:4px 0; font-size:12px; cursor:pointer; }
+    .po-email-item.sent { background:rgba(241,90,41,0.06); margin-left:20%; text-align:right; }
+    .po-email-item.received { background:var(--sw-light); margin-right:20%; }
+    .po-email-date { font-size:10px; color:var(--sw-text-sec); }
+    .po-email-subject { font-weight:600; color:var(--sw-blue-dark); }
+    .po-email-preview { color:var(--sw-text-sec); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .po-email-body { display:none; white-space:pre-wrap; margin-top:6px; font-size:12px; color:var(--sw-text); }
+    .po-email-item.expanded .po-email-body { display:block; }
+    .po-email-item.expanded .po-email-preview { display:none; }
+    .po-email-reply-btn { font-size:10px; padding:2px 8px; border:1px solid var(--sw-border); border-radius:3px; background:var(--sw-card); cursor:pointer; color:var(--sw-text-sec); margin-top:4px; }
+    .po-email-reply-btn:hover { border-color:var(--sw-orange); color:var(--sw-orange); }
+
+    /* ── Supplier comms in job detail ── */
+    .comms-channel-tabs { display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid var(--sw-border); }
+    .comms-channel-tab { padding:6px 16px; font-size:12px; font-weight:600; cursor:pointer; border:none; background:none; color:var(--sw-text-sec); border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .comms-channel-tab.active { color:var(--sw-orange); border-bottom-color:var(--sw-orange); }
+    .supplier-thread-group { border:1px solid var(--sw-border); margin-bottom:8px; }
+    .supplier-thread-header { padding:10px 12px; background:var(--sw-light); cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+    .supplier-thread-header:hover { background:var(--sw-border); }
+    .supplier-thread-body { display:none; padding:8px 12px; }
+    .supplier-thread-group.expanded .supplier-thread-body { display:block; }
+
     /* ── Slide Panel (Job Detail) ── */
     .slide-panel {
       position: fixed;
@@ -995,19 +1030,18 @@
     }
     .job-detail-view.active { display: flex; }
 
-    /* Health Bar — Zone 1 */
+    /* Minimal Header */
     .jd-health {
       flex-shrink: 0;
-      background: var(--sw-card);
-      border-bottom: 1px solid var(--sw-border);
+      background: #fff;
+      border-bottom: 1px solid var(--sw-light);
       padding: 0;
     }
     .jd-health-top {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       padding: 10px 20px;
-      flex-wrap: wrap;
     }
     .jd-back {
       background: none; border: none; font-size: 20px; cursor: pointer;
@@ -1972,31 +2006,29 @@
 
   <!-- ══════════ FULL JOB DETAIL VIEW ══════════ -->
   <div class="job-detail-view" id="jobDetailView">
-    <!-- Zone 1: Health Bar -->
+    <!-- Minimal Header -->
     <div class="jd-health">
       <div class="jd-health-top" id="jdHealthTop"></div>
-      <div class="jd-stepper-row" id="jdStepper"></div>
-      <div class="jd-stage-days" id="jdStageDays"></div>
-      <div class="jd-profit-row" id="jdProfitRow"></div>
-      <div class="jd-alerts" id="jdAlerts"></div>
     </div>
-    <!-- Zone 2: Content -->
+    <!-- Tabs + Content -->
     <div class="jd-content">
       <div class="jd-tabs">
-        <button class="jd-tab active" data-jd-tab="timeline" onclick="showJobSubView('timeline')">Timeline</button>
+        <button class="jd-tab active" data-jd-tab="overview" onclick="showJobSubView('overview')">Overview</button>
         <button class="jd-tab" data-jd-tab="money" onclick="showJobSubView('money')">Money</button>
         <button class="jd-tab" data-jd-tab="build" onclick="showJobSubView('build')">Build</button>
         <button class="jd-tab" data-jd-tab="files" onclick="showJobSubView('files')">Files</button>
-        <button class="jd-tab" data-jd-tab="comms" onclick="showJobSubView('comms')">&#128172; Comms</button>
+        <button class="jd-tab" data-jd-tab="comms" onclick="showJobSubView('comms')">Comms</button>
+        <button class="jd-tab" data-jd-tab="history" onclick="showJobSubView('history')">History</button>
       </div>
-      <div class="jd-sub-view active" id="jdTimeline"></div>
+      <div class="jd-sub-view active" id="jdOverview"></div>
       <div class="jd-sub-view" id="jdMoney"></div>
       <div class="jd-sub-view" id="jdBuild"></div>
       <div class="jd-sub-view" id="jdFiles"></div>
       <div class="jd-sub-view" id="jdComms"></div>
+      <div class="jd-sub-view" id="jdHistory"></div>
     </div>
-    <!-- Zone 3: Action Drawer -->
-    <div class="jd-drawer" id="jdDrawer"></div>
+    <!-- Action drawer removed — actions are contextual in tabs -->
+    <div class="jd-drawer" id="jdDrawer" style="display:none;"></div>
   </div>
 
   <!-- Action Sheet containers -->
@@ -2165,6 +2197,7 @@
     <!-- Mode 1: New PO actions -->
     <div class="modal-actions" id="poActionsNew">
       <button class="btn btn-secondary" onclick="closeModal('poModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Email Supplier</button>
       <button class="btn btn-secondary" onclick="submitPO('quote_requested')" style="border-color:#E67E22; color:#E67E22;">Send to Supplier (No Prices)</button>
       <button class="btn btn-primary" onclick="submitPO('draft')">Save Draft</button>
       <button class="btn btn-secondary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
@@ -2172,6 +2205,7 @@
     <!-- Mode 2: Pricing PO actions (when editing quote_requested PO) -->
     <div class="modal-actions" id="poActionsPricing" style="display:none;">
       <button class="btn btn-secondary" onclick="closeModal('poModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Email Supplier</button>
       <button class="btn btn-secondary" onclick="savePOPrices()">Save Prices</button>
       <button class="btn btn-primary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
     </div>
@@ -2419,6 +2453,50 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('poEmailLogModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitPOEmailLog()" style="background:var(--sw-purple);">Save Log</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PO EMAIL COMPOSE MODAL ══════════ -->
+<div class="modal-overlay" id="poEmailComposeModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="poComposeTitle">Email Supplier</div>
+    <div class="form-group">
+      <label class="form-label">To</label>
+      <div class="po-compose-to">
+        <input type="email" class="form-input" id="poComposeTo" placeholder="supplier@example.com">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Subject</label>
+      <input type="text" class="form-input" id="poComposeSubject" placeholder="Subject line">
+    </div>
+    <div class="form-group po-compose-template">
+      <label class="form-label">Template</label>
+      <select class="form-select" id="poComposeTemplate" onchange="applyPOEmailTemplate(this.value)" style="padding:8px 10px;">
+        <option value="new_order">New Order</option>
+        <option value="delivery_change">Delivery Change</option>
+        <option value="order_query">Order Query</option>
+        <option value="cancellation">Cancellation</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Body</label>
+      <textarea class="form-textarea" id="poComposeBody" rows="6" style="min-height:120px;resize:vertical;" placeholder="Email body..."></textarea>
+    </div>
+    <div class="po-compose-attach">
+      <label><input type="checkbox" id="poComposeAttachPDF"> Attach PO PDF</label>
+      <label style="border:1px solid var(--sw-border);border-radius:3px;padding:3px 8px;font-size:11px;">
+        Attach files <input type="file" id="poComposeFiles" multiple style="display:none;" onchange="updatePOComposeFileList()">
+      </label>
+    </div>
+    <div class="po-compose-files" id="poComposeFileList"></div>
+    <input type="hidden" id="poComposePoId">
+    <input type="hidden" id="poComposeJobId">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('poEmailComposeModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="sendPOEmail()">&#9993; Send Email</button>
     </div>
   </div>
 </div>
@@ -4722,7 +4800,7 @@ function renderMatAlerts() {
     html += ' — awaiting invoice for <strong>' + a.days + ' days</strong>';
     if (a.po.job_number) html += ' <span style="color:var(--sw-text-sec);">(' + a.po.job_number + ')</span>';
     html += '<span style="margin-left:auto; display:flex; gap:4px;">';
-    html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + a.po.id + '\',\'' + escapeHtml(a.po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (a.po.job_id || '') + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;">Follow Up</button>';
+    html += '<button onclick="event.stopPropagation();openPOEmailCompose(\'' + a.po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;">Follow Up</button>';
     html += '<button onclick="event.stopPropagation();markPOInvoiceReceived(\'' + a.po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Invoice Received</button>';
     html += '</span>';
     html += '</div>';
@@ -4856,7 +4934,7 @@ function renderMaterialsKanban() {
       // FEATURE 7: Lifecycle action buttons + BUG 3: Open Job (fixed to use openJobQuickView)
       html += '<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">';
       // Log Email
-      html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || '') + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Log</button>';
+      html += '<button onclick="event.stopPropagation();openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Email</button>';
       // Open Job (BUG 3 — fixed: opens job detail, not patio tool)
       if (po.job_id) {
         html += '<button onclick="event.stopPropagation();openJobQuickView(\'' + po.job_id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Job</button>';
@@ -4869,6 +4947,12 @@ function renderMaterialsKanban() {
         html += '<button onclick="event.stopPropagation();markPOPaid(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Mark Paid</button>';
       }
       html += '</div>';
+
+      // PO Email Thread toggle
+      html += '<div class="po-email-thread-toggle" onclick="event.stopPropagation();togglePOEmailThread(\'' + po.id + '\', this)">';
+      html += 'Supplier Emails <span class="po-email-count" id="poEmailCount_' + po.id + '">(0)</span>';
+      html += '</div>';
+      html += '<div class="po-email-thread" id="poThread_' + po.id + '" style="display:none;"></div>';
 
       html += '</div>';
     });
@@ -5228,9 +5312,8 @@ async function openJobDetail(jobId) {
     if (history.pushState) history.pushState({ job: jobId }, '', '#job/' + jobNum);
 
     renderHealthBar(data);
-    renderActionDrawer(data);
-    // Render the active sub-view
-    var activeTab = localStorage.getItem('sw_jd_tab') || 'timeline';
+    // Render the active sub-view (default to overview)
+    var activeTab = localStorage.getItem('sw_jd_tab') || 'overview';
     showJobSubView(activeTab);
   } catch (e) {
     document.getElementById('jdHealthTop').innerHTML = '<div style="color:var(--sw-red);padding:12px;">Error: ' + e.message + '</div>';
@@ -5293,27 +5376,30 @@ async function refreshJobDetail() {
 }
 
 function showJobSubView(tab) {
-  var tabs = ['timeline', 'money', 'build', 'files', 'comms'];
-  var ids = ['jdTimeline', 'jdMoney', 'jdBuild', 'jdFiles', 'jdComms'];
+  // Map legacy tab names
+  if (tab === 'timeline') tab = 'history';
+  var tabs = ['overview', 'money', 'build', 'files', 'comms', 'history'];
+  var ids = ['jdOverview', 'jdMoney', 'jdBuild', 'jdFiles', 'jdComms', 'jdHistory'];
   tabs.forEach(function(t, i) {
     var el = document.getElementById(ids[i]);
     var btn = document.querySelector('[data-jd-tab="' + t + '"]');
     if (t === tab) {
-      el.classList.add('active');
+      if (el) el.classList.add('active');
       if (btn) btn.classList.add('active');
     } else {
-      el.classList.remove('active');
+      if (el) el.classList.remove('active');
       if (btn) btn.classList.remove('active');
     }
   });
   localStorage.setItem('sw_jd_tab', tab);
 
   if (!_currentJobData) return;
-  if (tab === 'timeline') renderTimelineView(_currentJobData);
+  if (tab === 'overview') renderOverviewView(_currentJobData);
   if (tab === 'money') renderMoneyView(_currentJobData);
   if (tab === 'build') renderBuildView(_currentJobData);
   if (tab === 'files') renderFilesView(_currentJobData);
   if (tab === 'comms') renderCommsView(_currentJobData);
+  if (tab === 'history') renderHistoryView(_currentJobData);
 }
 
 // ── Health Bar (Zone 1) ──
@@ -5323,80 +5409,14 @@ var STATUS_SEQUENCE = ['draft', 'quoted', 'accepted', 'scheduled', 'in_progress'
 function renderHealthBar(data) {
   var j = data.job;
 
-  // Top row: back, job ID, client, suburb, type, status, quick actions
+  // Minimal header: back, job#, client, suburb, type, status — nothing else
   var html = '<button class="jd-back" onclick="closeJobDetail()" title="Back">&larr;</button>';
   html += '<span class="jd-job-id">' + (j.job_number || '') + '</span>';
   html += '<span class="jd-client-name">' + escapeHtml(j.client_name || 'Unknown') + '</span>';
   html += '<span class="jd-suburb">' + escapeHtml(j.site_suburb || '') + '</span>';
   html += '<span class="jd-type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span>';
-  html += '<span class="jd-status-badge" style="background:' + (STATUS_COLORS[j.status] || '#999') + '20; color:' + (STATUS_COLORS[j.status] || '#999') + '">' + (STATUS_LABELS[j.status] || j.status) + '</span>';
-
-  // Quick action buttons
-  html += '<div class="jd-quick-actions">';
-  if (j.client_phone) {
-    html += '<a href="tel:' + j.client_phone + '" class="jd-quick-btn" title="Call" onclick="scheduleCallLog()">&#9742; Call</a>';
-    html += '<button class="jd-quick-btn" onclick="showJobSubView(\'comms\')" title="Open Comms">&#128172; Comms</button>';
-  }
-  if (j.ghl_opportunity_id) {
-    html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" class="jd-quick-btn">GHL &#8599;</a>';
-  }
-  var scopeUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
-  html += '<a href="' + scopeUrl + '?jobId=' + j.id + '" target="_blank" class="jd-quick-btn">Scope &#8599;</a>';
-  html += '</div>';
+  html += '<span class="jd-status-badge" style="background:transparent;color:' + (STATUS_COLORS[j.status] || '#999') + ';border:1px solid ' + (STATUS_COLORS[j.status] || '#999') + '40">' + (STATUS_LABELS[j.status] || j.status) + '</span>';
   document.getElementById('jdHealthTop').innerHTML = html;
-
-  // Stepper
-  var currentIdx = STATUS_SEQUENCE.indexOf(j.status);
-  if (currentIdx < 0) currentIdx = 0;
-  var stepHtml = '';
-  STATUS_SEQUENCE.forEach(function(s, i) {
-    if (i > 0) stepHtml += '<div class="jd-step-line" style="background:' + (i <= currentIdx ? 'var(--sw-green)' : 'var(--sw-border)') + '"></div>';
-    var cls = i < currentIdx ? 'done' : i === currentIdx ? 'current' : 'future';
-    stepHtml += '<div class="jd-step ' + cls + '" onclick="confirmStepChange(\'' + j.id + '\',\'' + s + '\',' + i + ',' + currentIdx + ')">';
-    stepHtml += '<div class="jd-step-dot"></div>';
-    stepHtml += '<span class="jd-step-label">' + (STATUS_LABELS[s] || s) + '</span>';
-    stepHtml += '</div>';
-  });
-  document.getElementById('jdStepper').innerHTML = stepHtml;
-
-  // Days in stage
-  var daysInStage = '';
-  if (j.status === 'quoted' && j.quoted_at) {
-    daysInStage = daysSince(j.quoted_at) + ' days in Quoted';
-  } else if (j.status === 'accepted' && j.accepted_at) {
-    daysInStage = daysSince(j.accepted_at) + ' days in Accepted';
-  } else if (j.status === 'scheduled' && j.scheduled_at) {
-    daysInStage = daysSince(j.scheduled_at) + ' days in Scheduled';
-  } else if (j.created_at) {
-    daysInStage = daysSince(j.created_at) + ' days since created';
-  }
-  document.getElementById('jdStageDays').textContent = daysInStage;
-
-  // Profitability
-  var quoteVal = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0;
-  var poCosts = (data.purchase_orders || []).reduce(function(s, po) { return s + (po.total || 0); }, 0);
-  var margin = quoteVal > 0 ? quoteVal - poCosts : 0;
-  var marginPct = quoteVal > 0 ? (margin / quoteVal * 100).toFixed(0) : 0;
-  var marginColor = marginPct >= 25 ? 'var(--sw-green)' : marginPct >= 15 ? 'var(--sw-yellow)' : 'var(--sw-red)';
-  var costPct = quoteVal > 0 ? Math.min(100, poCosts / quoteVal * 100) : 0;
-
-  var profHtml = '';
-  if (quoteVal > 0 || poCosts > 0) {
-    profHtml += '<div class="jd-profit-item"><span class="jd-profit-label">Quote:</span> <span class="jd-profit-value">' + fmt$(quoteVal) + '</span></div>';
-    profHtml += '<div class="jd-profit-item"><span class="jd-profit-label">Costs:</span> <span class="jd-profit-value" style="color:var(--sw-red)">' + fmt$(poCosts) + '</span></div>';
-    profHtml += '<div class="jd-cost-bar"><div class="jd-cost-bar-fill" style="width:' + costPct + '%; background:' + marginColor + '"></div></div>';
-    profHtml += '<div class="jd-profit-item"><span class="jd-profit-label">Margin:</span> <span class="jd-profit-value" style="color:' + marginColor + '">' + fmt$(margin) + ' (' + marginPct + '%)</span></div>';
-  }
-  document.getElementById('jdProfitRow').innerHTML = profHtml;
-
-  // Alerts
-  var alerts = evaluateJobAlerts(data);
-  var alertHtml = '';
-  alerts.forEach(function(a) {
-    alertHtml += '<div class="jd-alert ' + a.level + '" onclick="showJobSubView(\'' + a.target + '\')">' + a.icon + ' ' + a.message + '</div>';
-  });
-  document.getElementById('jdAlerts').innerHTML = alertHtml;
-  document.getElementById('jdAlerts').style.display = alerts.length > 0 ? 'flex' : 'none';
 }
 
 function daysSince(dateStr) {
@@ -5488,8 +5508,159 @@ function evaluateJobAlerts(data) {
 
 // ── Timeline View ──
 
-function renderTimelineView(data) {
+// ════════════════════════════════════════════════════════════
+// OVERVIEW TAB — Job Command Centre
+// ════════════════════════════════════════════════════════════
+
+function renderOverviewView(data) {
+  var j = data.job;
+  var html = '';
+  // Section 1: Client Card
+  html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-bottom:6px;">' + escapeHtml(j.client_name || 'Unknown Client') + '</div>';
+  if (j.site_address) html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:2px;">' + escapeHtml(j.site_address) + '</div>';
+  if (j.site_suburb) html += '<div style="font-size:12px;color:var(--sw-mid);">' + escapeHtml(j.site_suburb) + '</div>';
+  html += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">';
+  if (j.client_phone) {
+    html += '<button class="btn btn-secondary btn-sm" onclick="scheduleCallLog()">&#9742; Call ' + j.client_phone + '</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="showJobSubView(\x27comms\x27)">&#128172; SMS</button>';
+  }
+  if (j.client_email) html += '<a href="mailto:' + j.client_email + '" class="btn btn-secondary btn-sm" style="text-decoration:none;">&#9993; Email</a>';
+  if (j.site_address) html += '<a href="https://maps.google.com/?q=' + encodeURIComponent((j.site_address||'') + (j.site_suburb ? ', ' + j.site_suburb : '')) + '" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">&#128205; Navigate</a>';
+  html += '</div></div>';
+
+  // Section 2: Job Summary
+  html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+  var scopeDesc = typeBadgeLabel(j.type) + ' project';
+  if (j.scope_json) {
+    var sc = j.scope_json.config || j.scope_json;
+    var parts = [];
+    if (sc.length && sc.projection) parts.push(sc.length + 'm x ' + sc.projection + 'm');
+    if (sc.roofStyle) parts.push(sc.roofStyle);
+    if (sc.roofing || sc.panel_type) parts.push(sc.roofing || sc.panel_type);
+    if (parts.length) scopeDesc = parts.join(', ');
+  } else if (j.pricing_json && j.pricing_json.job_description) {
+    scopeDesc = j.pricing_json.job_description.substring(0, 80);
+  }
+  html += '<div style="font-size:13px;color:var(--sw-text);margin-bottom:8px;">' + escapeHtml(scopeDesc) + '</div>';
+  var quoteVal = j.pricing_json ? (j.pricing_json.totalIncGST || j.pricing_json.total || 0) : 0;
+  var poCosts = (data.purchase_orders || []).reduce(function(s, po) { return s + (po.total || 0); }, 0);
+  var margin = quoteVal > 0 ? quoteVal - poCosts : 0;
+  var marginPct = quoteVal > 0 ? (margin / quoteVal * 100).toFixed(0) : 0;
+  var marginColor = marginPct >= 35 ? 'var(--sw-green)' : marginPct >= 25 ? 'var(--sw-yellow)' : 'var(--sw-red)';
+  html += '<div style="display:flex;gap:16px;align-items:baseline;">';
+  html += '<span style="font-size:20px;font-weight:700;color:var(--sw-dark);font-family:var(--sw-font-num);">' + fmt + '</span>';
+  if (quoteVal > 0 && poCosts > 0) html += '<span style="font-size:13px;font-weight:600;color:' + marginColor + ';">' + marginPct + '% margin (' + fmt + ')</span>';
+  html += '</div>';
+  html += '<div style="margin-top:8px;font-size:11px;display:flex;gap:12px;">';
+  if (j.type !== 'miscellaneous') {
+    var scopeUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
+    html += '<a href="' + scopeUrl + '?jobId=' + j.id + '" target="_blank" style="color:var(--sw-mid);">Open Scope &#8599;</a>';
+  }
+  if (j.ghl_opportunity_id) html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" style="color:var(--sw-mid);">View in GHL &#8599;</a>';
+  html += '</div></div>';
+
+  // Section 3: Next Actions
+  var alerts = evaluateJobAlerts(data);
+  html += '<div style="margin-bottom:12px;">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Next Actions</div>';
+  if (alerts.length === 0) html += '<div style="background:rgba(39,174,96,0.06);padding:10px 14px;font-size:13px;color:var(--sw-green);font-weight:500;">&#9989; Job on track</div>';
+  alerts.forEach(function(a) {
+    var targetTab = a.target === 'timeline' ? 'history' : a.target;
+    html += '<div style="background:' + (a.level === 'red' ? 'rgba(231,76,60,0.06)' : 'rgba(230,126,34,0.06)') + ';padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:8px;border-left:3px solid ' + (a.level === 'red' ? 'var(--sw-red)' : 'var(--sw-yellow)') + ';cursor:pointer;" onclick="showJobSubView(\x27' + targetTab + '\x27)">';
+    html += '<span style="font-size:13px;flex:1;">' + a.icon + ' ' + a.message + '</span>';
+    html += '<span style="font-size:11px;color:var(--sw-mid);">&#8594;</span></div>';
+  });
+  var nextStatuses = getNextStatuses(j.status);
+  nextStatuses.forEach(function(s) {
+    var color = s === 'cancelled' ? 'var(--sw-red)' : 'var(--sw-dark)';
+    html += '<div style="background:var(--sw-light);padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:8px;border-left:3px solid ' + color + ';">';
+    html += '<span style="font-size:13px;flex:1;">Mark as ' + (STATUS_LABELS[s] || s) + '</span>';
+    html += '<button class="btn btn-sm" style="background:' + color + ';color:#fff;" onclick="changeJobStatus(\x27' + j.id + '\x27,\x27' + s + '\x27)">' + (STATUS_LABELS[s] || s) + '</button></div>';
+  });
+  html += '</div>';
+
+  // Section 4: Progress Checklist
+  html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Progress</div>';
+  var salesInvs = (data.invoices || []).filter(function(i) { return i.invoice_type === 'ACCREC' && ['VOIDED','DELETED'].indexOf(i.status) < 0; });
+  var paidInvs = salesInvs.filter(function(i) { return i.status === 'PAID'; });
+  var checkSteps = [
+    { label: 'Lead received', done: !!j.created_at, date: j.created_at },
+    { label: 'Quote sent', done: !!j.quoted_at, date: j.quoted_at, extra: quoteVal > 0 ? fmt : '' },
+    { label: 'Quote accepted', done: !!j.accepted_at, date: j.accepted_at },
+    { label: 'Materials ordered', done: (data.purchase_orders || []).length > 0, extra: (data.purchase_orders || []).length + ' POs' },
+    { label: 'Crew assigned', done: (data.assignments || []).length > 0, extra: (data.assignments || []).length + ' assignments' },
+    { label: 'Build complete', done: !!j.completed_at, date: j.completed_at },
+    { label: 'Invoiced', done: salesInvs.length > 0 },
+    { label: 'Paid', done: paidInvs.length > 0 },
+  ];
+  checkSteps.forEach(function(s) {
+    var icon = s.done ? '<span style="color:var(--sw-green);">&#9989;</span>' : '<span style="color:var(--sw-border);">&#9744;</span>';
+    var dateStr = s.date ? ' <span style="font-size:10px;color:var(--sw-text-sec);">' + fmtDate((s.date||'').slice(0,10)) + '</span>' : '';
+    var extraStr = s.extra ? ' <span style="font-size:10px;color:var(--sw-mid);">' + s.extra + '</span>' : '';
+    html += '<div style="padding:3px 0;display:flex;align-items:center;gap:8px;font-size:13px;">' + icon + '<span style="' + (s.done ? '' : 'color:var(--sw-text-sec);') + '">' + s.label + '</span>' + dateStr + extraStr + '</div>';
+  });
+  html += '</div>';
+
+  // Section 5: Recent Activity
+  html += '<div style="background:var(--sw-card);padding:14px;box-shadow:var(--sw-shadow);">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Recent Activity</div>';
+  var evts = buildTimelineEvents(data);
+  evts.sort(function(a, b) { return (b.datetime || '') > (a.datetime || '') ? 1 : -1; });
+  var shown = 0;
+  evts.forEach(function(ev) {
+    if (shown >= 5) return;
+    if (ev.source === 'photo') return;
+    html += '<div style="padding:3px 0;font-size:12px;display:flex;gap:6px;">';
+    html += '<span style="color:' + getTimelineColor(ev.source) + ';">&#9679;</span>';
+    html += '<span style="flex:1;color:var(--sw-text);">' + escapeHtml(ev.label) + '</span>';
+    html += '<span style="font-size:10px;color:var(--sw-text-sec);white-space:nowrap;">' + (ev.datetime ? fmtDate(ev.datetime.slice(0,10)) : '') + '</span></div>';
+    shown++;
+  });
+  if (evts.length > 5) html += '<div style="margin-top:6px;"><a href="#" onclick="event.preventDefault();showJobSubView(\x27history\x27)" style="font-size:11px;color:var(--sw-mid);">View full history &#8594;</a></div>';
+  html += '</div>';
+
+  document.getElementById('jdOverview').innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════════════
+// HISTORY TAB — Filtered Timeline
+// ════════════════════════════════════════════════════════════
+
+function renderHistoryView(data) {
   var events = buildTimelineEvents(data);
+  var today = new Date().toISOString().slice(0, 10);
+  var filtered = [];
+  var lastScope = null;
+  events.sort(function(a, b) { return (a.datetime || '') < (b.datetime || '') ? -1 : 1; });
+  events.forEach(function(ev) {
+    if (ev.type === 'scope_saved') {
+      if (lastScope && (new Date(ev.datetime).getTime() - new Date(lastScope.datetime).getTime()) < 300000) { lastScope = ev; return; }
+      if (lastScope) filtered.push(lastScope);
+      lastScope = ev;
+    } else {
+      if (lastScope) { filtered.push(lastScope); lastScope = null; }
+      filtered.push(ev);
+    }
+  });
+  if (lastScope) filtered.push(lastScope);
+  var past = filtered.filter(function(e) { return e.date <= today; });
+  var future = filtered.filter(function(e) { return e.date > today; });
+  var html = '<div class="jd-timeline">';
+  past.sort(function(a, b) { return b.datetime > a.datetime ? 1 : -1; });
+  past.forEach(function(ev) { html += renderTimelineItem(ev, false); });
+  if (future.length > 0) {
+    html += '<div class="jd-tl-divider">&#9660; Upcoming</div>';
+    future.sort(function(a, b) { return a.datetime < b.datetime ? -1 : 1; });
+    future.forEach(function(ev) { html += renderTimelineItem(ev, true); });
+  }
+  html += '</div>';
+  document.getElementById('jdHistory').innerHTML = html;
+}
+
+function renderTimelineView(data) {
+  renderHistoryView(data);
   var today = new Date().toISOString().slice(0, 10);
 
   // Split into past and future
@@ -5815,7 +5986,7 @@ function renderBuildView(data) {
       html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
       html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
       html += '</div>';
-      html += '<button onclick="openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || j.id || '') + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Log Email</button>';
+      html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email Supplier</button>';
       html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
       html += '</div>';
     });
@@ -8153,72 +8324,151 @@ var COMMS_TEMPLATES = {
 function renderCommsView(data) {
   var j = data.job;
   var container = document.getElementById('jdComms');
+  var pos = data.purchase_orders || [];
 
-  // No GHL contact linked
-  if (!j.ghl_contact_id) {
-    container.innerHTML = '<div class="comms-empty">No GHL contact linked to this job.<br><span style="font-size:11px;">Link a contact via the scope tool or GHL.</span></div>';
-    return;
-  }
-
-  // Build the view shell with loading state
   var html = '';
 
-  // Header: phone + call button
-  html += '<div class="comms-header">';
-  if (j.client_phone) {
-    html += '<span class="phone-num">' + j.client_phone + '</span>';
-    if (_isMobile) {
-      html += '<a href="tel:' + j.client_phone + '" class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</a>';
-    } else {
-      html += '<button class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</button>';
+  // Channel tabs: Client | Suppliers
+  html += '<div class="comms-channel-tabs">';
+  html += '<button class="comms-channel-tab active" id="commsTabClient" onclick="setCommsChannel(\'client\')">Client</button>';
+  html += '<button class="comms-channel-tab" id="commsTabSuppliers" onclick="setCommsChannel(\'suppliers\')">Suppliers' + (pos.length ? ' (' + pos.length + ')' : '') + '</button>';
+  html += '</div>';
+
+  // ── Client View ──
+  html += '<div id="commsClientView">';
+
+  if (!j.ghl_contact_id) {
+    html += '<div class="comms-empty">No GHL contact linked to this job.<br><span style="font-size:11px;">Link a contact via the scope tool or GHL.</span></div>';
+  } else {
+    // Header: phone + call button
+    html += '<div class="comms-header">';
+    if (j.client_phone) {
+      html += '<span class="phone-num">' + j.client_phone + '</span>';
+      if (_isMobile) {
+        html += '<a href="tel:' + j.client_phone + '" class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</a>';
+      } else {
+        html += '<button class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</button>';
+      }
     }
-  }
-  html += '<span style="flex:1;"></span>';
-  if (j.ghl_contact_id) {
+    html += '<span style="flex:1;"></span>';
     html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/' + j.ghl_contact_id + '" target="_blank" style="font-size:11px;color:var(--sw-text-sec);">View in GHL &#8599;</a>';
+    html += '</div>';
+
+    // Thread (placeholder — loaded async)
+    html += '<div id="commsThread" class="comms-thread"><div class="loading" style="text-align:center;padding:20px;">Loading conversation...</div></div>';
+
+    // Compose area
+    html += '<div class="comms-compose">';
+    html += '<div class="comms-mode-tabs">';
+    html += '<button class="comms-mode-tab active" onclick="setCommsMode(\'sms\')">SMS</button>';
+    html += '<button class="comms-mode-tab" onclick="setCommsMode(\'email\')">Email</button>';
+    html += '</div>';
+
+    // Templates
+    html += '<div class="comms-templates">';
+    html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'scheduled\')">Scheduled</button>';
+    html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'materials\')">Materials</button>';
+    html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'complete\')">Complete</button>';
+    html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'payment\')">Payment</button>';
+    html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'follow_up\')">Follow Up</button>';
+    html += '</div>';
+
+    // SMS compose
+    html += '<div id="commsCompSMS">';
+    html += '<textarea id="commsSMSText" class="form-textarea" style="width:100%;min-height:60px;resize:vertical;" placeholder="Type your SMS message..." oninput="updateCommsCharCount()"></textarea>';
+    html += '<div class="comms-char-count"><span id="commsCharCount">0</span>/160</div>';
+    html += '</div>';
+
+    // Email compose (hidden by default)
+    html += '<div id="commsCompEmail" style="display:none;">';
+    html += '<input type="text" class="form-input" id="commsEmailSubject" placeholder="Subject" style="margin-bottom:6px;">';
+    html += '<textarea id="commsEmailBody" class="form-textarea" style="width:100%;min-height:80px;resize:vertical;" placeholder="Email body..."></textarea>';
+    html += '</div>';
+
+    html += '<div class="comms-send-row">';
+    html += '<button class="comms-send-btn" onclick="sendCommsMessage()">Send</button>';
+    html += '</div>';
+    html += '</div>';
   }
-  html += '</div>';
+  html += '</div>'; // end commsClientView
 
-  // Thread (placeholder — loaded async)
-  html += '<div id="commsThread" class="comms-thread"><div class="loading" style="text-align:center;padding:20px;">Loading conversation...</div></div>';
-
-  // Compose area
-  html += '<div class="comms-compose">';
-  html += '<div class="comms-mode-tabs">';
-  html += '<button class="comms-mode-tab active" onclick="setCommsMode(\'sms\')">SMS</button>';
-  html += '<button class="comms-mode-tab" onclick="setCommsMode(\'email\')">Email</button>';
-  html += '</div>';
-
-  // Templates
-  html += '<div class="comms-templates">';
-  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'scheduled\')">Scheduled</button>';
-  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'materials\')">Materials</button>';
-  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'complete\')">Complete</button>';
-  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'payment\')">Payment</button>';
-  html += '<button class="comms-template-btn" onclick="applyCommsTemplate(\'follow_up\')">Follow Up</button>';
-  html += '</div>';
-
-  // SMS compose
-  html += '<div id="commsCompSMS">';
-  html += '<textarea id="commsSMSText" class="form-textarea" style="width:100%;min-height:60px;resize:vertical;" placeholder="Type your SMS message..." oninput="updateCommsCharCount()"></textarea>';
-  html += '<div class="comms-char-count"><span id="commsCharCount">0</span>/160</div>';
-  html += '</div>';
-
-  // Email compose (hidden by default)
-  html += '<div id="commsCompEmail" style="display:none;">';
-  html += '<input type="text" class="form-input" id="commsEmailSubject" placeholder="Subject" style="margin-bottom:6px;">';
-  html += '<textarea id="commsEmailBody" class="form-textarea" style="width:100%;min-height:80px;resize:vertical;" placeholder="Email body..."></textarea>';
-  html += '</div>';
-
-  html += '<div class="comms-send-row">';
-  html += '<button class="comms-send-btn" onclick="sendCommsMessage()">Send</button>';
-  html += '</div>';
-  html += '</div>';
+  // ── Supplier View ──
+  html += '<div id="commsSupplierView" style="display:none;">';
+  if (pos.length === 0) {
+    html += '<div class="comms-empty">No purchase orders for this job yet.</div>';
+  } else {
+    var supplierGroups = {};
+    pos.forEach(function(po) {
+      var sn = po.supplier_name || 'Unknown';
+      if (!supplierGroups[sn]) supplierGroups[sn] = [];
+      supplierGroups[sn].push(po);
+    });
+    Object.keys(supplierGroups).forEach(function(sn) {
+      var spos = supplierGroups[sn];
+      var supplierEmail = '';
+      var sup = _suppliers.find(function(s) { return s.name === sn; });
+      if (sup) supplierEmail = sup.email || '';
+      var groupId = 'supplierGroup_' + sn.replace(/[^a-zA-Z0-9]/g, '_');
+      html += '<div class="supplier-thread-group" id="' + groupId + '">';
+      html += '<div class="supplier-thread-header" onclick="this.parentElement.classList.toggle(\'expanded\')">';
+      html += '<div><strong>' + escapeHtml(sn) + '</strong>';
+      if (supplierEmail) html += ' <span style="font-size:11px;color:var(--sw-text-sec);">' + escapeHtml(supplierEmail) + '</span>';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);">' + spos.map(function(p) { return p.po_number; }).join(', ') + '</div>';
+      html += '</div>';
+      html += '<span style="font-size:11px;color:var(--sw-text-sec);">' + spos.length + ' PO' + (spos.length > 1 ? 's' : '') + '</span>';
+      html += '</div>';
+      html += '<div class="supplier-thread-body">';
+      spos.forEach(function(po) {
+        html += '<div style="padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px;display:flex;align-items:center;gap:8px;">';
+        html += '<div style="flex:1;"><strong>' + (po.po_number || '') + '</strong> <span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ' + fmt$(po.total) + '</div>';
+        html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email</button>';
+        html += '</div>';
+        html += '<div class="po-email-thread" id="poThreadComms_' + po.id + '"></div>';
+      });
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>'; // end commsSupplierView
 
   container.innerHTML = html;
 
-  // Load conversation async
-  loadConversation(j.ghl_contact_id);
+  // Load client conversation async
+  if (j.ghl_contact_id) {
+    loadConversation(j.ghl_contact_id);
+  }
+
+  // Load supplier email threads
+  if (pos.length > 0) {
+    pos.forEach(function(po) {
+      loadPOEmails(po.id).then(function(emails) {
+        var threadEl = document.getElementById('poThreadComms_' + po.id);
+        if (threadEl && emails.length > 0) {
+          threadEl.innerHTML = renderPOEmailThread(emails, po.id);
+          threadEl.style.display = 'block';
+        }
+      });
+    });
+  }
+}
+
+function setCommsChannel(channel) {
+  var clientView = document.getElementById('commsClientView');
+  var supplierView = document.getElementById('commsSupplierView');
+  var clientTab = document.getElementById('commsTabClient');
+  var supplierTab = document.getElementById('commsTabSuppliers');
+  if (!clientView || !supplierView) return;
+  if (channel === 'suppliers') {
+    clientView.style.display = 'none';
+    supplierView.style.display = 'block';
+    clientTab.classList.remove('active');
+    supplierTab.classList.add('active');
+  } else {
+    clientView.style.display = 'block';
+    supplierView.style.display = 'none';
+    clientTab.classList.add('active');
+    supplierTab.classList.remove('active');
+  }
 }
 
 async function loadConversation(contactId) {
@@ -8575,6 +8825,253 @@ async function submitPOEmailLog() {
     }
   } catch (e) {
     showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// PO EMAIL COMPOSE + THREAD
+// ════════════════════════════════════════════════════════════
+
+var _poEmailCache = {};
+var _poComposeData = null; // temp PO data for template replacements
+
+var _poEmailTemplates = {
+  new_order: 'Hi {supplier_name},\n\nPlease find attached our purchase order {po_number} for job {job_number}.\n\nDelivery address: {site_address}\nRequired by: {delivery_date}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
+  delivery_change: 'Hi {supplier_name},\n\nRegarding PO {po_number} for job {job_number} — we need to change the delivery details.\n\nNew delivery date: {delivery_date}\nDelivery address: {site_address}\n\nPlease confirm this change.\n\nThanks,\nSecureWorks WA',
+  order_query: 'Hi {supplier_name},\n\nJust following up on PO {po_number} for job {job_number}.\n\nCould you please provide an update on the order status and expected delivery?\n\nThanks,\nSecureWorks WA',
+  cancellation: 'Hi {supplier_name},\n\nPlease cancel PO {po_number} for job {job_number}.\n\nPlease confirm cancellation at your earliest convenience.\n\nThanks,\nSecureWorks WA',
+  custom: ''
+};
+
+function openPOEmailCompose(poId) {
+  if (!poId) { showToast('No PO selected', 'warning'); return; }
+
+  var po = _allPOs.find(function(p) { return p.id === poId; });
+  if (!po) { showToast('PO not found', 'warning'); return; }
+
+  // Find supplier email
+  var supplierEmail = '';
+  if (_suppliers && _suppliers.length > 0) {
+    var sup = _suppliers.find(function(s) { return s.name === po.supplier_name; });
+    if (sup && sup.email) supplierEmail = sup.email;
+  }
+
+  // Store PO data for template replacements
+  _poComposeData = {
+    po_number: po.po_number || '',
+    job_number: po.job_number || '',
+    site_address: po.delivery_address || '',
+    delivery_date: po.delivery_date ? new Date(po.delivery_date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'TBC',
+    supplier_name: po.supplier_name || '',
+    job_id: po.job_id || '',
+    po_id: po.id
+  };
+
+  document.getElementById('poComposeTitle').textContent = 'Email Supplier \u2014 ' + (po.po_number || 'PO');
+  document.getElementById('poComposeTo').value = supplierEmail;
+  document.getElementById('poComposeSubject').value = (po.po_number || 'PO') + ' | ' + (po.job_number || '') + ' \u2014 ' + (po.supplier_name || '') + ' Order';
+  document.getElementById('poComposePoId').value = po.id;
+  document.getElementById('poComposeJobId').value = po.job_id || '';
+  document.getElementById('poComposeTemplate').value = 'new_order';
+  document.getElementById('poComposeAttachPDF').checked = true;
+  document.getElementById('poComposeFiles').value = '';
+  document.getElementById('poComposeFileList').textContent = '';
+
+  applyPOEmailTemplate('new_order');
+  document.getElementById('poEmailComposeModal').classList.add('active');
+}
+
+function applyPOEmailTemplate(templateKey) {
+  var body = _poEmailTemplates[templateKey] || '';
+  if (_poComposeData && body) {
+    Object.keys(_poComposeData).forEach(function(k) {
+      body = body.replace(new RegExp('\\{' + k + '\\}', 'g'), _poComposeData[k]);
+    });
+  }
+  document.getElementById('poComposeBody').value = body;
+
+  // Attach PDF checkbox: checked for new_order only
+  var attachPDF = document.getElementById('poComposeAttachPDF');
+  if (attachPDF) attachPDF.checked = (templateKey === 'new_order');
+}
+
+function updatePOComposeFileList() {
+  var input = document.getElementById('poComposeFiles');
+  var list = document.getElementById('poComposeFileList');
+  if (!input || !list) return;
+  if (input.files.length === 0) { list.textContent = ''; return; }
+  var names = [];
+  for (var i = 0; i < input.files.length; i++) names.push(input.files[i].name);
+  list.textContent = names.join(', ');
+}
+
+async function sendPOEmail() {
+  var to = (document.getElementById('poComposeTo').value || '').trim();
+  var subject = (document.getElementById('poComposeSubject').value || '').trim();
+  var body = (document.getElementById('poComposeBody').value || '').trim();
+  var attachPDF = document.getElementById('poComposeAttachPDF').checked;
+  var poId = document.getElementById('poComposePoId').value;
+  var jobId = document.getElementById('poComposeJobId').value;
+  var supplierName = _poComposeData ? _poComposeData.supplier_name : '';
+
+  // Validation
+  if (!to) { showToast('Recipient email is required', 'warning'); return; }
+  if (!to.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email address', 'warning'); return; }
+  if (!subject) { showToast('Subject is required', 'warning'); return; }
+  if (!body) { showToast('Email body is required', 'warning'); return; }
+
+  // Try to save supplier email if it was manually entered
+  if (supplierName && to) {
+    var existingSup = _suppliers.find(function(s) { return s.name === supplierName; });
+    if (!existingSup || !existingSup.email || existingSup.email !== to) {
+      try {
+        await opsPost('update_supplier_email', { supplier_name: supplierName, email: to });
+        // Update local cache
+        if (existingSup) { existingSup.email = to; }
+      } catch (e) {
+        // Silently fail — endpoint may not exist yet
+      }
+    }
+  }
+
+  // Try to send via edge function
+  try {
+    var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        po_id: poId,
+        to: to,
+        subject: subject,
+        body: body,
+        attach_pdf: attachPDF
+      })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var result = await resp.json();
+    if (result.error) throw new Error(result.error);
+
+    showToast('Email sent to ' + (supplierName || to), 'success');
+    closeModal('poEmailComposeModal');
+
+    // Log the sent email as an event too
+    try {
+      await opsPost('add_po_event', {
+        po_id: poId,
+        job_id: jobId || null,
+        event_type: 'po_email_log',
+        supplier: supplierName,
+        summary: 'Subject: ' + subject + '\n\n' + body,
+        direction: 'sent',
+      });
+    } catch (e2) { /* event logging is secondary */ }
+
+    // Refresh thread if visible
+    if (_poEmailCache[poId]) delete _poEmailCache[poId];
+    var threadEl = document.getElementById('poThread_' + poId);
+    if (threadEl && threadEl.style.display !== 'none') {
+      loadPOEmails(poId).then(function(emails) {
+        threadEl.innerHTML = renderPOEmailThread(emails, poId);
+      });
+    }
+    if (_currentJobId) openJobDetail(_currentJobId);
+    return;
+  } catch (e) {
+    // Edge function not deployed — fall back to logging
+    console.log('send-po-email not available, falling back to log:', e.message);
+  }
+
+  // Fallback: log the email
+  try {
+    await opsPost('add_po_event', {
+      po_id: poId,
+      job_id: jobId || null,
+      event_type: 'po_email_log',
+      supplier: supplierName,
+      summary: 'Email composed (to: ' + to + ')\nSubject: ' + subject + '\n\n' + body,
+      direction: 'sent',
+    });
+    showToast('Email logged (send-po-email not deployed yet \u2014 email saved as log)', 'warning');
+    closeModal('poEmailComposeModal');
+    if (_poEmailCache[poId]) delete _poEmailCache[poId];
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// ── PO Email Thread Loading & Rendering ──
+
+async function loadPOEmails(poId) {
+  if (_poEmailCache[poId]) return _poEmailCache[poId];
+  try {
+    var data = await opsFetch('read_po_emails', { po_id: poId });
+    var emails = data.emails || data || [];
+    if (!Array.isArray(emails)) emails = [];
+    _poEmailCache[poId] = emails;
+    return emails;
+  } catch (e) {
+    // Endpoint not ready — return empty
+    _poEmailCache[poId] = [];
+    return [];
+  }
+}
+
+function renderPOEmailThread(emails, poId) {
+  if (!emails || emails.length === 0) return '<div style="font-size:11px;color:var(--sw-text-sec);padding:6px 0;">No emails yet.</div>';
+  var html = '';
+  emails.sort(function(a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
+  emails.forEach(function(em, idx) {
+    var dir = em.direction === 'received' ? 'received' : 'sent';
+    var date = em.created_at ? new Date(em.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+    var subj = em.subject || em.summary || '';
+    var bodyText = em.body || em.summary || '';
+    var firstLine = bodyText.split('\n')[0] || '';
+    if (firstLine.length > 80) firstLine = firstLine.substring(0, 80) + '...';
+
+    html += '<div class="po-email-item ' + dir + '" onclick="this.classList.toggle(\'expanded\')" data-idx="' + idx + '">';
+    html += '<div class="po-email-date">' + date + ' &middot; ' + (dir === 'sent' ? 'Sent' : 'Received') + '</div>';
+    if (subj) html += '<div class="po-email-subject">' + escapeHtml(subj.length > 60 ? subj.substring(0, 60) + '...' : subj) + '</div>';
+    html += '<div class="po-email-preview">' + escapeHtml(firstLine) + '</div>';
+    html += '<div class="po-email-body">' + escapeHtml(bodyText) + '</div>';
+    if (dir === 'received') {
+      html += '<button class="po-email-reply-btn" onclick="event.stopPropagation();openPOEmailComposeReply(\'' + poId + '\',\'' + escapeHtml(subj).replace(/'/g, "\\'") + '\')">Reply</button>';
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+function openPOEmailComposeReply(poId, originalSubject) {
+  openPOEmailCompose(poId);
+  // After opening, set subject to Re: ...
+  setTimeout(function() {
+    var subjectEl = document.getElementById('poComposeSubject');
+    if (subjectEl && originalSubject) {
+      var reSubject = originalSubject.indexOf('Re:') === 0 ? originalSubject : 'Re: ' + originalSubject;
+      subjectEl.value = reSubject;
+    }
+    document.getElementById('poComposeTemplate').value = 'custom';
+    document.getElementById('poComposeBody').value = '';
+    document.getElementById('poComposeAttachPDF').checked = false;
+  }, 50);
+}
+
+function togglePOEmailThread(poId, toggleEl) {
+  var threadEl = document.getElementById('poThread_' + poId);
+  if (!threadEl) return;
+
+  if (threadEl.style.display === 'none') {
+    threadEl.style.display = 'block';
+    threadEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:4px 0;">Loading...</div>';
+    loadPOEmails(poId).then(function(emails) {
+      threadEl.innerHTML = renderPOEmailThread(emails, poId);
+      // Update count
+      var countEl = document.getElementById('poEmailCount_' + poId);
+      if (countEl) countEl.textContent = '(' + emails.length + ')';
+    });
+  } else {
+    threadEl.style.display = 'none';
   }
 }
 
