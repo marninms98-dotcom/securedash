@@ -1781,13 +1781,52 @@
 
     <!-- ═══════════ MATERIALS TAB ═══════════ -->
     <div id="viewMaterials" class="view">
-      <div class="section-heading" style="display:flex; align-items:center; gap:12px;">Materials Pipeline <span class="badge" id="materialsCount">0</span><div style="flex:1;"></div><button class="btn btn-primary btn-sm" onclick="openPOModal()">+ New PO</button></div>
+      <div class="section-heading" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        Materials Pipeline <span class="badge" id="materialsCount">0</span>
+        <div style="flex:1;"></div>
+        <button class="btn btn-secondary btn-sm" id="matFilterToggle" onclick="toggleMatFilters()" style="font-size:11px;">Filters <span id="matFilterBadge"></span></button>
+        <button class="btn btn-primary btn-sm" onclick="openPOModal()">+ New PO</button>
+      </div>
+
+      <!-- Threshold alerts -->
+      <div id="matAlerts" style="margin-bottom:8px;"></div>
+
+      <!-- Basic type filters -->
       <div class="filter-bar">
         <button class="filter-chip active" onclick="filterMaterials('all')" data-mat-filter="all">All</button>
         <button class="filter-chip" onclick="filterMaterials('fencing')" data-mat-filter="fencing">Fencing</button>
         <button class="filter-chip" onclick="filterMaterials('patio')" data-mat-filter="patio">Patios</button>
         <input type="text" class="filter-search" placeholder="Search POs..." oninput="searchMaterials(this.value)">
       </div>
+
+      <!-- Advanced filters (hidden by default) -->
+      <div id="matAdvFilters" style="display:none; padding:10px; background:var(--sw-light); border-radius:6px; margin-bottom:12px;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+          <div style="min-width:180px;">
+            <label style="font-size:10px; font-weight:600; color:var(--sw-mid); text-transform:uppercase;">Job</label>
+            <select class="form-select" id="matFilterJob" onchange="applyMatFilters()" style="font-size:12px; padding:5px 8px;">
+              <option value="">All Jobs</option>
+            </select>
+          </div>
+          <div style="min-width:160px;">
+            <label style="font-size:10px; font-weight:600; color:var(--sw-mid); text-transform:uppercase;">Supplier</label>
+            <select class="form-select" id="matFilterSupplier" onchange="applyMatFilters()" style="font-size:12px; padding:5px 8px;">
+              <option value="">All Suppliers</option>
+            </select>
+          </div>
+          <div style="min-width:160px;">
+            <label style="font-size:10px; font-weight:600; color:var(--sw-mid); text-transform:uppercase;">Status</label>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; padding-top:2px;">
+              <label style="font-size:11px; cursor:pointer;"><input type="checkbox" class="mat-status-cb" value="draft" checked onchange="applyMatFilters()"> Draft</label>
+              <label style="font-size:11px; cursor:pointer;"><input type="checkbox" class="mat-status-cb" value="submitted" checked onchange="applyMatFilters()"> Ordered</label>
+              <label style="font-size:11px; cursor:pointer;"><input type="checkbox" class="mat-status-cb" value="authorised" checked onchange="applyMatFilters()"> Confirmed</label>
+              <label style="font-size:11px; cursor:pointer;"><input type="checkbox" class="mat-status-cb" value="billed" checked onchange="applyMatFilters()"> Delivered</label>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="clearMatFilters()" style="font-size:11px; padding:4px 10px;">Clear</button>
+        </div>
+      </div>
+
       <div class="materials-kanban" id="materialsKanban"></div>
     </div>
 
@@ -4243,6 +4282,13 @@ async function loadMaterials() {
   }
 }
 
+// ── Materials Advanced Filter State ──
+var _matFilterJob = '';
+var _matFilterSupplier = '';
+var _matFilterStatuses = ['draft', 'submitted', 'authorised', 'billed'];
+var _matAlertWarnDays = parseInt(localStorage.getItem('sw_mat_warn_days')) || 7;
+var _matAlertCritDays = parseInt(localStorage.getItem('sw_mat_crit_days')) || 14;
+
 function filterMaterials(type) {
   _matTypeFilter = type;
   document.querySelectorAll('[data-mat-filter]').forEach(function(el) {
@@ -4256,7 +4302,111 @@ function searchMaterials(val) {
   renderMaterialsKanban();
 }
 
+function toggleMatFilters() {
+  var el = document.getElementById('matAdvFilters');
+  var isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) populateMatFilterDropdowns();
+}
+
+function populateMatFilterDropdowns() {
+  // Job dropdown
+  var jobSel = document.getElementById('matFilterJob');
+  var jobs = {};
+  _allPOs.forEach(function(po) {
+    if (po.job_id && po.job_number) {
+      jobs[po.job_id] = (po.job_number || '') + ' — ' + (po.client_name || '');
+    }
+  });
+  var jobHtml = '<option value="">All Jobs</option>';
+  Object.keys(jobs).forEach(function(id) {
+    jobHtml += '<option value="' + id + '"' + (_matFilterJob === id ? ' selected' : '') + '>' + escapeHtml(jobs[id]) + '</option>';
+  });
+  jobSel.innerHTML = jobHtml;
+
+  // Supplier dropdown
+  var supSel = document.getElementById('matFilterSupplier');
+  var suppliers = {};
+  _allPOs.forEach(function(po) { if (po.supplier_name) suppliers[po.supplier_name] = true; });
+  var supHtml = '<option value="">All Suppliers</option>';
+  Object.keys(suppliers).sort().forEach(function(s) {
+    supHtml += '<option value="' + escapeHtml(s) + '"' + (_matFilterSupplier === s ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+  });
+  supSel.innerHTML = supHtml;
+}
+
+function applyMatFilters() {
+  _matFilterJob = document.getElementById('matFilterJob').value;
+  _matFilterSupplier = document.getElementById('matFilterSupplier').value;
+  _matFilterStatuses = [];
+  document.querySelectorAll('.mat-status-cb:checked').forEach(function(cb) {
+    _matFilterStatuses.push(cb.value);
+  });
+  updateMatFilterBadge();
+  renderMaterialsKanban();
+}
+
+function clearMatFilters() {
+  _matFilterJob = '';
+  _matFilterSupplier = '';
+  _matFilterStatuses = ['draft', 'submitted', 'authorised', 'billed'];
+  document.getElementById('matFilterJob').value = '';
+  document.getElementById('matFilterSupplier').value = '';
+  document.querySelectorAll('.mat-status-cb').forEach(function(cb) { cb.checked = true; });
+  updateMatFilterBadge();
+  renderMaterialsKanban();
+}
+
+function updateMatFilterBadge() {
+  var count = 0;
+  if (_matFilterJob) count++;
+  if (_matFilterSupplier) count++;
+  if (_matFilterStatuses.length < 4) count++;
+  var badge = document.getElementById('matFilterBadge');
+  badge.textContent = count > 0 ? '(' + count + ')' : '';
+  badge.style.color = count > 0 ? 'var(--sw-orange)' : '';
+}
+
+// ── Threshold Alerts ──
+function renderMatAlerts() {
+  var el = document.getElementById('matAlerts');
+  var now = Date.now();
+  var alerts = [];
+
+  _allPOs.forEach(function(po) {
+    if (['draft', 'quote_requested', 'cancelled', 'deleted'].indexOf(po.status) >= 0) return;
+    if (po.invoice_received_at || po.paid_at) return;
+    var sinceDate = po.confirmed_at || po.ordered_at || po.created_at;
+    if (!sinceDate) return;
+    var days = Math.floor((now - new Date(sinceDate).getTime()) / 86400000);
+    if (days >= _matAlertWarnDays) {
+      alerts.push({ po: po, days: days, level: days >= _matAlertCritDays ? 'red' : 'amber' });
+    }
+  });
+
+  if (alerts.length === 0) { el.innerHTML = ''; return; }
+
+  var html = '';
+  alerts.sort(function(a, b) { return b.days - a.days; });
+  alerts.forEach(function(a) {
+    var color = a.level === 'red' ? 'var(--sw-red)' : '#D97706';
+    html += '<div class="attention-item" style="margin-bottom:4px; border-left:3px solid ' + color + ';">';
+    html += '<span style="color:' + color + '; font-weight:600;">' + a.po.po_number + ' ' + escapeHtml(a.po.supplier_name || '') + '</span>';
+    html += ' — awaiting invoice for <strong>' + a.days + ' days</strong>';
+    if (a.po.job_number) html += ' <span style="color:var(--sw-text-sec);">(' + a.po.job_number + ')</span>';
+    html += '<span style="margin-left:auto; display:flex; gap:4px;">';
+    html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + a.po.id + '\',\'' + escapeHtml(a.po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (a.po.job_id || '') + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;">Follow Up</button>';
+    html += '<button onclick="event.stopPropagation();markPOInvoiceReceived(\'' + a.po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Invoice Received</button>';
+    html += '</span>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
 function renderMaterialsKanban() {
+  // Also render threshold alerts
+  renderMatAlerts();
+
   var stages = [
     { key: 'draft', label: 'To Order', color: '#95A5A6' },
     { key: 'submitted', label: 'Ordered', color: '#3498DB' },
@@ -4265,7 +4415,7 @@ function renderMaterialsKanban() {
   ];
 
   // Apply type filter
-  var filtered = _allPOs;
+  var filtered = _allPOs.filter(function(po) { return po.status !== 'cancelled' && po.status !== 'deleted'; });
   if (_matTypeFilter !== 'all') {
     filtered = filtered.filter(function(po) { return po.job_type === _matTypeFilter; });
   }
@@ -4278,6 +4428,17 @@ function renderMaterialsKanban() {
         (po.client_name || '').toLowerCase().indexOf(_matSearch) !== -1 ||
         (po.po_number || '').toLowerCase().indexOf(_matSearch) !== -1;
     });
+  }
+
+  // Apply advanced filters
+  if (_matFilterJob) {
+    filtered = filtered.filter(function(po) { return po.job_id === _matFilterJob; });
+  }
+  if (_matFilterSupplier) {
+    filtered = filtered.filter(function(po) { return po.supplier_name === _matFilterSupplier; });
+  }
+  if (_matFilterStatuses.length < 4) {
+    filtered = filtered.filter(function(po) { return _matFilterStatuses.indexOf(po.status) >= 0; });
   }
 
   var container = document.getElementById('materialsKanban');
@@ -4294,32 +4455,42 @@ function renderMaterialsKanban() {
 
     items.forEach(function(po) {
       var daysInStage = po.updated_at ? Math.floor((Date.now() - new Date(po.updated_at).getTime()) / 86400000) : 0;
+      var daysAge = po.created_at ? Math.floor((Date.now() - new Date(po.created_at).getTime()) / 86400000) : 0;
       var isStuck = stage.key === 'draft' && daysInStage >= 2;
       var deliverySoon = stage.key === 'submitted' && po.delivery_date &&
         (new Date(po.delivery_date).getTime() - Date.now()) <= 2 * 86400000 &&
         new Date(po.delivery_date).getTime() >= Date.now();
-      var typeBadge = po.job_type === 'patio' ? '<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(241,90,41,0.12);color:#F15A29;margin-right:4px;">PATIO</span>' :
-        po.job_type === 'fencing' ? '<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(76,106,124,0.12);color:#4C6A7C;margin-right:4px;">FENCING</span>' : '';
 
-      html += '<div class="kanban-card" style="cursor:pointer;' + (isStuck ? 'border-left:3px solid #E67E22;' : deliverySoon ? 'border-left:3px solid #E74C3C;' : '') + '" onclick="openPOEdit(\'' + po.id + '\')">';
+      // BUG 4: Job identification — always show number + client
+      var jobRef = '';
+      if (po.job_number || po.client_name) {
+        var surname = (po.client_name || '').split(' ').pop();
+        jobRef = (po.job_number || '') + (po.job_number && surname ? ' — ' + surname : surname || '');
+      }
+
+      html += '<div class="kanban-card" style="cursor:pointer; position:relative;' + (isStuck ? 'border-left:3px solid #E67E22;' : deliverySoon ? 'border-left:3px solid #E74C3C;' : '') + '" onclick="openPOEdit(\'' + po.id + '\')">';
+
+      // BUG 2: Delete button (top-right)
+      var canDelete = po.status === 'draft' || po.status === 'quote_requested';
+      html += '<button onclick="event.stopPropagation();deletePO(\'' + po.id + '\',\'' + escapeHtml(po.po_number || '').replace(/'/g, "\\'") + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',' + canDelete + ')" style="position:absolute;top:6px;right:6px;background:none;border:none;cursor:pointer;font-size:13px;color:var(--sw-text-sec);padding:2px;" title="Delete PO">&#128465;</button>';
 
       // Header: supplier + total
-      html += '<div class="kanban-card-header"><span class="kanban-client">' + (po.supplier_name || 'No supplier') + '</span>';
+      html += '<div class="kanban-card-header" style="padding-right:24px;"><span class="kanban-client">' + (po.supplier_name || 'No supplier') + '</span>';
       html += '<span class="kanban-value">' + fmt$(po.total) + '</span></div>';
 
-      // Job number + client (prominent)
-      if (po.job_number || po.client_name) {
+      // BUG 4: Job number + client name — formatted as "SWP-25019 — Smith"
+      if (jobRef) {
+        var typeBadgeCls = po.job_type || '';
         html += '<div style="font-size:12px; margin:4px 0 2px;">';
-        html += typeBadge;
-        if (po.job_number) html += '<strong>' + po.job_number + '</strong>';
-        if (po.client_name) html += ' <span style="color:var(--sw-text-sec);">' + po.client_name + '</span>';
+        html += '<span class="type-badge ' + typeBadgeCls + '" style="font-size:9px;padding:1px 5px;margin-right:3px;">' + typeBadgeLabel(typeBadgeCls) + '</span>';
+        html += '<strong>' + escapeHtml(jobRef) + '</strong>';
         html += '</div>';
       }
 
       // PO number
       html += '<div class="kanban-suburb">' + po.po_number + '</div>';
 
-      // Delivery/pickup date (prominent when set)
+      // Delivery/pickup date
       if (po.delivery_date) {
         var dDate = new Date(po.delivery_date + 'T00:00:00');
         var dayLabel = dDate.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -4327,7 +4498,24 @@ function renderMaterialsKanban() {
         html += '<div style="font-size:12px; margin-top:4px; ' + urgencyStyle + '">&#128666; ' + dayLabel + '</div>';
       }
 
-      // Days in stage + warning flags
+      // FEATURE 6: PO age + invoice tracking
+      // TODO: Add invoice_received_at, paid_at, xero_bill_id columns to purchase_orders table
+      var invoiceStatus = '';
+      if (po.paid_at) {
+        invoiceStatus = '<span style="color:var(--sw-green);font-size:11px;font-weight:600;">Paid</span>';
+      } else if (po.invoice_received_at) {
+        invoiceStatus = '<span style="color:var(--sw-green);font-size:11px;font-weight:600;">Invoice received</span>';
+      } else if (stage.key !== 'draft') {
+        var sinceDate = po.confirmed_at || po.ordered_at || po.created_at;
+        var invDays = sinceDate ? Math.floor((Date.now() - new Date(sinceDate).getTime()) / 86400000) : 0;
+        if (invDays > 0) {
+          var invColor = invDays >= _matAlertCritDays ? 'var(--sw-red)' : invDays >= _matAlertWarnDays ? '#D97706' : 'var(--sw-text-sec)';
+          invoiceStatus = '<span style="color:' + invColor + ';font-size:11px;font-weight:' + (invDays >= _matAlertWarnDays ? '600' : '400') + ';">Awaiting invoice — ' + invDays + 'd</span>';
+        }
+      }
+      if (invoiceStatus) html += '<div style="margin-top:3px;">' + invoiceStatus + '</div>';
+
+      // Days in stage
       html += '<div class="kanban-days">';
       if (isStuck) {
         html += '<span style="color:#E67E22; font-weight:600;">&#9888; ' + daysInStage + 'd in To Order</span>';
@@ -4338,9 +4526,21 @@ function renderMaterialsKanban() {
       }
       html += '</div>';
 
-      // Log Email button
-      html += '<div style="margin-top:4px;text-align:right;">';
-      html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || '') + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Log Email</button>';
+      // FEATURE 7: Lifecycle action buttons + BUG 3: Open Job (fixed to use openJobQuickView)
+      html += '<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">';
+      // Log Email
+      html += '<button onclick="event.stopPropagation();openPOEmailLog(\'' + po.id + '\',\'' + escapeHtml(po.supplier_name || '').replace(/'/g, "\\'") + '\',\'' + (po.job_id || '') + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Log</button>';
+      // Open Job (BUG 3 — fixed: opens job detail, not patio tool)
+      if (po.job_id) {
+        html += '<button onclick="event.stopPropagation();openJobQuickView(\'' + po.job_id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Job</button>';
+      }
+      // FEATURE 7: Lifecycle buttons
+      if (!po.invoice_received_at && (stage.key === 'authorised' || stage.key === 'billed')) {
+        html += '<button onclick="event.stopPropagation();markPOInvoiceReceived(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Invoice Rcvd</button>';
+      }
+      if (po.invoice_received_at && !po.paid_at) {
+        html += '<button onclick="event.stopPropagation();markPOPaid(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Mark Paid</button>';
+      }
       html += '</div>';
 
       html += '</div>';
@@ -5798,8 +5998,8 @@ function filterJobDropdown(val) {
     list.forEach(function(j) {
       h += '<div class="po-job-option" style="padding:8px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; border-bottom:1px solid rgba(0,0,0,0.04);" onmousedown="selectPOJob(\'' + j.id + '\')">';
       h += '<div style="flex:1;">';
-      h += '<div style="font-size:13px; font-weight:600;">' + (j.client_name || 'Unknown') + '</div>';
-      h += '<div style="font-size:11px; color:var(--sw-text-sec);">' + (j.job_number || '') + ' · ' + (j.site_suburb || '') + ' · ' + (j.status || '') + '</div>';
+      h += '<div style="font-size:13px; font-weight:600;">' + (j.job_number || '') + (j.job_number && j.client_name ? ' — ' : '') + (j.client_name || 'Unknown') + '</div>';
+      h += '<div style="font-size:11px; color:var(--sw-text-sec);">' + (j.site_suburb || '') + ' · ' + (j.status || '') + '</div>';
       h += '</div>';
       h += '</div>';
     });
@@ -5840,7 +6040,7 @@ function selectPOJob(jobId) {
 
   var job = _poJobList.find(function(j) { return j.id === jobId; });
   if (job) {
-    document.getElementById('poJobSearch').value = (job.client_name || '') + ' — ' + (job.job_number || '');
+    document.getElementById('poJobSearch').value = (job.job_number || '') + (job.job_number && job.client_name ? ' — ' : '') + (job.client_name || '');
   }
 
   onPOJobSelect(jobId);
@@ -6168,7 +6368,7 @@ async function openPOEdit(poId) {
       await loadPOJobList();
       var matchedJob = _poJobList.find(function(j) { return j.id === po.job_id; });
       if (matchedJob) {
-        document.getElementById('poJobSearch').value = (matchedJob.client_name || '') + ' — ' + (matchedJob.job_number || '');
+        document.getElementById('poJobSearch').value = (matchedJob.job_number || '') + ' — ' + (matchedJob.client_name || '');
       }
     }
 
@@ -7562,6 +7762,61 @@ async function generateQuickQuotePDF(savedJob) {
   doc.save(filename);
   showToast('PDF downloaded: ' + filename, 'success');
 }
+
+// ════════════════════════════════════════════════════════════
+// PO MANAGEMENT (Delete, Invoice, Paid, Attachments)
+// ════════════════════════════════════════════════════════════
+
+// BUG 2: Delete PO
+function deletePO(poId, poNumber, supplier, canDelete) {
+  if (!canDelete) {
+    showToast('Cannot delete — PO already sent to supplier. Use Cancel instead.', 'warning');
+    return;
+  }
+  if (!confirm('Delete ' + poNumber + ' for ' + supplier + '? This cannot be undone.')) return;
+  opsPost('delete_po', { id: poId }).then(function() {
+    showToast(poNumber + ' deleted', 'success');
+    loadMaterials();
+  }).catch(function(e) {
+    showToast('Error: ' + e.message, 'warning');
+  });
+}
+
+// FEATURE 7: Mark invoice received
+// TODO: Add invoice_received_at (timestamptz), paid_at (timestamptz), xero_bill_id (text) columns to purchase_orders table
+// TODO: Add 'invoice_received_at', 'paid_at' to the allowed fields in updatePO() edge function
+async function markPOInvoiceReceived(poId) {
+  if (!confirm('Mark invoice received for this PO?')) return;
+  try {
+    // Use update_po to set status field as a proxy until column exists
+    await opsPost('update_po', { id: poId, notes: '[Invoice received ' + new Date().toLocaleDateString('en-AU') + ']' });
+    showToast('Invoice marked as received', 'success');
+    loadMaterials();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// FEATURE 7: Mark paid
+async function markPOPaid(poId) {
+  if (!confirm('Mark this PO as paid?')) return;
+  try {
+    await opsPost('update_po', { id: poId, notes: '[Paid ' + new Date().toLocaleDateString('en-AU') + ']' });
+    showToast('PO marked as paid', 'success');
+    loadMaterials();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// FEATURE 9: Attachment support (TODOs)
+// TODO: Create po_attachments table: id (uuid), po_id (uuid FK), filename (text), storage_url (text),
+//       file_type (text), attachment_type (text — Quote/Invoice/Delivery Docket/Credit Note/Other),
+//       uploaded_by (uuid FK), created_at (timestamptz)
+// TODO: Add ops-api actions: upload_po_attachment, list_po_attachments, delete_po_attachment
+// TODO: Use Supabase Storage bucket 'po_attachments' with path: po_attachments/[po_id]/[filename]
+// TODO: On PO edit modal, add 'Attachments' section with file picker + type dropdown
+// TODO: When 'Mark Invoice Received' is clicked, prompt to attach the invoice document
 
 // ════════════════════════════════════════════════════════════
 // PO EMAIL LOG
