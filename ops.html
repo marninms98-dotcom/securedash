@@ -1881,7 +1881,7 @@
           <input type="date" class="form-input" id="invDateTo" style="width:130px;font-size:12px;padding:4px 8px;" onchange="loadInvoices()" title="To date">
           <input type="text" class="filter-search" id="invSearch" placeholder="Search contact / invoice#..." oninput="filterInvoiceSearch()" style="width:180px;">
           <div style="flex:1;"></div>
-          <button class="btn btn-primary btn-sm" onclick="openInvoiceModal()">+ Create Invoice</button>
+          <button class="btn btn-primary btn-sm" onclick="openUnifiedInvoiceModal()">+ Create Invoice</button>
         </div>
         <div class="data-table-wrap">
           <table class="data-table" id="invoiceTable">
@@ -2366,10 +2366,13 @@
 </div>
 
 <!-- Invoice Creation Modal -->
-<div class="modal-overlay" id="invoiceModal">
-  <div class="modal" style="max-width:680px;">
+<!-- Unified Invoice Modal (replaces separate invoice + deposit modals) -->
+<div class="modal-overlay" id="unifiedInvoiceModal">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-title">Create Invoice</div>
-    <div class="form-group">
+
+    <!-- Job selector (when opened standalone) -->
+    <div id="uniInvJobPicker" class="form-group">
       <label class="form-label">Job</label>
       <div style="position:relative;">
         <input type="text" class="form-input" id="invJobSearch" placeholder="Type client name, job number, or suburb..." autocomplete="off" oninput="filterJobPicker('inv', this.value)" onfocus="filterJobPicker('inv', this.value)" />
@@ -2378,6 +2381,39 @@
       </div>
     </div>
     <div id="invJobInfo" style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px; display:none;"></div>
+
+    <!-- Job header (when opened from a job) -->
+    <div id="uniInvJobHeader" style="display:none; background:var(--sw-light); padding:10px 12px; margin-bottom:12px; font-size:13px; line-height:1.6;"></div>
+
+    <!-- Accepted quotes section -->
+    <div id="uniInvQuotesSection" style="display:none; margin-bottom:12px;">
+      <div style="font-size:12px; font-weight:700; color:var(--sw-mid); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Accepted Quotes</div>
+      <div id="uniInvQuotesList"></div>
+    </div>
+
+    <!-- Invoice progress bar -->
+    <div id="uniInvProgress" style="display:none; margin-bottom:12px;">
+      <div style="font-size:11px; font-weight:600; color:var(--sw-text-sec); margin-bottom:4px;">INVOICING PROGRESS</div>
+      <div style="background:var(--sw-border); height:8px; overflow:hidden; position:relative;">
+        <div id="uniInvProgressBar" style="background:var(--sw-green); height:100%; transition:width 0.3s;"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--sw-text-sec); margin-top:2px;">
+        <span>Invoiced: <strong id="uniInvInvoicedAmt">$0</strong></span>
+        <span>Remaining: <strong id="uniInvRemainingAmt">$0</strong></span>
+      </div>
+    </div>
+
+    <!-- Quick presets -->
+    <div id="uniInvPresets" style="display:none; margin-bottom:10px;">
+      <div style="font-size:11px; font-weight:600; color:var(--sw-text-sec); margin-bottom:4px;">QUICK ADD</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(20)" style="font-size:11px;">20% Deposit</button>
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(50)" style="font-size:11px;">50% Deposit</button>
+        <button class="btn btn-secondary btn-sm" onclick="addCouncilFeePreset()" style="font-size:11px;">Council/Permit Fee</button>
+        <button class="btn btn-secondary btn-sm" onclick="addBalancePreset()" style="font-size:11px;">Balance Due</button>
+      </div>
+    </div>
+
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Xero Reference (Job Number)</label>
@@ -2388,21 +2424,28 @@
         <input type="date" class="form-input" id="invDueDate">
       </div>
     </div>
+
+    <!-- Line items -->
     <div class="form-group">
-      <label class="form-label">Line Items</label>
+      <label class="form-label">Line Items (ex GST)</label>
       <div style="display:grid; grid-template-columns:3fr 60px 80px 80px auto; gap:6px; margin-bottom:4px; font-size:10px; color:var(--sw-text-sec); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
         <span>Description</span><span>Qty</span><span>Unit Price</span><span>Total</span><span></span>
       </div>
       <div id="invLineItems"></div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-        <button class="btn btn-secondary btn-sm" onclick="addInvLine()" style="font-size:11px;">+ Add Variation</button>
-        <div style="font-size:13px; font-weight:700; font-family:var(--sw-font-num);">Total: <span id="invLineTotal">$0</span></div>
+        <button class="btn btn-secondary btn-sm" onclick="addInvLine()" style="font-size:11px;">+ Add Line</button>
+        <div style="font-size:13px; font-weight:700; font-family:var(--sw-font-num);">
+          <span style="color:var(--sw-text-sec); font-weight:400;">Subtotal:</span> <span id="invLineTotal">$0</span>
+          <span style="margin-left:8px; color:var(--sw-text-sec); font-weight:400;">GST:</span> <span id="invGstTotal">$0</span>
+          <span style="margin-left:8px;">Total:</span> <span id="invIncGstTotal">$0</span>
+        </div>
       </div>
     </div>
+
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Cancel</button>
-      <button class="btn btn-secondary" onclick="submitInvoice('draft')">Save as Draft</button>
-      <button class="btn btn-primary" onclick="confirmInvoiceSend()">Approve &amp; Send</button>
+      <button class="btn btn-secondary" onclick="closeModal('unifiedInvoiceModal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="submitUnifiedInvoice('draft')">Save as Draft</button>
+      <button class="btn btn-primary" onclick="confirmUnifiedInvoiceSend()">Approve &amp; Send</button>
     </div>
   </div>
 </div>
@@ -2448,48 +2491,7 @@
   </div>
 </div>
 
-<!-- Deposit Invoice Modal -->
-<div class="modal-overlay" id="depositModal">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-title" style="color:var(--sw-orange);">Create Deposit Invoice</div>
-
-    <!-- Quote summary so user can see what was quoted -->
-    <div id="depQuoteSummary" style="background:var(--sw-light);padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.6;"></div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Quoted Total (inc GST)</label>
-        <input type="text" class="form-input" id="depQuotedTotal" readonly style="background:var(--sw-light); font-weight:600;">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Deposit %</label>
-        <input type="number" class="form-input" id="depPercent" value="20" min="1" max="100" step="5" oninput="updateDepositAmount()">
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Deposit Amount (inc GST)</label>
-      <input type="text" class="form-input" id="depAmount" style="font-size:18px; font-weight:700; color:var(--sw-orange);" readonly>
-    </div>
-
-    <!-- Additional line items (council fees, etc.) -->
-    <div style="margin-top:12px;border-top:1px solid var(--sw-border);padding-top:12px;">
-      <div style="font-size:12px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Additional Line Items</div>
-      <div id="depExtraLines"></div>
-      <button class="btn btn-secondary btn-sm" onclick="addDepositLine()" style="font-size:11px;margin-top:6px;">+ Add Line (e.g. Council Fees)</button>
-    </div>
-
-    <!-- Invoice total preview -->
-    <div style="margin-top:12px;padding:10px 12px;background:var(--sw-light);display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-size:13px;font-weight:600;">Invoice Total (inc GST)</span>
-      <span id="depInvoiceTotal" style="font-size:18px;font-weight:700;color:var(--sw-orange);"></span>
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('depositModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitDepositInvoice()" style="background:var(--sw-orange);">Create &amp; Send Deposit Invoice</button>
-    </div>
-  </div>
-</div>
+<!-- depositModal removed — unified into unifiedInvoiceModal above -->
 
 <!-- ══════════ PO EMAIL LOG MODAL ══════════ -->
 <div class="modal-overlay" id="poEmailLogModal">
@@ -5327,11 +5329,8 @@ function renderJobPeek(data) {
   });
   // PO and Invoice action buttons
   html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openPOModal(\'' + j.id + '\')" style="border-color:var(--sw-purple); color:var(--sw-purple);">+ PO</button>';
-  if (['accepted', 'quoted', 'scheduled'].indexOf(j.status) >= 0 && !j.deposit_invoice_id) {
-    html += '<button class="btn btn-secondary btn-sm" onclick="openDepositModal(\'' + j.id + '\',' + (j.pricing_json?.totalIncGST || j.pricing_json?.total || 0) + ')" style="border-color:var(--sw-orange); color:var(--sw-orange);">+ Deposit Invoice</button>';
-  }
-  if (['accepted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
-    html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
+  if (['accepted', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
+    html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openUnifiedInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
   }
   // Mark Lost — available for quoted/accepted/scheduled jobs
   if (['quoted', 'accepted', 'scheduled'].indexOf(j.status) >= 0) {
@@ -6135,14 +6134,9 @@ function renderMoneyView(data) {
       html += '</div></div>';
     });
   }
-  // Invoice action buttons — deposit is primary CTA for accepted jobs without one
+  // Unified invoice button
   html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">';
-  if ((j.status === 'accepted' || j.status === 'scheduled') && !j.deposit_invoice_id) {
-    html += '<button class="btn btn-sm" style="background:var(--sw-orange);color:#fff;" onclick="openDepositModal()">+ Deposit Invoice</button>';
-    html += '<button class="btn btn-secondary btn-sm" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
-  } else {
-    html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
-  }
+  html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openUnifiedInvoiceModal(\'' + j.id + '\')">+ Invoice</button>';
   html += '</div>';
   html += '</div>';
 
@@ -6453,14 +6447,38 @@ function renderFilesView(data) {
     html += '</div>';
   }
 
-  // Documents
+  // Documents — enhanced with quote numbers and status tracking
   if ((data.documents || []).length > 0) {
     html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Documents (' + data.documents.length + ')</div>';
     data.documents.forEach(function(doc) {
-      html += '<div style="padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
-      html += '<span>' + escapeHtml(doc.type || 'Document') + '</span>';
-      if (doc.sent_at) html += '<span style="color:var(--sw-text-sec);font-size:11px;">' + fmtDate(doc.sent_at) + '</span>';
-      if (doc.pdf_url) html += '<a href="' + escapeHtml(doc.pdf_url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;">View</a>';
+      html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;">';
+      html += '<div style="display:flex;align-items:center;gap:8px;">';
+      // Quote number or type
+      if (doc.quote_number) {
+        html += '<span style="font-weight:700;color:var(--sw-dark);">' + escapeHtml(doc.quote_number) + '</span>';
+      }
+      html += '<span style="text-transform:capitalize;">' + escapeHtml(doc.type || 'Document') + '</span>';
+      if (doc.version > 1) html += '<span style="color:var(--sw-text-sec);font-size:11px;">v' + doc.version + '</span>';
+      // Status badge
+      var qStatus = 'Draft';
+      var qColor = 'var(--sw-text-sec)';
+      if (doc.client_accepted) { qStatus = 'Accepted'; qColor = 'var(--sw-green)'; }
+      else if (doc.client_declined) { qStatus = 'Declined'; qColor = 'var(--sw-red)'; }
+      else if (doc.client_viewed_at) { qStatus = 'Viewed'; qColor = '#2563EB'; }
+      else if (doc.sent_to_client) { qStatus = 'Sent'; qColor = 'var(--sw-orange)'; }
+      html += '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:1px 6px;background:' + qColor + '20;color:' + qColor + ';">' + qStatus + '</span>';
+      html += '<span style="flex:1;"></span>';
+      if (doc.pdf_url) html += '<a href="' + escapeHtml(doc.pdf_url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;">View PDF</a>';
+      html += '</div>';
+      // Date timeline
+      var timeline = [];
+      if (doc.created_at) timeline.push('Created ' + fmtDate(doc.created_at));
+      if (doc.sent_at) timeline.push('Sent ' + fmtDate(doc.sent_at));
+      if (doc.client_viewed_at) timeline.push('Viewed ' + fmtDate(doc.client_viewed_at));
+      if (doc.client_accepted_at) timeline.push('Accepted ' + fmtDate(doc.client_accepted_at));
+      if (timeline.length > 0) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + timeline.join(' &rarr; ') + '</div>';
+      }
       html += '</div>';
     });
   }
@@ -6551,10 +6569,7 @@ function openActionSheet(type) {
       '<button class="btn btn-primary" onclick="closeActionSheet(); closeJobDetail(); openPOModal(\'' + _currentJobId + '\')">Open PO Form</button>';
   } else if (type === 'Invoice') {
     bodyEl.innerHTML = '<p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">Create an invoice for this job.</p>' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button class="btn btn-primary" onclick="closeActionSheet(); closeJobDetail(); openInvoiceModal(\'' + _currentJobId + '\')">Standard Invoice</button>' +
-      '<button class="btn btn-secondary" onclick="closeActionSheet(); closeJobDetail(); openDepositModal(\'' + _currentJobId + '\',' + (_currentJobData?.job?.pricing_json?.totalIncGST || _currentJobData?.job?.pricing_json?.total || 0) + ')">Deposit Invoice</button>' +
-      '</div>';
+      '<button class="btn btn-primary" onclick="closeActionSheet(); closeJobDetail(); openUnifiedInvoiceModal(\'' + _currentJobId + '\')">Create Invoice</button>';
   } else if (type === 'Assign') {
     bodyEl.innerHTML = '<p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">Schedule a crew assignment for this job.</p>' +
       '<button class="btn btn-primary" onclick="closeActionSheet(); closeJobDetail(); openAssignmentModalForJob(\'' + _currentJobId + '\')">Open Assignment Form</button>';
@@ -7086,6 +7101,10 @@ function updateInvLineTotals() {
   });
   var totalEl = document.getElementById('invLineTotal');
   if (totalEl) totalEl.textContent = fmt$(total);
+  var gstEl = document.getElementById('invGstTotal');
+  if (gstEl) gstEl.textContent = fmt$(Math.round(total * 0.1 * 100) / 100);
+  var incGstEl = document.getElementById('invIncGstTotal');
+  if (incGstEl) incGstEl.textContent = fmt$(Math.round(total * 1.1 * 100) / 100);
 }
 
 function gatherPOData() {
@@ -7380,9 +7399,12 @@ async function pushPOToXero(poId) {
 // INVOICE CREATION MODAL
 // ════════════════════════════════════════════════════════════
 
-async function openInvoiceModal(preSelectJobId) {
-  resetInvoiceModal();
-  document.getElementById('invoiceModal').classList.add('active');
+// Unified invoice modal — replaces separate openInvoiceModal + openDepositModal
+var _uniInvSelectedQuoteDocs = [];
+
+async function openUnifiedInvoiceModal(preSelectJobId) {
+  resetUnifiedInvoiceModal();
+  document.getElementById('unifiedInvoiceModal').classList.add('active');
 
   // Set default due date to 14 days from now
   var due = new Date();
@@ -7398,6 +7420,10 @@ async function openInvoiceModal(preSelectJobId) {
   }
 }
 
+// Backward compat — old call sites
+function openInvoiceModal(id) { openUnifiedInvoiceModal(id); }
+function openDepositModal(id) { openUnifiedInvoiceModal(id); }
+
 async function onInvJobSelect(jobId) {
   var infoEl = document.getElementById('invJobInfo');
   var refEl = document.getElementById('invReference');
@@ -7408,6 +7434,7 @@ async function onInvJobSelect(jobId) {
     refEl.value = '';
     container.innerHTML = '';
     addInvLine();
+    hideUnifiedInvoiceSections();
     return;
   }
 
@@ -7418,37 +7445,109 @@ async function onInvJobSelect(jobId) {
     var data = await opsFetch('job_detail', { jobId: jobId });
     var j = data.job || data;
     _invJobCache = j;
+    _invJobDetailCache = data;
 
     // Set job number as reference (read-only)
     refEl.value = j.job_number || '';
 
-    // Show job info
-    infoEl.innerHTML = '<strong>' + (j.client_name || 'Unknown') + '</strong>' +
-      (j.job_number ? ' &middot; ' + j.job_number : '') +
-      (j.site_suburb ? ' &middot; ' + j.site_suburb : '') +
-      '<br><span style="color:var(--sw-mid); font-size:12px;">' + (j.type || '') + '</span>';
+    // Show job header
+    var headerEl = document.getElementById('uniInvJobHeader');
+    headerEl.style.display = '';
+    var typeBadge = j.type ? '<span style="display:inline-block;padding:1px 6px;background:var(--sw-border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;">' + escapeHtml(j.type) + '</span>' : '';
+    headerEl.innerHTML = '<div style="font-weight:700;">' + escapeHtml(j.client_name || '') + ' — ' + escapeHtml(j.job_number || '') + typeBadge + '</div>' +
+      '<div style="color:var(--sw-text-sec);font-size:12px;">' + escapeHtml(j.site_address || j.site_suburb || '') + '</div>';
+    infoEl.style.display = 'none';
 
-    // Auto-populate line items from pricing_json
-    container.innerHTML = '';
-    var pricing = j.pricing_json;
-    if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+    // Hide job picker since we have a job
+    document.getElementById('uniInvJobPicker').style.display = 'none';
 
-    if (pricing && Array.isArray(pricing.items)) {
-      pricing.items.forEach(function(li) {
-        var qty = li.quantity || li.qty || 1;
-        var price = li.unit_price || li.unitPrice || li.price || li.amount || 0;
-        addInvLine(li.description || li.name || 'Line item', qty, price);
+    // Show accepted quotes if any
+    var docs = data.documents || [];
+    var quoteDocs = docs.filter(function(d) { return d.type === 'quote'; });
+    _uniInvSelectedQuoteDocs = [];
+    if (quoteDocs.length > 0) {
+      var quotesSection = document.getElementById('uniInvQuotesSection');
+      quotesSection.style.display = '';
+      var qhtml = '';
+      quoteDocs.forEach(function(doc) {
+        var statusLabel = doc.client_accepted ? 'Accepted' : doc.sent_to_client ? (doc.client_viewed_at ? 'Viewed' : 'Sent') : 'Draft';
+        var statusColor = doc.client_accepted ? 'var(--sw-green)' : doc.sent_to_client ? 'var(--sw-blue-mid, #4C6A7C)' : 'var(--sw-text-sec)';
+        var quoteNum = doc.quote_number || ('v' + doc.version);
+        qhtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--sw-border);margin-bottom:4px;cursor:pointer;font-size:13px;">';
+        qhtml += '<input type="checkbox" class="uni-quote-check" value="' + doc.id + '" ' + (doc.client_accepted ? 'checked' : '') + ' onchange="updateSelectedQuoteDocs()">';
+        qhtml += '<span style="font-weight:600;">' + escapeHtml(quoteNum) + '</span>';
+        qhtml += '<span style="color:' + statusColor + ';font-size:11px;font-weight:600;">' + statusLabel + '</span>';
+        if (doc.sent_at) qhtml += '<span style="color:var(--sw-text-sec);font-size:11px;">' + fmtDate(doc.sent_at) + '</span>';
+        qhtml += '<span style="margin-left:auto;font-weight:600;font-family:var(--sw-font-num);">' + (doc.data_snapshot_json?.total ? fmt$(doc.data_snapshot_json.total) : '') + '</span>';
+        qhtml += '</label>';
       });
-    } else if (pricing && (pricing.total || pricing.amount)) {
-      var desc = (j.type || 'Construction') + ' works — ' + (j.site_address || j.site_suburb || '');
-      addInvLine(desc, 1, pricing.total || pricing.amount || 0);
-    } else {
-      infoEl.innerHTML += '<br><span style="color:var(--sw-yellow);">No pricing data — add line items manually</span>';
-      addInvLine();
+      document.getElementById('uniInvQuotesList').innerHTML = qhtml;
+      updateSelectedQuoteDocs();
     }
+
+    // Show invoice progress bar
+    var invSummary = data.invoice_summary;
+    if (invSummary && invSummary.quoted_total > 0) {
+      document.getElementById('uniInvProgress').style.display = '';
+      var pct = Math.min(100, Math.round((invSummary.invoiced_total / invSummary.quoted_total) * 100));
+      document.getElementById('uniInvProgressBar').style.width = pct + '%';
+      document.getElementById('uniInvInvoicedAmt').textContent = fmt$(invSummary.invoiced_total);
+      document.getElementById('uniInvRemainingAmt').textContent = fmt$(invSummary.remaining_to_invoice);
+    }
+
+    // Show presets
+    document.getElementById('uniInvPresets').style.display = '';
+
+    // Start with empty line items — user uses presets or adds manually
+    container.innerHTML = '';
+    addInvLine();
   } catch (e) {
     infoEl.textContent = 'Error loading job: ' + e.message;
   }
+}
+
+function hideUnifiedInvoiceSections() {
+  document.getElementById('uniInvJobHeader').style.display = 'none';
+  document.getElementById('uniInvQuotesSection').style.display = 'none';
+  document.getElementById('uniInvProgress').style.display = 'none';
+  document.getElementById('uniInvPresets').style.display = 'none';
+  document.getElementById('uniInvJobPicker').style.display = '';
+}
+
+function updateSelectedQuoteDocs() {
+  _uniInvSelectedQuoteDocs = [];
+  document.querySelectorAll('.uni-quote-check:checked').forEach(function(cb) {
+    _uniInvSelectedQuoteDocs.push(cb.value);
+  });
+}
+
+function addDepositPreset(pct) {
+  if (!_invJobCache) return;
+  var pricing = _invJobCache.pricing_json;
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
+  if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
+  var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
+  var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
+  var desc = pct + '% Deposit — ' + (_invJobCache.job_number || '') + ' (' + fmt$(totalIncGst) + ' inc GST)';
+  addInvLine(desc, 1, depositExGst);
+}
+
+function addCouncilFeePreset() {
+  var defaultFee = Math.round((350 / 1.1) * 100) / 100; // $350 inc GST → ex GST
+  addInvLine('Council/Permit Application Fee', 1, defaultFee);
+}
+
+function addBalancePreset() {
+  if (!_invJobCache || !_invJobDetailCache) return;
+  var pricing = _invJobCache.pricing_json;
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
+  var invSummary = _invJobDetailCache.invoice_summary;
+  var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
+  if (remaining <= 0) { alert('No remaining balance to invoice.'); return; }
+  var exGst = Math.round((remaining / 1.1) * 100) / 100;
+  addInvLine('Balance Due — ' + (_invJobCache.job_number || ''), 1, exGst);
 }
 
 function gatherInvoiceData() {
@@ -7473,7 +7572,7 @@ function gatherInvoiceData() {
   };
 }
 
-function confirmInvoiceSend() {
+function confirmUnifiedInvoiceSend() {
   var data = gatherInvoiceData();
   if (!data) return;
 
@@ -7488,34 +7587,29 @@ function confirmInvoiceSend() {
     'The invoice will be marked as <strong>AUTHORISED</strong> in Xero and emailed to the client.';
   document.getElementById('sendConfirmBtn').onclick = function() {
     closeModal('sendConfirmModal');
-    submitInvoice('send');
+    submitUnifiedInvoice('send');
   };
   document.getElementById('sendConfirmModal').classList.add('active');
 }
 
-async function submitInvoice(mode) {
+// Backward compat
+function confirmInvoiceSend() { confirmUnifiedInvoiceSend(); }
+
+async function submitUnifiedInvoice(mode) {
   var invData = gatherInvoiceData();
   if (!invData) return;
 
-  // Set status mode
   invData.xero_status = mode === 'send' ? 'AUTHORISED' : 'DRAFT';
   invData.send_email = mode === 'send';
+  invData.quote_document_ids = _uniInvSelectedQuoteDocs.length > 0 ? _uniInvSelectedQuoteDocs : undefined;
 
-  // Determine endpoint: use create_invoice for standalone invoices,
-  // complete_and_invoice only when job is complete/in_progress and user wants cascade
-  var jobStatus = _invJobCache ? _invJobCache.status : '';
-  var action = 'create_invoice';
-  if (['complete', 'in_progress'].indexOf(jobStatus) >= 0) {
-    action = 'complete_and_invoice';
-  }
+  // Use unified invoice endpoint when we have a job, else fallback
+  var action = 'create_unified_invoice';
 
-  // For create_invoice, remap fields
-  if (action === 'create_invoice') {
-    invData.line_items = invData.line_items_override;
-    invData.reference = _invJobCache ? _invJobCache.job_number : '';
-    invData.contact_name = _invJobCache ? _invJobCache.client_name : '';
-    invData.xero_contact_id = _invJobCache ? _invJobCache.xero_contact_id : undefined;
-  }
+  invData.line_items = invData.line_items_override;
+  invData.reference = _invJobCache ? _invJobCache.job_number : '';
+  invData.contact_name = _invJobCache ? _invJobCache.client_name : '';
+  invData.xero_contact_id = _invJobCache ? _invJobCache.xero_contact_id : undefined;
 
   try {
     var result = await opsPost(action, invData);
@@ -7525,13 +7619,11 @@ async function submitInvoice(mode) {
       return;
     }
 
-    var invTotal = result.total || result.balance_invoiced || 0;
-    if (mode === 'send') {
-      showToast('Invoice ' + (result.invoice_number || '') + ' sent to client — ' + fmt$(invTotal), 'success');
-    } else {
-      showToast('Invoice ' + (result.invoice_number || '') + ' saved as draft — ' + fmt$(invTotal), 'success');
-    }
-    closeModal('invoiceModal');
+    var invTotal = result.total || 0;
+    var msg = 'Invoice ' + (result.invoice_number || '') + (mode === 'send' ? ' sent' : ' saved as draft') + ' — ' + fmt$(invTotal);
+    if (result.warning) msg += '\n' + result.warning;
+    showToast(msg, 'success');
+    closeModal('unifiedInvoiceModal');
     loadInvoices();
     refreshActiveView();
   } catch (e) {
@@ -7539,9 +7631,16 @@ async function submitInvoice(mode) {
   }
 }
 
-function resetInvoiceModal() {
+// Backward compat
+function submitInvoice(mode) { submitUnifiedInvoice(mode); }
+
+var _invJobDetailCache = null;
+
+function resetUnifiedInvoiceModal() {
   var select = document.getElementById('invJobSelect');
-  if (select) select.innerHTML = '<option value="">Select job...</option>';
+  if (select) select.value = '';
+  var search = document.getElementById('invJobSearch');
+  if (search) search.value = '';
   var info = document.getElementById('invJobInfo');
   if (info) { info.style.display = 'none'; info.innerHTML = ''; }
   var ref = document.getElementById('invReference');
@@ -7550,8 +7649,18 @@ function resetInvoiceModal() {
   if (items) items.innerHTML = '';
   var total = document.getElementById('invLineTotal');
   if (total) total.textContent = '$0';
+  var gst = document.getElementById('invGstTotal');
+  if (gst) gst.textContent = '$0';
+  var incGst = document.getElementById('invIncGstTotal');
+  if (incGst) incGst.textContent = '$0';
   _invJobCache = null;
+  _invJobDetailCache = null;
+  _uniInvSelectedQuoteDocs = [];
+  hideUnifiedInvoiceSections();
 }
+
+// Backward compat
+function resetInvoiceModal() { resetUnifiedInvoiceModal(); }
 
 async function sendWO(woId) {
   if (!confirm('Mark this work order as sent?')) return;
@@ -7624,137 +7733,13 @@ async function confirmAcceptance() {
 }
 
 // ════════════════════════════════════════════════════════════
-// DEPOSIT INVOICE
+// DEPOSIT INVOICE (legacy stubs — unified modal handles this now)
+// Old create_deposit_invoice backend endpoint still works for auto-deposit on acceptance.
 // ════════════════════════════════════════════════════════════
 
 var _depJobId = null;
 var _depQuotedTotal = 0;
 var _depExtraLines = [];
-
-function openDepositModal(jobId, quotedTotal) {
-  // If called from Money tab detail view without args, use _currentJobData
-  if (!jobId && _currentJobData && _currentJobData.job) {
-    jobId = _currentJobData.job.id;
-    var pj = _currentJobData.job.pricing_json;
-    quotedTotal = pj ? (pj.totalIncGST || pj.total || 0) : 0;
-  }
-  _depJobId = jobId;
-  _depQuotedTotal = quotedTotal || 0;
-  _depExtraLines = [];
-  document.getElementById('depQuotedTotal').value = fmt$(_depQuotedTotal);
-  document.getElementById('depPercent').value = '20';
-  document.getElementById('depExtraLines').innerHTML = '';
-  updateDepositAmount();
-
-  // Populate quote summary from job data
-  var summaryEl = document.getElementById('depQuoteSummary');
-  summaryEl.innerHTML = '';
-  var jData = _currentJobData ? _currentJobData.job : null;
-  if (jData) {
-    var html = '<div style="font-weight:700;margin-bottom:4px;">' + escapeHtml(jData.client_name || '') + ' — ' + escapeHtml(jData.job_number || '') + '</div>';
-    html += '<div style="color:var(--sw-text-sec);">' + escapeHtml(jData.site_address || jData.site_suburb || '') + '</div>';
-    if (jData.scope_json) {
-      html += renderScopeSummary(jData.scope_json, jData.type);
-    }
-    html += '<div style="margin-top:6px;font-weight:700;">Quoted: ' + fmt$(_depQuotedTotal) + ' inc GST</div>';
-    summaryEl.innerHTML = html;
-  }
-
-  document.getElementById('depositModal').classList.add('active');
-}
-
-function addDepositLine() {
-  var idx = _depExtraLines.length;
-  _depExtraLines.push({ description: '', amount: 0 });
-  var container = document.getElementById('depExtraLines');
-  var row = document.createElement('div');
-  row.id = 'depLine' + idx;
-  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
-  row.innerHTML = '<input type="text" class="form-input" placeholder="e.g. Council Application Fee" style="flex:2;font-size:12px;" oninput="_depExtraLines[' + idx + '].description=this.value">' +
-    '<input type="number" class="form-input" placeholder="$ inc GST" style="flex:1;font-size:12px;" oninput="_depExtraLines[' + idx + '].amount=parseFloat(this.value)||0;updateDepositAmount()">' +
-    '<button class="btn btn-sm" onclick="removeDepositLine(' + idx + ')" style="padding:2px 6px;font-size:14px;color:var(--sw-text-sec);">&times;</button>';
-  container.appendChild(row);
-}
-
-function removeDepositLine(idx) {
-  _depExtraLines.splice(idx, 1);
-  renderDepositLines();
-  updateDepositAmount();
-}
-
-function renderDepositLines() {
-  var container = document.getElementById('depExtraLines');
-  container.innerHTML = '';
-  _depExtraLines.forEach(function(line, idx) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
-    row.innerHTML = '<input type="text" class="form-input" placeholder="e.g. Council Application Fee" style="flex:2;font-size:12px;" value="' + escapeHtml(line.description) + '" oninput="_depExtraLines[' + idx + '].description=this.value">' +
-      '<input type="number" class="form-input" placeholder="$ inc GST" style="flex:1;font-size:12px;" value="' + (line.amount || '') + '" oninput="_depExtraLines[' + idx + '].amount=parseFloat(this.value)||0;updateDepositAmount()">' +
-      '<button class="btn btn-sm" onclick="removeDepositLine(' + idx + ')" style="padding:2px 6px;font-size:14px;color:var(--sw-text-sec);">&times;</button>';
-    container.appendChild(row);
-  });
-}
-
-function updateDepositAmount() {
-  var pct = parseInt(document.getElementById('depPercent').value) || 20;
-  var depositAmount = Math.round(_depQuotedTotal * (pct / 100) * 100) / 100;
-  document.getElementById('depAmount').value = fmt$(depositAmount);
-  // Calculate total including extra lines
-  var extrasTotal = _depExtraLines.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
-  var invoiceTotal = depositAmount + extrasTotal;
-  document.getElementById('depInvoiceTotal').textContent = fmt$(invoiceTotal);
-}
-
-async function submitDepositInvoice() {
-  if (!_depJobId) return;
-  var pct = parseInt(document.getElementById('depPercent').value) || 20;
-  var depositAmount = Math.round(_depQuotedTotal * (pct / 100) * 100) / 100;
-  var extrasTotal = _depExtraLines.reduce(function(s, l) { return s + (l.amount || 0); }, 0);
-  var invoiceTotal = depositAmount + extrasTotal;
-
-  if (invoiceTotal <= 0) {
-    alert('Cannot create a $0 deposit invoice. Ensure pricing is set on the job.');
-    return;
-  }
-
-  // Validate extra lines have descriptions
-  var validExtras = _depExtraLines.filter(function(l) { return l.amount > 0; });
-  for (var i = 0; i < validExtras.length; i++) {
-    if (!validExtras[i].description.trim()) {
-      alert('Please add a description for all additional line items.');
-      return;
-    }
-  }
-
-  var summary = 'Deposit (' + pct + '%): ' + fmt$(depositAmount);
-  validExtras.forEach(function(l) { summary += '\n' + l.description + ': ' + fmt$(l.amount); });
-  summary += '\n\nTotal: ' + fmt$(invoiceTotal);
-
-  if (!confirm('Create and send deposit invoice?\n\n' + summary + '\n\nThis will be emailed to the client via Xero.')) return;
-
-  try {
-    var result = await opsPost('create_deposit_invoice', {
-      job_id: _depJobId,
-      deposit_percent: pct,
-      deposit_amount: depositAmount,
-      extra_line_items: validExtras.map(function(l) {
-        return { description: l.description, amount_inc_gst: l.amount };
-      }),
-      send_email: true,
-    });
-
-    if (result.error) {
-      alert('Error: ' + result.error);
-      return;
-    }
-
-    showToast('Deposit invoice ' + (result.invoice_number || '') + ' sent — ' + fmt$(result.deposit_amount || invoiceTotal), 'success');
-    closeModal('depositModal');
-    refreshActiveView();
-  } catch (e) {
-    alert('Failed to create deposit invoice: ' + e.message);
-  }
-}
 
 // ════════════════════════════════════════════════════════════
 // FEATURE 1: AI CHAT SIDEBAR
