@@ -284,6 +284,17 @@
     .badge-fencing { background: #fff0eb; color: var(--sw-orange); }
     .badge-patio { background: #ebf4ff; color: var(--sw-blue); }
     .badge-combo { background: #f3ebff; color: #8E44AD; }
+    .badge-delivery {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px;
+      margin-top: 6px;
+    }
+    .badge-delivery.delivery { background: #e8f8ef; color: #15803d; }
+    .badge-delivery.pickup { background: #ebf4ff; color: #2563eb; }
+    .badge-delivery.not-confirmed { background: #fef3cd; color: #92400e; }
+    .badge-materials { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; margin-top: 4px; display: inline-block; }
+    .badge-materials.confirmed { background: #e8f8ef; color: #15803d; }
+    .badge-materials.pending { background: #fef3cd; color: #92400e; }
     .job-card-address {
       font-size: 13px;
       color: var(--sw-text-sec);
@@ -2486,6 +2497,20 @@
         html += '    </div>';
         html += '    <span class="job-card-badge badge-' + type + '">' + type + '</span>';
         html += '  </div>';
+        // Pickup vs Delivery badge + Materials status
+        var poInfo = job.po_info;
+        if (poInfo) {
+          if (poInfo.delivery_method === 'pickup') {
+            html += '<div class="badge-delivery pickup">&#128230; PICKUP — ' + esc(poInfo.pickup_location || 'TBC') + '</div>';
+          } else {
+            html += '<div class="badge-delivery delivery">&#128666; DELIVERY' + (poInfo.delivery_date ? ' — ' + formatDate(poInfo.delivery_date) : '') + '</div>';
+          }
+          if (poInfo.materials_confirmed) {
+            html += ' <span class="badge-materials confirmed">&#9989; Materials confirmed</span>';
+          } else {
+            html += ' <span class="badge-materials pending">&#9888; Materials not confirmed</span>';
+          }
+        }
         // Scope summary line
         var scopeSummary = buildScopeSummary(job.scope_json, type);
         if (scopeSummary) {
