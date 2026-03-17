@@ -2938,6 +2938,7 @@ function opsFetch(action, params) {
 }
 
 function opsPost(action, body) {
+  body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
