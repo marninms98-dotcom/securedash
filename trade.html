@@ -2688,6 +2688,25 @@
     html += '  </div>';
     html += '</div>';
 
+    // ── Variation Request Button ──
+    if (myAssignment && ['in_progress', 'confirmed'].indexOf(myAssignment.status) >= 0) {
+      html += '<div class="detail-section">';
+      html += '  <button class="btn btn-secondary" style="width:100%;border-color:var(--sw-yellow);color:var(--sw-yellow);font-weight:700" onclick="showVariationForm(\'' + esc(job.id) + '\', \'' + esc(job.type || 'patio') + '\')">';
+      html += '    &#9888; Request Variation';
+      html += '  </button>';
+      html += '  <div id="variationForm" style="display:none;margin-top:12px;">';
+      html += '    <div style="font-size:13px;font-weight:600;margin-bottom:8px">What changed on site?</div>';
+      html += '    <textarea id="variationDesc" placeholder="e.g. Limestone under fence line, needs extra 2 hours digging..." style="width:100%;min-height:60px;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);resize:vertical;margin-bottom:8px"></textarea>';
+      html += '    <div style="display:flex;gap:8px;margin-bottom:8px">';
+      html += '      <div style="flex:1"><label style="font-size:11px;color:var(--sw-text-sec)">Extra cost ($)</label><input type="number" id="variationCost" placeholder="0" style="width:100%;padding:8px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px"></div>';
+      html += '      <div style="flex:1"><label style="font-size:11px;color:var(--sw-text-sec)">Photo (optional)</label><input type="file" id="variationPhoto" accept="image/*" capture="environment" style="width:100%;padding:6px;font-size:12px"></div>';
+      html += '    </div>';
+      html += '    <div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:8px">Under $200: auto-approved. Over $200: ' + (job.type === 'fencing' ? 'Khairo' : 'Nathan') + ' will be notified for approval.</div>';
+      html += '    <button class="btn btn-primary" style="width:100%" onclick="submitVariation(\'' + esc(job.id) + '\')">Submit Variation</button>';
+      html += '  </div>';
+      html += '</div>';
+    }
+
     // ── Scope of Work ──
     if (job.scope_json) {
       html += '<div class="detail-section">';
@@ -4995,6 +5014,44 @@
   var _msgJobId = null;
   var _msgContactId = null;
   var _msgClientName = '';
+
+  // ── Variation Flow ──
+  window.showVariationForm = function(jobId, jobType) {
+    var form = document.getElementById('variationForm');
+    if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  };
+
+  window.submitVariation = function(jobId) {
+    var desc = document.getElementById('variationDesc');
+    var cost = document.getElementById('variationCost');
+    var photo = document.getElementById('variationPhoto');
+    var description = (desc ? desc.value.trim() : '');
+    var estimatedCost = cost ? parseFloat(cost.value) || 0 : 0;
+
+    if (!description) { toast('Please describe what changed'); return; }
+
+    var btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    api('create_variation', null, {
+      job_id: jobId,
+      description: description,
+      estimated_cost: estimatedCost,
+      user_id: _user ? _user.id : null,
+    }).then(function(result) {
+      toast(result.message || 'Variation submitted', 'success');
+      desc.value = '';
+      cost.value = '';
+      document.getElementById('variationForm').style.display = 'none';
+      btn.disabled = false;
+      btn.textContent = 'Submit Variation';
+    }).catch(function(err) {
+      toast('Failed: ' + (err.message || err), 'error');
+      btn.disabled = false;
+      btn.textContent = 'Submit Variation';
+    });
+  };
 
   window.openMessageOverlay = function(jobId, contactId, clientName) {
     _msgJobId = jobId;
