@@ -4440,6 +4440,7 @@ function renderPOTable(pos) {
     if (po.job_id) {
       html += ' <button class="btn btn-secondary btn-sm" onclick="openJobPeek(\'' + po.job_id + '\')" style="font-size:10px; padding:2px 6px;">Job</button>';
     }
+    html += ' <button class="btn btn-secondary btn-sm" onclick="scanSupplierQuote(\'' + po.id + '\')" style="font-size:10px; padding:2px 6px; border-color:var(--sw-orange); color:var(--sw-orange);" title="Upload supplier quote for AI price analysis">&#128269; Scan Quote</button>';
     html += '</td>';
     html += '</tr>';
   });
@@ -6987,6 +6988,49 @@ async function submitWO() {
   } catch (e) {
     alert('Failed to create work order: ' + e.message);
   }
+}
+
+// ── Supplier Quote Scanner ──
+function scanSupplierQuote(poId) {
+  // Create a hidden file input
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,.pdf';
+  input.capture = 'environment';
+  input.onchange = async function() {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    showToast('Analysing supplier quote with AI...', 'info');
+
+    // Convert to base64
+    var reader = new FileReader();
+    reader.onload = async function() {
+      var base64 = reader.result.split(',')[1];
+      try {
+        var result = await opsPost('analyse_supplier_quote', {
+          po_id: poId,
+          image_base64: base64,
+        });
+        if (result.success) {
+          var alerts = result.price_alerts || [];
+          var msg = result.items_extracted + ' items extracted from ' + result.supplier + '.';
+          if (alerts.length > 0) {
+            msg += ' ' + alerts.length + ' price difference(s) found >5%.';
+          }
+          msg += ' Check Pending Prices in Materials tab.';
+          showToast(msg, 'success');
+          // Refresh materials tab if we're on it
+          if (typeof loadPendingPrices === 'function') loadPendingPrices();
+        } else {
+          showToast('Failed to analyse: ' + (result.error || 'unknown'), 'error');
+        }
+      } catch (e) {
+        showToast('Analysis failed: ' + e.message, 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
 }
 
 async function pushPOToXero(poId) {
