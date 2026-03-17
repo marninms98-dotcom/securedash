@@ -1247,11 +1247,12 @@
 
     /* Money view */
     .jd-money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .jd-money-col { }
-    .jd-money-heading { font-size: 13px; font-weight: 700; color: var(--sw-dark); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .jd-money-col { background: var(--sw-light); border-radius: 8px; padding: 12px; }
+    .jd-money-heading { font-size: 11px; font-weight: 700; color: var(--sw-mid); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid var(--sw-border); padding-bottom: 6px; }
     .jd-money-card {
-      background: var(--sw-card); border: 1px solid var(--sw-border);
-      border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px;
+      background: #fff; border: 1px solid var(--sw-border);
+      box-shadow: 0 1px 3px rgba(41,60,70,0.06);
+      border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px;
     }
     .jd-money-card-head { display: flex; justify-content: space-between; align-items: center; }
     .jd-money-card-sub { font-size: 11px; color: var(--sw-text-sec); margin-top: 2px; }
@@ -6134,11 +6135,13 @@ function renderMoneyView(data) {
       html += '</div></div>';
     });
   }
-  // Invoice action buttons
+  // Invoice action buttons — deposit is primary CTA for accepted jobs without one
   html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">';
-  html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
-  if (j.status === 'accepted' || j.status === 'scheduled') {
-    html += '<button class="btn btn-secondary btn-sm" onclick="openDepositModal()">+ Deposit Invoice</button>';
+  if ((j.status === 'accepted' || j.status === 'scheduled') && !j.deposit_invoice_id) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-orange);color:#fff;" onclick="openDepositModal()">+ Deposit Invoice</button>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
+  } else {
+    html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openActionSheet(\'Invoice\')">+ Invoice</button>';
   }
   html += '</div>';
   html += '</div>';
