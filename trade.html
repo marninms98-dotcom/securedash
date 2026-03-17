@@ -1314,6 +1314,56 @@
     }
 
     /* ══════════════════════════════════════════════════
+       REPORT ISSUE OVERLAY
+       ══════════════════════════════════════════════════ */
+    .issue-overlay {
+      position: fixed; inset: 0; z-index: 550;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: flex-end; justify-content: center;
+    }
+    .issue-overlay.active { display: flex; }
+    .issue-sheet {
+      background: #fff;
+      border-radius: 16px 16px 0 0;
+      width: 100%; max-width: 480px;
+      padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+      max-height: 80vh; overflow-y: auto;
+    }
+    .issue-sheet h3 {
+      font-size: 17px; font-weight: 700; color: var(--sw-dark);
+      margin-bottom: 16px; text-align: center;
+    }
+    .issue-option {
+      display: block; width: 100%;
+      padding: 14px 16px; margin-bottom: 8px;
+      background: var(--sw-light); border: 2px solid transparent;
+      border-radius: 10px; font-size: 15px; font-weight: 500;
+      color: var(--sw-text); cursor: pointer; text-align: left;
+      font-family: var(--sw-font); transition: border-color 0.15s;
+    }
+    .issue-option.selected {
+      border-color: var(--sw-yellow); background: #FFF8F0;
+    }
+    .issue-detail {
+      width: 100%; padding: 12px; margin-top: 8px;
+      border: 1px solid var(--sw-border); border-radius: 10px;
+      font-size: 14px; font-family: var(--sw-font); resize: vertical;
+      min-height: 80px; display: none;
+    }
+    .issue-detail.visible { display: block; }
+    .issue-actions {
+      display: flex; gap: 10px; margin-top: 16px;
+    }
+    .issue-actions button {
+      flex: 1; padding: 14px; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      font-family: var(--sw-font);
+    }
+    .issue-btn-cancel { background: var(--sw-light); color: var(--sw-text); }
+    .issue-btn-submit { background: var(--sw-yellow); color: #fff; }
+    .issue-btn-submit:disabled { opacity: 0.5; }
+
+    /* ══════════════════════════════════════════════════
        JOB COMPLETION WIZARD
        ══════════════════════════════════════════════════ */
     .wiz-overlay {
@@ -1629,6 +1679,23 @@
     <div class="confirm-actions">
       <button class="confirm-cancel" onclick="closeReassignModal()">Cancel</button>
       <button class="confirm-ok" id="reassignSubmitBtn" onclick="submitReassignment()">Reassign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Report Issue Overlay -->
+<div class="issue-overlay" id="issueOverlay" onclick="if(event.target===this)closeIssueOverlay()">
+  <div class="issue-sheet">
+    <h3>Report Issue</h3>
+    <button class="issue-option" onclick="selectIssue(this,'Materials missing')">Materials missing</button>
+    <button class="issue-option" onclick="selectIssue(this,'Site access issue')">Site access issue</button>
+    <button class="issue-option" onclick="selectIssue(this,'Client not home')">Client not home</button>
+    <button class="issue-option" onclick="selectIssue(this,'Damage found')">Damage found</button>
+    <button class="issue-option" onclick="selectIssue(this,'Other')">Other</button>
+    <textarea class="issue-detail" id="issueDetail" placeholder="Describe the issue..."></textarea>
+    <div class="issue-actions">
+      <button class="issue-btn-cancel" onclick="closeIssueOverlay()">Cancel</button>
+      <button class="issue-btn-submit" id="issueSubmitBtn" onclick="submitIssue()" disabled>Submit</button>
     </div>
   </div>
 </div>
@@ -2928,6 +2995,14 @@
     html += '  <button class="btn btn-primary" onclick="showView(\'report\')">';
     html += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>';
     html += '    Service Report';
+    html += '  </button>';
+    html += '</div>';
+
+    // ── Report Issue Button ──
+    html += '<div style="padding:0 0 12px">';
+    html += '  <button class="btn btn-primary" style="background:var(--sw-yellow)" onclick="openIssueOverlay()">';
+    html += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>';
+    html += '    Report Issue';
     html += '  </button>';
     html += '</div>';
 
@@ -6195,6 +6270,69 @@
     var days = Math.floor(hrs / 24);
     if (days < 7) return days + 'd ago';
     return formatDate(str.slice(0, 10));
+  }
+
+  // ══════════════════════════════════════════════════
+  // REPORT ISSUE
+  // ══════════════════════════════════════════════════
+
+  var _selectedIssue = null;
+
+  function openIssueOverlay() {
+    _selectedIssue = null;
+    var overlay = document.getElementById('issueOverlay');
+    // Reset state
+    var opts = overlay.querySelectorAll('.issue-option');
+    for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
+    document.getElementById('issueDetail').value = '';
+    document.getElementById('issueDetail').classList.remove('visible');
+    document.getElementById('issueSubmitBtn').disabled = true;
+    overlay.classList.add('active');
+  }
+
+  function closeIssueOverlay() {
+    document.getElementById('issueOverlay').classList.remove('active');
+    _selectedIssue = null;
+  }
+
+  function selectIssue(btn, type) {
+    _selectedIssue = type;
+    var opts = btn.parentElement.querySelectorAll('.issue-option');
+    for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
+    btn.classList.add('selected');
+    document.getElementById('issueSubmitBtn').disabled = false;
+
+    // Show textarea for "Other" or always for extra detail
+    var detail = document.getElementById('issueDetail');
+    if (type === 'Other') {
+      detail.classList.add('visible');
+      detail.focus();
+    } else {
+      detail.classList.add('visible');
+    }
+  }
+
+  function submitIssue() {
+    if (!_selectedIssue || !_currentJob) return;
+    var detail = document.getElementById('issueDetail').value.trim();
+    var btn = document.getElementById('issueSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    api('create_trade_alert', null, {
+      jobId: _currentJob.id,
+      issueType: _selectedIssue,
+      detail: detail || null
+    }).then(function(res) {
+      if (res.error) throw new Error(res.error);
+      toast('Issue reported');
+      closeIssueOverlay();
+    }).catch(function(err) {
+      toast('Failed to report issue: ' + (err.message || err), true);
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Submit';
+    });
   }
 
   function toast(msg, isError) {
