@@ -2964,19 +2964,27 @@ function opsPost(action, body) {
 
 var _crewList = [];  // [{ id, name, email, role, division }]
 
+// Map email prefixes / raw crew_name values to clean first names
+var CREW_NAME_MAP = {
+  'isaac.b3lch3r': 'Isaac',
+  'khairopomare': 'Khairo',
+  'marninms98': 'Marnin',
+  'shaunlee': 'Shaun',
+  'brotheremeka': 'Henry',
+  'ryanhumphries2002': 'Ryan',
+  'nithin': 'Nithin',
+};
+
+function cleanCrewName(name) {
+  if (!name) return name;
+  var key = name.toLowerCase().replace(/\s/g, '');
+  return CREW_NAME_MAP[key] || name;
+}
+
 async function loadCrewList() {
   if (_crewList.length > 0) return;
   try {
     var data = await opsFetch('list_users');
-    // Map email prefixes to clean first names
-    var CREW_NAME_MAP = {
-      'isaac.b3lch3r': 'Isaac',
-      'khairopomare': 'Khairo',
-      'marninms98': 'Marnin',
-      'shaunlee': 'Shaun',
-      'brotheremeka': 'Henry',
-      'ryanhumpries': 'Ryan',
-    };
     // Hide duplicate/invalid users by email prefix
     var CREW_HIDE = ['isaac']; // hide the non-real Isaac (isaac.b3lch3r is the real one)
     _crewList = (data.users || []).filter(function(u) {
@@ -2987,8 +2995,7 @@ async function loadCrewList() {
       if (u.role === 'installer' || u.role === 'lead_installer') div = 'trade';
       if (u.email && u.email.indexOf('fenc') !== -1) div = 'fencing';
       var rawName = u.name || u.email.split('@')[0];
-      var emailPrefix = u.email ? u.email.split('@')[0].toLowerCase() : '';
-      var displayName = CREW_NAME_MAP[emailPrefix] || rawName;
+      var displayName = cleanCrewName(rawName);
       return { id: u.id, name: displayName, email: u.email, role: u.role || '', division: div };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   } catch (e) {
@@ -3303,7 +3310,7 @@ function renderTodaySchedule(schedule, deliveries) {
     html += '<div class="status-dot ' + ev.assignment_status + '"></div>';
     html += '<div class="today-card-main">';
     html += '<div class="today-card-title">' + (ev.job_number || '') + (ev.job_number && ev.client_name ? ' — ' : '') + (ev.client_name || 'Unknown') + '</div>';
-    html += '<div class="today-card-detail">' + (ev.site_address || ev.site_suburb || '') + (ev.crew_name ? ' &middot; ' + ev.crew_name : '') + '</div>';
+    html += '<div class="today-card-detail">' + (ev.site_address || ev.site_suburb || '') + (ev.crew_name ? ' &middot; ' + cleanCrewName(ev.crew_name) : '') + '</div>';
     html += '</div>';
     html += '<span class="type-badge ' + (ev.job_type || '') + '">' + typeBadgeLabel(ev.job_type) + '</span>';
     var schedDate = ev.scheduled_date || new Date().toISOString().slice(0, 10);
@@ -3790,7 +3797,7 @@ function renderSwimlaneView(container, range) {
   // Group events by crew, handle multi-day
   var crewMap = {};
   _calEvents.forEach(function(ev) {
-    var crew = ev.crew_name || ev.assigned_to || 'Unassigned';
+    var crew = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
     if (!crewMap[crew]) crewMap[crew] = { division: guessDivision(ev), events: {} };
     var startDate = ev.scheduled_date;
     var endDate = ev.scheduled_end || ev.scheduled_date;
@@ -4016,7 +4023,7 @@ function renderCalSummary(range) {
   // Count conflicts
   var crewDateJobs = {};
   _calEvents.forEach(function(ev) {
-    var crew = ev.crew_name || ev.assigned_to || 'Unassigned';
+    var crew = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
     var start = ev.scheduled_date;
     var end = ev.scheduled_end || start;
     dates.forEach(function(ds) {
@@ -4242,7 +4249,7 @@ function openCalJobPopup(event, assignmentId) {
   html += '<button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button>';
   html += '</div>';
   html += '<div class="cal-job-popup-row"><strong>Job:</strong> ' + (ev.job_number || '-') + ' · <span class="type-badge ' + (ev.job_type || '') + '">' + typeBadgeLabel(ev.job_type) + '</span></div>';
-  html += '<div class="cal-job-popup-row"><strong>Crew:</strong> ' + (ev.crew_name || ev.assigned_to || '-') + '</div>';
+  html += '<div class="cal-job-popup-row"><strong>Crew:</strong> ' + cleanCrewName(ev.crew_name || ev.assigned_to || '-') + '</div>';
   html += '<div class="cal-job-popup-row"><strong>Dates:</strong> ' + fmtDate(ev.scheduled_date) + (ev.scheduled_end && ev.scheduled_end !== ev.scheduled_date ? ' — ' + fmtDate(ev.scheduled_end) : '') + '</div>';
   html += '<div class="cal-job-popup-row"><strong>Status:</strong> ' + statusLabel + '</div>';
   if (ev.site_suburb) html += '<div class="cal-job-popup-row"><strong>Location:</strong> ' + escapeHtml(ev.site_suburb) + '</div>';
@@ -5389,7 +5396,7 @@ function renderJobPeek(data) {
       html += '<div style="flex:1;">';
       html += '<strong>' + fmtDate(a.scheduled_date) + '</strong>';
       if (a.users?.name) html += ' — ' + a.users.name;
-      if (a.crew_name) html += ' (' + a.crew_name + ')';
+      if (a.crew_name) html += ' (' + cleanCrewName(a.crew_name) + ')';
       html += ' <span class="status-badge ' + a.status + '">' + a.status + '</span>';
       html += '</div>';
       if (a.status !== 'complete' && a.status !== 'cancelled') {
@@ -6042,7 +6049,7 @@ function buildTimelineEvents(data) {
     events.push({
       date: a.scheduled_date || (a.created_at || '').slice(0, 10),
       datetime: a.scheduled_date ? a.scheduled_date + 'T07:00:00' : a.created_at,
-      label: 'Crew scheduled' + (a.crew_name ? ' — ' + a.crew_name : ''),
+      label: 'Crew scheduled' + (a.crew_name ? ' — ' + cleanCrewName(a.crew_name) : ''),
       by: a.users?.name || '',
       detail: fmtDate(a.scheduled_date) + (a.scheduled_end ? ' to ' + fmtDate(a.scheduled_end) : '') + ' | ' + (a.status || ''),
       source: 'assignment'
@@ -6308,7 +6315,7 @@ function renderBuildView(data) {
       html += '<strong>' + fmtDate(a.scheduled_date) + '</strong>';
       if (a.scheduled_end) html += ' — ' + fmtDate(a.scheduled_end);
       if (a.users?.name) html += ' &middot; ' + a.users.name;
-      if (a.crew_name) html += ' (' + a.crew_name + ')';
+      if (a.crew_name) html += ' (' + cleanCrewName(a.crew_name) + ')';
       html += ' <span class="status-badge ' + a.status + '">' + a.status + '</span>';
       html += '</div>';
       if (a.status !== 'complete' && a.status !== 'cancelled') {
@@ -8257,7 +8264,7 @@ function renderCrewUtilization() {
   // Count unique working days per crew member
   var crewDays = {};
   _calEvents.forEach(function(ev) {
-    var crew = ev.crew_name || ev.user_name || 'Unassigned';
+    var crew = cleanCrewName(ev.crew_name || ev.user_name) || 'Unassigned';
     if (crew === 'Unassigned') return;
     if (!crewDays[crew]) crewDays[crew] = new Set();
     crewDays[crew].add(ev.scheduled_date);
