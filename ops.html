@@ -4179,7 +4179,7 @@ async function moveAssignment(assignmentId, newCrew, newDate) {
 
   try {
     await opsPost('update_assignment', {
-      assignment_id: assignmentId,
+      assignmentId: assignmentId,
       crew_name: newCrew,
       scheduled_date: newDate,
     });
@@ -4256,7 +4256,7 @@ async function confirmAssignment(assignmentId, notify) {
   // For now, use update_assignment to mark confirmed (until dedicated endpoint exists)
   try {
     await opsPost('update_assignment', {
-      assignment_id: assignmentId,
+      assignmentId: assignmentId,
       status: 'confirmed',
     });
     closeCalJobPopup();
@@ -4271,7 +4271,7 @@ async function confirmAssignment(assignmentId, notify) {
 async function removeAssignment(assignmentId) {
   if (!confirm('Remove this assignment from the schedule?')) return;
   try {
-    await opsPost('delete_assignment', { assignment_id: assignmentId });
+    await opsPost('delete_assignment', { assignmentId: assignmentId });
     closeCalJobPopup();
     showToast('Assignment removed', 'success');
     loadCalendar();
@@ -4303,7 +4303,7 @@ async function executeBulkConfirm() {
   var count = 0;
   for (var i = 0; i < tentative.length; i++) {
     try {
-      await opsPost('update_assignment', { assignment_id: tentative[i].assignment_id, status: 'confirmed' });
+      await opsPost('update_assignment', { assignmentId: tentative[i].assignment_id, status: 'confirmed' });
       count++;
     } catch (e) { console.error('Bulk confirm error:', e); }
   }
