@@ -3958,16 +3958,13 @@ function renderSwimlaneView(container, range) {
         else blockClass += ' multi-single';
         if (hasConflict) blockClass += ' conflict';
 
-        // Client surname
-        var surname = (ev.client_name || 'Job').split(' ').pop();
-
         html += '<div class="' + blockClass + '"';
         html += ' draggable="true"';
         html += ' ondragstart="handleBlockDragStart(event,\'' + ev.assignment_id + '\')"';
         html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
         html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '"';
         html += '>';
-        html += (ev.job_number ? ev.job_number + ' ' : '') + surname;
+        html += (ev.job_number ? '<strong>' + ev.job_number + '</strong> ' : '') + escapeHtml(ev.client_name || 'Unknown');
         html += '</div>';
       });
 
@@ -7063,9 +7060,11 @@ async function submitAssignment() {
   var date = document.getElementById('assignDate').value;
   if (!jobId || !date) { alert('Please select a job and date.'); return; }
 
+  var crewUserId = getCrewSelectId('assignCrew');
+  var crewName = getCrewSelectName('assignCrew');
+  if (!crewUserId) { alert('Please select a Team Lead.'); return; }
+
   try {
-    var crewUserId = getCrewSelectId('assignCrew');
-    var crewName = getCrewSelectName('assignCrew');
     var endDate = document.getElementById('assignEndDate').value || null;
     var startTime = document.getElementById('assignStartTime').value || null;
     var endTime = document.getElementById('assignEndTime').value || null;
