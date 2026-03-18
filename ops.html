@@ -2112,7 +2112,7 @@
 <!-- Assignment Modal -->
 <div class="modal-overlay" id="assignmentModal">
   <div class="modal">
-    <div class="modal-title">Schedule Assignment</div>
+    <div class="modal-title" id="assignModalTitle">Schedule Assignment</div>
     <div class="form-group">
       <label class="form-label">Job</label>
       <div style="position:relative;">
@@ -4259,7 +4259,7 @@ function openCalJobPopup(event, assignmentId) {
     html += '<button class="btn-confirm" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Mark Confirmed</button>';
     html += '<button class="btn-confirm-notify" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Confirm & Notify</button>';
   }
-  html += '<button onclick="openAssignmentModal(null,\'' + ev.scheduled_date + '\',\'' + (ev.crew_name || '').replace(/'/g, "\\'") + '\')">Edit Dates</button>';
+  html += '<button onclick="closeCalJobPopup();openEditAssignmentModal(\'' + assignmentId + '\')">Edit Dates</button>';
   html += '<button onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Open Full Record</button>';
   html += '<button class="btn-danger" onclick="removeAssignment(\'' + assignmentId + '\')">Remove</button>';
   html += '</div>';
@@ -6821,7 +6821,9 @@ function closeModal(id) {
 }
 
 async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
+  _editAssignmentId = null; // Reset — this is a new assignment
   document.getElementById('assignmentModal').classList.add('active');
+  document.getElementById('assignModalTitle').textContent = 'Schedule Assignment';
   document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
@@ -6845,6 +6847,46 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   };
   if (preSelectJobId) {
     selectJobPicker('assign', preSelectJobId);
+  }
+}
+
+// ── Edit existing assignment ──
+var _editAssignmentId = null;
+
+async function openEditAssignmentModal(assignmentId) {
+  var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
+  if (!ev) { alert('Assignment not found'); return; }
+
+  _editAssignmentId = assignmentId;
+  document.getElementById('assignModalTitle').textContent = 'Edit Assignment — ' + (ev.client_name || '');
+
+  document.getElementById('assignmentModal').classList.add('active');
+  document.getElementById('assignDate').value = ev.scheduled_date || '';
+  document.getElementById('assignEndDate').value = ev.scheduled_end || '';
+  document.getElementById('assignStartTime').value = ev.start_time || '07:00';
+  document.getElementById('assignEndTime').value = ev.end_time || '15:00';
+  document.getElementById('assignJobSearch').value = '';
+  document.getElementById('assignJobSelect').value = '';
+  document.getElementById('assignNotes').value = ev.notes || '';
+
+  await loadPOJobList();
+  await loadCrewList();
+
+  // Pre-select crew
+  var crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || '';
+  var crewMatch = _crewList.find(function(u) { return u.name === crewName; }) ||
+    _crewList.find(function(u) { return u.id === ev.user_id; });
+  var crewId = crewMatch ? crewMatch.id : '';
+
+  document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', crewId);
+  document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(crewId);
+  document.getElementById('assignCrew').onchange = function() {
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
+  };
+
+  // Pre-select job
+  if (ev.job_id) {
+    selectJobPicker('assign', ev.job_id);
   }
 }
 
@@ -7071,25 +7113,22 @@ async function submitAssignment() {
     var assignType = document.getElementById('assignType').value;
     var notes = document.getElementById('assignNotes').value || null;
 
-    // Create lead assignment
-    await opsPost('create_assignment', {
-      jobId: jobId,
-      scheduledDate: date,
-      scheduledEnd: endDate,
-      startTime: startTime,
-      endTime: endTime,
-      assignmentType: assignType,
-      crewName: crewName || null,
-      userId: crewUserId || null,
-      role: 'lead_installer',
-      notes: notes,
-    });
-
-    // Create helper assignments for checked team members
-    var memberCbs = document.querySelectorAll('.assign-member-cb:checked');
-    for (var i = 0; i < memberCbs.length; i++) {
-      var memberId = memberCbs[i].value;
-      var memberName = memberCbs[i].getAttribute('data-name');
+    if (_editAssignmentId) {
+      // Update existing assignment
+      await opsPost('update_assignment', {
+        assignmentId: _editAssignmentId,
+        scheduled_date: date,
+        scheduled_end: endDate,
+        start_time: startTime,
+        end_time: endTime,
+        crew_name: crewName || null,
+        user_id: crewUserId || null,
+        notes: notes,
+      });
+      _editAssignmentId = null;
+      var totalAssigned = 1;
+    } else {
+      // Create lead assignment
       await opsPost('create_assignment', {
         jobId: jobId,
         scheduledDate: date,
@@ -7097,14 +7136,32 @@ async function submitAssignment() {
         startTime: startTime,
         endTime: endTime,
         assignmentType: assignType,
-        crewName: memberName || null,
-        userId: memberId || null,
-        role: 'helper',
+        crewName: crewName || null,
+        userId: crewUserId || null,
+        role: 'lead_installer',
         notes: notes,
       });
-    }
 
-    var totalAssigned = 1 + memberCbs.length;
+      // Create helper assignments for checked team members
+      var memberCbs = document.querySelectorAll('.assign-member-cb:checked');
+      for (var i = 0; i < memberCbs.length; i++) {
+        var memberId = memberCbs[i].value;
+        var memberName = memberCbs[i].getAttribute('data-name');
+        await opsPost('create_assignment', {
+          jobId: jobId,
+          scheduledDate: date,
+          scheduledEnd: endDate,
+          startTime: startTime,
+          endTime: endTime,
+          assignmentType: assignType,
+          crewName: memberName || null,
+          userId: memberId || null,
+          role: 'helper',
+          notes: notes,
+        });
+      }
+      var totalAssigned = 1 + memberCbs.length;
+    }
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
