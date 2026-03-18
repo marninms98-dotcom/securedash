@@ -2923,15 +2923,49 @@
   var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   function getMapsUrl(address, suburb, lat, lng) {
-    if (_isIOS) {
-      if (lat && lng) return 'https://maps.apple.com/?daddr=' + lat + ',' + lng;
-      var dest = encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
+    // Returns URL for the user's preferred maps app (or Apple Maps on iOS by default)
+    var pref = localStorage.getItem('sw_maps_pref'); // 'apple' or 'google'
+    if (!pref) pref = _isIOS ? 'apple' : 'google';
+    var dest = (lat && lng) ? lat + ',' + lng : encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
+    if (pref === 'apple') {
       return 'https://maps.apple.com/?daddr=' + dest;
     }
-    if (lat && lng) return 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
-    var dest = encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
     return 'https://www.google.com/maps/dir/?api=1&destination=' + dest;
   }
+
+  // Navigate with maps app choice — replaces direct link on first use
+  window.navigateToJob = function(address, suburb, lat, lng) {
+    var pref = localStorage.getItem('sw_maps_pref');
+    if (pref) {
+      // Already chosen — go straight
+      window.open(getMapsUrl(address, suburb, lat, lng), '_blank');
+      return;
+    }
+    // First time — show choice
+    var dest = (lat && lng) ? lat + ',' + lng : encodeURIComponent((address || '') + (suburb ? ' ' + suburb : '') + ' WA');
+    var appleUrl = 'https://maps.apple.com/?daddr=' + dest;
+    var googleUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + dest;
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:24px';
+    modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:300px;width:100%;text-align:center">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:4px">Navigate with</div>' +
+      '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:16px">Your choice will be remembered</div>' +
+      '<div style="display:flex;gap:10px">' +
+      '<button onclick="chooseMaps(\'apple\',\'' + esc(appleUrl) + '\')" style="flex:1;padding:14px;border:2px solid var(--sw-border);border-radius:12px;background:#fff;cursor:pointer;font-family:var(--sw-font);font-size:14px;font-weight:600">🗺️<br>Apple Maps</button>' +
+      '<button onclick="chooseMaps(\'google\',\'' + esc(googleUrl) + '\')" style="flex:1;padding:14px;border:2px solid var(--sw-border);border-radius:12px;background:#fff;cursor:pointer;font-family:var(--sw-font);font-size:14px;font-weight:600">📍<br>Google Maps</button>' +
+      '</div></div>';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  };
+
+  window.chooseMaps = function(pref, url) {
+    localStorage.setItem('sw_maps_pref', pref);
+    // Remove modal
+    var modals = document.querySelectorAll('[style*="z-index:300"]');
+    modals.forEach(function(m) { m.remove(); });
+    window.open(url, '_blank');
+  };
 
   // ── Job Search & Filter State ──
   var _jobFilter = 'all';
@@ -3742,14 +3776,49 @@
 
     if (items.length === 0) return '';
 
+    // Load saved state from localStorage
+    var checkKey = 'sw_prep_' + data.job.id;
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(checkKey) || '{}'); } catch(e) {}
+
+    var checkedCount = 0;
+    for (var k in saved) { if (saved[k] === 'checked') checkedCount++; }
+
     var h = '<div class="prep-checklist">';
-    h += '<div class="prep-checklist-title">🔧 Prep Checklist</div>';
+    h += '<div class="prep-checklist-title">🔧 Prep Checklist <span style="font-weight:400;font-size:11px;color:var(--sw-text-sec)">' + checkedCount + '/' + items.length + '</span></div>';
     for (var i = 0; i < items.length; i++) {
-      h += '<div class="prep-checklist-item">' + esc(items[i]) + '</div>';
+      var itemState = saved[items[i]] || 'unchecked'; // unchecked, checked, missing
+      var stateIcon = itemState === 'checked' ? '✅' : itemState === 'missing' ? '⚠️' : '☐';
+      var stateStyle = itemState === 'checked' ? 'opacity:0.5;text-decoration:line-through' : itemState === 'missing' ? 'color:var(--sw-yellow)' : '';
+      h += '<div class="prep-checklist-item" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--sw-border);' + stateStyle + '" data-item="' + esc(items[i]) + '">';
+      h += '<button onclick="togglePrepItem(\'' + esc(data.job.id) + '\', \'' + esc(items[i]).replace(/'/g, "\\'") + '\', \'check\')" style="background:none;border:none;font-size:18px;cursor:pointer;padding:0;line-height:1">' + stateIcon + '</button>';
+      h += '<span style="flex:1;font-size:13px">' + esc(items[i]) + '</span>';
+      if (itemState !== 'missing') {
+        h += '<button onclick="togglePrepItem(\'' + esc(data.job.id) + '\', \'' + esc(items[i]).replace(/'/g, "\\'") + '\', \'missing\')" style="background:none;border:1px solid var(--sw-border);border-radius:4px;font-size:10px;padding:2px 6px;color:var(--sw-text-sec);cursor:pointer;white-space:nowrap">Don\'t have</button>';
+      }
+      h += '</div>';
     }
     h += '</div>';
     return h;
   }
+
+  window.togglePrepItem = function(jobId, itemName, action) {
+    if (navigator.vibrate) navigator.vibrate(10);
+    var checkKey = 'sw_prep_' + jobId;
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(checkKey) || '{}'); } catch(e) {}
+
+    if (action === 'check') {
+      // Toggle: unchecked → checked → unchecked
+      saved[itemName] = saved[itemName] === 'checked' ? 'unchecked' : 'checked';
+    } else if (action === 'missing') {
+      saved[itemName] = saved[itemName] === 'missing' ? 'unchecked' : 'missing';
+    }
+
+    localStorage.setItem(checkKey, JSON.stringify(saved));
+    // Re-render
+    if (_currentJob) renderJobDetail(_currentJob);
+  };
 
   function renderScopeGallery(data, phase) {
     var media = data.media || [];
@@ -3875,7 +3944,7 @@
         navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
       }
       if (navUrl) {
-        h += '<a href="' + navUrl + '" target="_blank" class="action-btn" style="padding:8px 12px;font-size:12px">🧭 Nav</a>';
+        h += '<button class="action-btn" style="padding:8px 12px;font-size:12px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Nav</button>';
       }
       h += '</div>';
       h += '</div>';
@@ -3930,10 +3999,10 @@
       if (!hasNum && !job.site_lat) {
         h += '    <span class="action-btn" style="opacity:0.5;cursor:default;font-size:11px">Address incomplete — check with Shaun</span>';
       } else {
-        h += '    <a href="' + navUrl + '" target="_blank" class="action-btn">';
+        h += '    <button class="action-btn" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
         h += '      <svg viewBox="0 0 24 24"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
         h += '      Navigate';
-        h += '    </a>';
+        h += '    </button>';
       }
     }
     h += '  </div>';
