@@ -3494,7 +3494,7 @@
       h += '</div>';
       h += '<div style="display:flex;gap:8px;justify-content:center">';
       h += '<button class="sf-action-btn" style="background:var(--sw-light);color:var(--sw-text);min-width:100px" onclick="timerAction(\'resume\', \'' + myAssignment.id + '\')">Resume</button>';
-      h += '<button class="sf-action-btn" style="background:' + color + ';min-width:140px" onclick="timerAction(\'done\', \'' + myAssignment.id + '\')">Submit Hours</button>';
+      h += '<button class="sf-action-btn" style="background:' + color + ';min-width:140px" onclick="openEOD()">Submit Hours</button>';
       h += '</div>';
     } else if (phase === 'complete') {
       h += '<div style="font-size:16px;font-weight:700;color:var(--sw-green)">✅ Job Complete</div>';
@@ -6855,20 +6855,23 @@
   var _wizRecording = false;
   var _wizRecordingStart = null;
   var _wizRecordTimer = null;
+  var _wizSatisfaction = 0;
 
   function getPhotoPrompts() {
     var job = _currentJob ? _currentJob.job : {};
     var type = (job.type || 'patio').toLowerCase();
     if (type === 'fencing') {
-      return ['Post holes', 'Posts set', 'Panels installed', 'Gates hung', 'Completed view'];
+      return ['Full fence run', 'Each gate', 'Post footings', 'Plinth detail', 'End terminations', 'Client with fence'];
     } else if (type === 'decking') {
-      return ['Footings', 'Framing', 'Boards installed', 'Completed front', 'Completed side'];
+      return ['Overall view', 'Subframe', 'Board pattern', 'Edge detail', 'Under-deck (if applicable)', 'Client with deck'];
     }
-    return ['Footings', 'Steel layout', 'Roofing installed', 'Completed front view', 'Completed side view'];
+    return ['Overall view', 'Connection to house', 'Gutter / downpipe', 'Underside (panels)', 'Each post footing', 'Special details'];
   }
 
   window.openWizard = function() {
     _wizStep = 1;
+    _wizStepCount = canSeePricing() ? 6 : 4;
+    _wizSatisfaction = 0;
     _wizPhotos = {};
     _wizMarketingPhotos = [];
     _wizAudioBlob = null;
@@ -6934,8 +6937,14 @@
     if (_wizStep === 1) renderWizStep1(body, footer);
     else if (_wizStep === 2) renderWizStep2(body, footer);
     else if (_wizStep === 3) renderWizStep3(body, footer);
-    else if (_wizStep === 4) renderWizStep4(body, footer);
-    else if (_wizStep === 5) renderWizStep5(body, footer);
+    else if (_wizStep === 4) {
+      if (!canSeePricing()) { _wizStep = 6; renderWizStep(); return; }
+      renderWizStep4(body, footer);
+    }
+    else if (_wizStep === 5) {
+      if (!canSeePricing()) { _wizStep = 6; renderWizStep(); return; }
+      renderWizStep5(body, footer);
+    }
     else if (_wizStep === 6) renderWizStep6(body, footer);
   }
 
@@ -7145,6 +7154,21 @@
       html += '</div>';
     }
 
+    // Satisfaction rating
+    html += '<div style="margin-bottom:16px;text-align:center">';
+    html += '  <div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:8px">How was the experience?</div>';
+    html += '  <div id="wizStars" style="display:flex;justify-content:center;gap:8px">';
+    for (var si = 1; si <= 5; si++) {
+      var starColor = si <= _wizSatisfaction ? '#F59E0B' : '#D1D5DB';
+      html += '<button onclick="wizSetStar(' + si + ')" style="background:none;border:none;cursor:pointer;font-size:36px;color:' + starColor + ';padding:4px;line-height:1">★</button>';
+    }
+    html += '  </div>';
+    if (_wizSatisfaction > 0) {
+      var starLabels = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+      html += '  <div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px">' + starLabels[_wizSatisfaction] + '</div>';
+    }
+    html += '</div>';
+
     // Name input
     html += '<div style="margin-bottom:12px">';
     html += '  <label style="font-size:12px;color:var(--sw-text-sec);display:block;margin-bottom:4px">Homeowner Name (required)</label>';
@@ -7244,6 +7268,11 @@
     var sigOk = _wizSigCanvas && _wizSigCanvas._hasStrokes;
     btn.disabled = !(nameOk && sigOk);
   }
+
+  window.wizSetStar = function(n) {
+    _wizSatisfaction = n;
+    renderWizStep();
+  };
 
   // ── STEP 5: Payment + Review ──
   function renderWizStep5(body, footer) {
@@ -7389,7 +7418,9 @@
     // 5. Call complete_job
     photoChain = photoChain.then(function() {
       tick('Updating job status...');
-      return api('complete_job', null, { jobId: jobId, signatureName: _wizSigName });
+      var completePayload = { jobId: jobId, signatureName: _wizSigName };
+      if (_wizSatisfaction > 0) completePayload.satisfaction_rating = _wizSatisfaction;
+      return api('complete_job', null, completePayload);
     });
 
     // TODO: Optionally call completion-pack edge function to generate branded PDF
@@ -7903,6 +7934,495 @@
       }
       _viewer3dControls.update();
     }
+  };
+
+  // ══════════════════════════════════════════════════
+  // END OF DAY (EOD) OVERLAY
+  // ══════════════════════════════════════════════════
+
+  var _eodStep = 0;
+  var _eodStepCount = 5;
+  var _eodProgress = 50;
+  var _eodAudioBlob = null;
+  var _eodMediaRecorder = null;
+  var _eodRecording = false;
+  var _eodRecordingStart = null;
+  var _eodRecordTimer = null;
+  var _eodWin = '';
+  var _eodLearn = '';
+  var _eodTimesheetAdjusted = false;
+
+  window.openEOD = function() {
+    _eodStep = 1;
+    _eodProgress = parseInt(localStorage.getItem('sw_progress_' + _currentJobId) || '50', 10);
+    _eodAudioBlob = null;
+    _eodMediaRecorder = null;
+    _eodRecording = false;
+    _eodRecordingStart = null;
+    _eodRecordTimer = null;
+    _eodWin = '';
+    _eodLearn = '';
+    _eodTimesheetAdjusted = false;
+    document.getElementById('bottomNav').style.display = 'none';
+    var tools = document.getElementById('onsiteTools');
+    if (tools) tools.style.display = 'none';
+    document.getElementById('eodOverlay').style.display = 'flex';
+    history.pushState({ eod: true }, '', '');
+    renderEodStep();
+  };
+
+  window.closeEOD = function() {
+    document.getElementById('eodOverlay').style.display = 'none';
+    document.getElementById('bottomNav').style.display = 'flex';
+    if (_eodMediaRecorder && _eodRecording) {
+      _eodMediaRecorder.stop();
+      _eodRecording = false;
+    }
+    clearInterval(_eodRecordTimer);
+  };
+
+  window.eodBack = function() {
+    if (_eodStep <= 1) {
+      showConfirm('Exit Debrief', 'Leave the end-of-day debrief?', 'Leave').then(function(ok) {
+        if (ok) closeEOD();
+      });
+    } else {
+      _eodStep--;
+      renderEodStep();
+    }
+  };
+
+  // Handle hardware back for EOD
+  window.addEventListener('popstate', function(e) {
+    if (document.getElementById('eodOverlay').style.display === 'flex') {
+      e.preventDefault();
+      history.pushState({ eod: true }, '', '');
+      eodBack();
+    }
+  });
+
+  function renderEodStep() {
+    var body = document.getElementById('eodBody');
+    var footer = document.getElementById('eodFooter');
+    var label = document.getElementById('eodStepLabel');
+    var title = document.getElementById('eodTitle');
+
+    label.textContent = 'Step ' + _eodStep + ' of ' + _eodStepCount;
+
+    // Progress dots
+    var progHtml = '';
+    for (var i = 1; i <= _eodStepCount; i++) {
+      var cls = 'wiz-progress-dot';
+      if (i < _eodStep) cls += ' done';
+      else if (i === _eodStep) cls += ' active';
+      progHtml += '<div class="' + cls + '"></div>';
+    }
+    document.getElementById('eodProgress').innerHTML = progHtml;
+
+    if (_eodStep === 1) renderEodStep1(body, footer, title);
+    else if (_eodStep === 2) renderEodStep2(body, footer, title);
+    else if (_eodStep === 3) renderEodStep3(body, footer, title);
+    else if (_eodStep === 4) renderEodStep4(body, footer, title);
+    else if (_eodStep === 5) renderEodStep5(body, footer, title);
+  }
+
+  // ── EOD STEP 1: Progress Estimate ──
+  function renderEodStep1(body, footer, title) {
+    title.textContent = 'How far along is this job?';
+    var h = '';
+    h += '<div style="text-align:center;padding:24px 16px">';
+    h += '  <div id="eodProgressDisplay" style="font-size:64px;font-weight:800;color:var(--sw-orange);font-variant-numeric:tabular-nums">' + _eodProgress + '%</div>';
+    h += '  <div style="margin:20px auto;max-width:320px">';
+    h += '    <input type="range" min="0" max="100" step="5" value="' + _eodProgress + '" ';
+    h += '      style="width:100%;height:40px;cursor:pointer;accent-color:var(--sw-orange)" ';
+    h += '      oninput="eodUpdateProgress(this.value)">';
+    h += '  </div>';
+    h += '  <div style="position:relative;height:12px;background:var(--sw-light);border-radius:6px;max-width:320px;margin:12px auto">';
+    h += '    <div id="eodProgressFill" style="height:100%;border-radius:6px;background:var(--sw-orange);width:' + _eodProgress + '%;transition:width 0.15s"></div>';
+    h += '  </div>';
+    h += '  <div style="display:flex;justify-content:space-between;max-width:320px;margin:8px auto;font-size:12px;color:var(--sw-text-sec)">';
+    h += '    <span>Not started</span><span>Complete</span>';
+    h += '  </div>';
+    h += '</div>';
+    body.innerHTML = h;
+
+    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="_eodStep=2;renderEodStep()">Next &mdash; Photos</button>';
+  }
+
+  window.eodUpdateProgress = function(val) {
+    _eodProgress = parseInt(val, 10);
+    var el = document.getElementById('eodProgressDisplay');
+    if (el) el.textContent = _eodProgress + '%';
+    var fill = document.getElementById('eodProgressFill');
+    if (fill) fill.style.width = _eodProgress + '%';
+  };
+
+  // ── EOD STEP 2: Photo Prompt ──
+  function renderEodStep2(body, footer, title) {
+    title.textContent = 'Progress Photos';
+    var h = '';
+    h += '<div style="padding:16px;text-align:center">';
+    h += '  <p style="font-size:15px;color:var(--sw-text-sec);margin-bottom:16px">Take 1-2 progress photos before you leave site</p>';
+
+    // Check for today's photos
+    var todayPhotos = [];
+    if (_currentJob && _currentJob.media) {
+      var today = new Date().toISOString().slice(0, 10);
+      for (var i = 0; i < _currentJob.media.length; i++) {
+        var m = _currentJob.media[i];
+        if (m.phase === 'in_progress' && m.created_at && m.created_at.slice(0, 10) === today) {
+          todayPhotos.push(m);
+        }
+      }
+    }
+
+    if (todayPhotos.length > 0) {
+      h += '<div style="margin-bottom:16px">';
+      h += '  <div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:8px">&#10003; ' + todayPhotos.length + ' photo(s) already uploaded today</div>';
+      h += '  <div class="photo-grid" style="justify-content:center">';
+      for (var j = 0; j < todayPhotos.length; j++) {
+        h += '<img src="' + esc(todayPhotos[j].public_url || todayPhotos[j].url || '') + '" alt="Progress" style="width:80px;height:80px;object-fit:cover;border-radius:8px">';
+      }
+      h += '  </div>';
+      h += '</div>';
+    }
+
+    h += '  <label style="display:inline-flex;align-items:center;gap:8px;padding:14px 24px;background:var(--sw-orange);color:#fff;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">';
+    h += '    &#128247; Take Photo';
+    h += '    <input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="eodPhotoUpload(this)">';
+    h += '  </label>';
+    h += '  <div id="eodPhotoStatus" style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)"></div>';
+    h += '</div>';
+    body.innerHTML = h;
+
+    var fh = '';
+    fh += '<div style="display:flex;gap:8px">';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=3;renderEodStep()">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=3;renderEodStep()">Next</button>';
+    fh += '</div>';
+    footer.innerHTML = fh;
+  }
+
+  window.eodPhotoUpload = function(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0) return;
+    var statusEl = document.getElementById('eodPhotoStatus');
+    if (statusEl) statusEl.textContent = 'Uploading ' + files.length + ' photo(s)...';
+    uploadPhotosSequential(files, _currentJobId, 'in_progress', function(current, total) {
+      if (statusEl) statusEl.textContent = 'Uploading ' + current + ' of ' + total + '...';
+    }).then(function(results) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--sw-green)">&#10003; ' + results.length + ' photo(s) uploaded</span>';
+      toast(results.length + ' photo(s) uploaded');
+    }).catch(function(err) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--sw-red)">Upload failed</span>';
+      toast('Upload error: ' + friendlyError(err), true);
+    });
+    input.value = '';
+  };
+
+  // ── EOD STEP 3: Voice Note ──
+  function renderEodStep3(body, footer, title) {
+    title.textContent = 'Voice Summary';
+    var h = '';
+    h += '<div style="padding:16px;text-align:center">';
+    h += '  <p style="font-size:15px;color:var(--sw-text-sec);margin-bottom:20px">Record a quick summary of today (30 sec max)</p>';
+
+    if (_eodAudioBlob && !_eodRecording) {
+      // Playback mode
+      h += '<div style="margin-bottom:16px">';
+      h += '  <div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:12px">&#10003; Voice note recorded</div>';
+      h += '  <audio controls style="width:100%;max-width:300px"><source src="' + URL.createObjectURL(_eodAudioBlob) + '"></audio>';
+      h += '</div>';
+      h += '<button class="wiz-btn wiz-btn-secondary" style="margin:0 auto;max-width:200px" onclick="eodReRecord()">Re-record</button>';
+    } else if (_eodRecording) {
+      // Recording in progress
+      var elapsed = _eodRecordingStart ? Math.round((Date.now() - _eodRecordingStart) / 1000) : 0;
+      var remaining = Math.max(0, 30 - elapsed);
+      h += '<div style="margin-bottom:16px">';
+      h += '  <div style="font-size:14px;color:var(--sw-red);font-weight:700;margin-bottom:8px">&#9679; Recording...</div>';
+      h += '  <div id="eodRecordDuration" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--sw-red)">' + remaining + 's</div>';
+      h += '</div>';
+      h += '<button class="wiz-btn" style="background:var(--sw-red);color:#fff;margin:0 auto;max-width:200px;border-radius:50%;width:72px;height:72px;font-size:24px" onclick="eodToggleRecord()">&#9632;</button>';
+    } else {
+      // Ready to record
+      h += '<button class="wiz-btn" style="background:var(--sw-orange);color:#fff;margin:0 auto;border-radius:50%;width:72px;height:72px;font-size:28px;display:flex;align-items:center;justify-content:center" onclick="eodToggleRecord()">&#127908;</button>';
+      h += '<div style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)">Tap to record</div>';
+    }
+
+    h += '</div>';
+    body.innerHTML = h;
+
+    var fh = '';
+    fh += '<div style="display:flex;gap:8px">';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=4;renderEodStep()">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=4;renderEodStep()">Next</button>';
+    fh += '</div>';
+    footer.innerHTML = fh;
+  }
+
+  window.eodToggleRecord = function() {
+    if (_eodRecording) {
+      if (_eodMediaRecorder) _eodMediaRecorder.stop();
+      _eodRecording = false;
+      clearInterval(_eodRecordTimer);
+      renderEodStep();
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Microphone not supported on this device', true);
+      return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      var mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      _eodMediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+      var chunks = [];
+
+      _eodMediaRecorder.ondataavailable = function(e) {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      _eodMediaRecorder.onstop = function() {
+        stream.getTracks().forEach(function(t) { t.stop(); });
+        if (chunks.length > 0) {
+          _eodAudioBlob = new Blob(chunks, { type: mimeType });
+          _eodAudioBlob._mimeType = mimeType;
+        }
+        _eodRecording = false;
+        clearInterval(_eodRecordTimer);
+        renderEodStep();
+      };
+
+      _eodMediaRecorder.start();
+      _eodRecording = true;
+      _eodRecordingStart = Date.now();
+
+      // Auto-stop at 30 seconds
+      var _eodAutoStop = setTimeout(function() {
+        if (_eodRecording && _eodMediaRecorder) {
+          _eodMediaRecorder.stop();
+        }
+      }, 30000);
+
+      // Update countdown display
+      _eodRecordTimer = setInterval(function() {
+        var el = document.getElementById('eodRecordDuration');
+        if (!el) { clearInterval(_eodRecordTimer); return; }
+        var secs = Math.round((Date.now() - _eodRecordingStart) / 1000);
+        var remaining = Math.max(0, 30 - secs);
+        el.textContent = remaining + 's';
+      }, 500);
+
+      renderEodStep();
+    }).catch(function(err) {
+      toast('Microphone access denied', true);
+    });
+  };
+
+  window.eodReRecord = function() {
+    _eodAudioBlob = null;
+    renderEodStep();
+  };
+
+  // ── EOD STEP 4: Win + Learn ──
+  function renderEodStep4(body, footer, title) {
+    title.textContent = 'Quick Debrief';
+    var winPresets = ['Smooth install', 'Ahead of schedule', 'Good client', 'Materials perfect', 'Great weather'];
+    var learnPresets = ['Scope unclear', 'Materials issue', 'Site access', 'Weather delay', 'Equipment needed'];
+
+    var h = '';
+    h += '<div style="padding:16px">';
+
+    // Win section
+    h += '<div style="margin-bottom:20px">';
+    h += '  <div style="font-size:15px;font-weight:700;margin-bottom:10px">What went well?</div>';
+    h += '  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+    for (var i = 0; i < winPresets.length; i++) {
+      var selected = _eodWin === winPresets[i];
+      h += '<button onclick="eodSetWin(\'' + esc(winPresets[i]) + '\')" style="padding:8px 14px;border-radius:20px;border:1.5px solid ' + (selected ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (selected ? 'var(--sw-orange)' : '#fff') + ';color:' + (selected ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">' + esc(winPresets[i]) + '</button>';
+    }
+    h += '  </div>';
+    h += '  <input type="text" id="eodWinCustom" placeholder="Or type your own..." value="' + esc(_eodWin && winPresets.indexOf(_eodWin) === -1 ? _eodWin : '') + '" oninput="_eodWin=this.value;eodRefreshPresets()" style="width:100%;padding:10px 12px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);box-sizing:border-box">';
+    h += '</div>';
+
+    // Learn section
+    h += '<div>';
+    h += '  <div style="font-size:15px;font-weight:700;margin-bottom:10px">What to improve?</div>';
+    h += '  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+    for (var j = 0; j < learnPresets.length; j++) {
+      var sel2 = _eodLearn === learnPresets[j];
+      h += '<button onclick="eodSetLearn(\'' + esc(learnPresets[j]) + '\')" style="padding:8px 14px;border-radius:20px;border:1.5px solid ' + (sel2 ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (sel2 ? 'var(--sw-orange)' : '#fff') + ';color:' + (sel2 ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">' + esc(learnPresets[j]) + '</button>';
+    }
+    h += '  </div>';
+    h += '  <input type="text" id="eodLearnCustom" placeholder="Or type your own..." value="' + esc(_eodLearn && learnPresets.indexOf(_eodLearn) === -1 ? _eodLearn : '') + '" oninput="_eodLearn=this.value;eodRefreshPresets()" style="width:100%;padding:10px 12px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);box-sizing:border-box">';
+    h += '</div>';
+
+    h += '</div>';
+    body.innerHTML = h;
+
+    var fh = '';
+    fh += '<div style="display:flex;gap:8px">';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=5;renderEodStep()">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=5;renderEodStep()">Next</button>';
+    fh += '</div>';
+    footer.innerHTML = fh;
+  }
+
+  window.eodSetWin = function(val) {
+    _eodWin = (_eodWin === val) ? '' : val;
+    renderEodStep();
+  };
+
+  window.eodSetLearn = function(val) {
+    _eodLearn = (_eodLearn === val) ? '' : val;
+    renderEodStep();
+  };
+
+  window.eodRefreshPresets = function() {
+    // No-op: the oninput already sets the value, re-render on next step
+  };
+
+  // ── EOD STEP 5: Timesheet Review ──
+  function renderEodStep5(body, footer, title) {
+    title.textContent = 'Timesheet';
+    var travelMins = _stoppedTravelMins;
+    var onsiteMins = _stoppedOnsiteMins;
+    var totalMins = travelMins + onsiteMins;
+    var rounded = roundTo15(totalMins);
+
+    var h = '';
+    h += '<div style="padding:16px;text-align:center">';
+
+    h += '<div style="background:var(--sw-light);border-radius:12px;padding:20px;max-width:320px;margin:0 auto 16px">';
+    if (travelMins > 0) {
+      h += '<div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:8px"><span style="color:var(--sw-text-sec)">Travel</span><span style="font-weight:600">' + formatMins(travelMins) + '</span></div>';
+    }
+    h += '<div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:12px"><span style="color:var(--sw-text-sec)">On site</span><span style="font-weight:600">' + formatMins(onsiteMins) + '</span></div>';
+    h += '<div style="border-top:1.5px solid var(--sw-border);padding-top:12px;display:flex;justify-content:space-between;align-items:center">';
+    h += '  <span style="font-size:15px;color:var(--sw-text-sec)">Total billable</span>';
+    h += '  <div style="display:flex;align-items:center;gap:8px">';
+    h += '    <button onclick="eodAdjustTime(-15)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--sw-border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:var(--sw-font);color:var(--sw-text)">&minus;</button>';
+    h += '    <span id="eodTotalBillable" style="font-size:22px;font-weight:800;min-width:60px">' + formatMins(rounded) + '</span>';
+    h += '    <button onclick="eodAdjustTime(15)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--sw-border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:var(--sw-font);color:var(--sw-text)">+</button>';
+    h += '  </div>';
+    h += '</div>';
+    if (_eodTimesheetAdjusted) {
+      h += '<div style="margin-top:8px;font-size:12px;color:var(--sw-orange)">&#9998; Manually adjusted</div>';
+    }
+    h += '</div>';
+
+    h += '<div style="font-size:13px;color:var(--sw-text-sec);margin-top:8px">Progress: ' + _eodProgress + '%</div>';
+    if (_eodWin) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Win: ' + esc(_eodWin) + '</div>';
+    if (_eodLearn) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Improve: ' + esc(_eodLearn) + '</div>';
+
+    h += '</div>';
+    body.innerHTML = h;
+
+    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="eodSubmit()" id="eodSubmitBtn">Submit</button>';
+  }
+
+  window.eodAdjustTime = function(delta) {
+    _stoppedOnsiteMins = Math.max(0, _stoppedOnsiteMins + delta);
+    _eodTimesheetAdjusted = true;
+    renderEodStep();
+  };
+
+  window.eodSubmit = function() {
+    var btn = document.getElementById('eodSubmitBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+    // Find my assignment
+    var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
+    var assignmentId = myAssignment ? myAssignment.id : null;
+
+    // Save progress to localStorage
+    localStorage.setItem('sw_progress_' + _currentJobId, _eodProgress);
+
+    var promises = [];
+
+    // 1. Update progress
+    if (assignmentId) {
+      promises.push(
+        api('update_my_assignment', null, { assignmentId: assignmentId, progress_pct: _eodProgress })
+          .catch(function(e) { console.warn('EOD progress update failed:', e); })
+      );
+    }
+
+    // 2. Submit EOD note
+    var noteText = 'EOD';
+    if (_eodWin) noteText += ' — Win: ' + _eodWin + '.';
+    if (_eodLearn) noteText += ' Learn: ' + _eodLearn + '.';
+    noteText += ' Progress: ' + _eodProgress + '%';
+
+    promises.push(
+      api('add_note', null, { jobId: _currentJobId, text: noteText })
+        .catch(function(e) { console.warn('EOD note failed:', e); })
+    );
+
+    // 3. Upload voice note if recorded
+    if (_eodAudioBlob) {
+      var mimeType = _eodAudioBlob._mimeType || 'audio/webm';
+      var ext = mimeType.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
+      var fileName = 'eod-voice-' + Date.now() + '.' + ext;
+
+      promises.push(
+        api('get_upload_url', null, {
+          jobId: _currentJobId,
+          fileName: fileName,
+          contentType: mimeType
+        }).then(function(urlData) {
+          return fetch(urlData.uploadUrl, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': mimeType,
+              'Authorization': 'Bearer ' + urlData.token
+            },
+            body: _eodAudioBlob
+          }).then(function(r) {
+            if (!r.ok) throw new Error('Audio upload failed');
+            return urlData;
+          });
+        }).then(function(urlData) {
+          return api('confirm_upload', null, {
+            jobId: _currentJobId,
+            publicUrl: urlData.publicUrl,
+            path: urlData.path,
+            label: 'EOD voice summary',
+            phase: 'voice_note'
+          });
+        }).catch(function(e) { console.warn('EOD voice upload failed:', e); })
+      );
+    }
+
+    Promise.all(promises).then(function() {
+      // 4. Complete the day via timerAction
+      if (assignmentId) {
+        return new Promise(function(resolve) {
+          timerAction('done', assignmentId);
+          resolve();
+        });
+      }
+    }).then(function() {
+      // Show success
+      var body = document.getElementById('eodBody');
+      var footer = document.getElementById('eodFooter');
+      body.innerHTML = '<div style="text-align:center;padding:40px 16px">' +
+        '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>' +
+        '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Great work today.</div>' +
+        '<div style="font-size:15px;color:var(--sw-text-sec)">See you tomorrow.</div>' +
+        '</div>';
+      footer.innerHTML = '';
+      document.getElementById('eodStepLabel').textContent = 'Done';
+      document.getElementById('eodTitle').textContent = 'Day Complete';
+
+      setTimeout(function() {
+        closeEOD();
+      }, 2000);
+    }).catch(function(err) {
+      toast('Error submitting EOD: ' + friendlyError(err), true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
+    });
   };
 
   // Build a short one-line scope summary for job cards
@@ -8563,5 +9083,18 @@
   // TODO: DB migration — Add availability table (user_id, weekly_pattern JSONB, exceptions JSONB)
 })();
 </script>
+
+<!-- EOD Overlay -->
+<div class="eod-overlay" id="eodOverlay" style="display:none">
+  <div class="wiz-header">
+    <button class="wiz-btn wiz-btn-secondary" style="max-width:60px;padding:8px" onclick="eodBack()">&#8592;</button>
+    <h3 id="eodTitle">End of Day</h3>
+    <span class="wiz-header-step" id="eodStepLabel">Step 1 of 5</span>
+  </div>
+  <div class="wiz-progress" id="eodProgress"></div>
+  <div class="wiz-body" id="eodBody"></div>
+  <div class="wiz-footer" id="eodFooter"></div>
+</div>
+
 </body>
 </html>
