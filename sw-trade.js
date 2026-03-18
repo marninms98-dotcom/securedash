@@ -5,7 +5,7 @@
 // API calls always go to network (no stale data for job lists).
 // ════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'sw-trade-v5'
+const CACHE_NAME = 'sw-trade-v6'
 
 // App shell — these files are cached for instant load
 const SHELL_FILES = [
@@ -42,6 +42,11 @@ self.addEventListener('activate', (event) => {
 // Fetch — network-first for API, cache-first for shell
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
+
+  // Only handle trade.html and its assets — let other pages (ops, ceo, sale) pass through
+  if (!url.pathname.includes('trade') && !url.pathname.includes('/shared/') && !SHELL_FILES.includes(url.href)) {
+    return // Not a trade app resource — don't intercept
+  }
 
   // API calls and auth — always network, never cache
   if (
