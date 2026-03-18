@@ -2153,9 +2153,13 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Crew / Person</label>
+        <label class="form-label">Team Lead</label>
         <div id="assignCrewContainer"><input type="text" class="form-input" id="assignCrew" placeholder="Loading crew..."></div>
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Team Members <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px;">(optional — will be added as helpers)</span></label>
+      <div id="assignMembersContainer" style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Notes</label>
@@ -2986,6 +2990,19 @@ function renderCrewDropdown(selectId, selectedUserId) {
   });
   html += '</select>';
   return html;
+}
+
+function renderMemberCheckboxes(excludeUserId) {
+  var html = '';
+  _crewList.forEach(function(u) {
+    if (u.id === excludeUserId) return; // don't show the lead as a member option
+    var label = u.name;
+    if (u.role && u.role !== 'estimator') label += ' (' + u.role.replace(/_/g, ' ') + ')';
+    html += '<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--sw-light);border:1px solid var(--sw-border);border-radius:6px;font-size:12px;cursor:pointer;user-select:none;">';
+    html += '<input type="checkbox" class="assign-member-cb" value="' + u.id + '" data-name="' + u.name.replace(/"/g, '&quot;') + '"> ' + label;
+    html += '</label>';
+  });
+  return html || '<span style="font-size:12px;color:var(--sw-text-sec);">No crew members loaded</span>';
 }
 
 function getCrewSelectName(selectId) {
@@ -6797,6 +6814,11 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
     preCrewId = match ? match.id : '';
   }
   document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', preCrewId);
+  document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(preCrewId);
+  // Update member checkboxes when lead changes (hide lead from members list)
+  document.getElementById('assignCrew').onchange = function() {
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
+  };
   if (preSelectJobId) {
     selectJobPicker('assign', preSelectJobId);
   }
@@ -7017,22 +7039,53 @@ async function submitAssignment() {
   try {
     var crewUserId = getCrewSelectId('assignCrew');
     var crewName = getCrewSelectName('assignCrew');
+    var endDate = document.getElementById('assignEndDate').value || null;
+    var startTime = document.getElementById('assignStartTime').value || null;
+    var endTime = document.getElementById('assignEndTime').value || null;
+    var assignType = document.getElementById('assignType').value;
+    var notes = document.getElementById('assignNotes').value || null;
+
+    // Create lead assignment
     await opsPost('create_assignment', {
       jobId: jobId,
       scheduledDate: date,
-      scheduledEnd: document.getElementById('assignEndDate').value || null,
-      startTime: document.getElementById('assignStartTime').value || null,
-      endTime: document.getElementById('assignEndTime').value || null,
-      assignmentType: document.getElementById('assignType').value,
+      scheduledEnd: endDate,
+      startTime: startTime,
+      endTime: endTime,
+      assignmentType: assignType,
       crewName: crewName || null,
       userId: crewUserId || null,
-      notes: document.getElementById('assignNotes').value || null,
+      role: 'lead_installer',
+      notes: notes,
     });
+
+    // Create helper assignments for checked team members
+    var memberCbs = document.querySelectorAll('.assign-member-cb:checked');
+    for (var i = 0; i < memberCbs.length; i++) {
+      var memberId = memberCbs[i].value;
+      var memberName = memberCbs[i].getAttribute('data-name');
+      await opsPost('create_assignment', {
+        jobId: jobId,
+        scheduledDate: date,
+        scheduledEnd: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        assignmentType: assignType,
+        crewName: memberName || null,
+        userId: memberId || null,
+        role: 'helper',
+        notes: notes,
+      });
+    }
+
+    var totalAssigned = 1 + memberCbs.length;
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
     document.getElementById('assignNotes').value = '';
     document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes('');
+    showToast('Scheduled — ' + totalAssigned + ' person' + (totalAssigned > 1 ? 's' : '') + ' assigned', 'success');
     // Refresh
     var activeView = document.querySelector('.view.active');
     if (activeView) {
