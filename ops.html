@@ -7114,15 +7114,18 @@ async function submitAssignment() {
     var notes = document.getElementById('assignNotes').value || null;
 
     if (_editAssignmentId) {
-      // Update existing assignment
-      await opsPost('update_assignment', {
-        assignmentId: _editAssignmentId,
-        scheduled_date: date,
-        scheduled_end: endDate,
-        start_time: startTime,
-        end_time: endTime,
-        crew_name: crewName || null,
-        user_id: crewUserId || null,
+      // Delete old assignment and create new one (update_assignment doesn't support crew changes)
+      await opsPost('delete_assignment', { assignmentId: _editAssignmentId });
+      await opsPost('create_assignment', {
+        jobId: jobId,
+        scheduledDate: date,
+        scheduledEnd: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        assignmentType: assignType,
+        crewName: crewName || null,
+        userId: crewUserId || null,
+        role: 'lead_installer',
         notes: notes,
       });
       _editAssignmentId = null;
