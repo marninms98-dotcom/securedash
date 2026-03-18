@@ -6789,8 +6789,11 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   // Render crew dropdown — preCrew can be a user ID or a name
   var preCrewId = preCrew || '';
   if (preCrewId && !_crewList.some(function(u) { return u.id === preCrewId; })) {
-    // It's a name, not an ID — find the matching user
-    var match = _crewList.find(function(u) { return u.name === preCrewId; });
+    // It's a name, not an ID — find the matching user (exact, then case-insensitive, then partial)
+    var preCrewLower = preCrewId.toLowerCase();
+    var match = _crewList.find(function(u) { return u.name === preCrewId; }) ||
+      _crewList.find(function(u) { return u.name.toLowerCase() === preCrewLower; }) ||
+      _crewList.find(function(u) { return u.name.toLowerCase().indexOf(preCrewLower) !== -1 || preCrewLower.indexOf(u.name.toLowerCase()) !== -1; });
     preCrewId = match ? match.id : '';
   }
   document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', preCrewId);
