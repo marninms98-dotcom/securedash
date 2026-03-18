@@ -3984,28 +3984,87 @@
     if (!job.scope_json) return '';
     var config = job.scope_json.config || job.scope_json;
     var type = (job.type || 'patio').toLowerCase();
+    var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
 
     var h = '<div class="detail-section">';
     h += '<h3>Scope of Work</h3>';
     if (job.job_number) h += '<div style="font-size:12px;color:var(--sw-mid);margin-bottom:8px">' + esc(job.job_number) + '</div>';
 
-    // Large dimensions
+    // Large dimensions — readable from 3 metres
     if (type === 'fencing') {
       if (config.totalLength || config.length) {
-        h += '<div class="scope-dimensions">' + esc(String(config.totalLength || config.length)) + 'm total length</div>';
+        h += '<div class="scope-dimensions">' + esc(String(config.totalLength || config.length)) + 'm <span style="font-size:16px;font-weight:400;color:var(--sw-text-sec)">total length</span></div>';
+        if (config.height) h += '<div style="font-size:18px;font-weight:700;color:var(--sw-mid);margin-bottom:12px">' + esc(String(config.height)) + 'mm high</div>';
       }
     } else {
       if (config.length && config.projection) {
         h += '<div class="scope-dimensions">' + esc(String(config.length)) + 'm × ' + esc(String(config.projection)) + 'm</div>';
+        if (config.height) h += '<div style="font-size:16px;font-weight:600;color:var(--sw-mid);margin-bottom:8px">Post height: ' + esc(String(Number(config.height) > 100 ? (Number(config.height)/1000).toFixed(1) + 'm' : config.height + 'm')) + '</div>';
       }
     }
 
-    // Humanised scope details
-    h += renderScopeReadable(job.scope_json, job.type, canSeePricing());
+    // Humanised spec table — replaces renderScopeReadable for cleaner layout
+    h += '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;line-height:1.8;margin-bottom:12px">';
+
+    if (type === 'fencing') {
+      if (config.material) { h += '<span style="color:var(--sw-text-sec)">Material</span><span style="font-weight:600">' + humanise('material', config.material) + '</span>'; }
+      if (config.colour || config.color) { h += '<span style="color:var(--sw-text-sec)">Colour</span><span style="font-weight:600;display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:' + (COLORBOND[config.colour || config.color] || '#ccc') + ';display:inline-block;border:1px solid rgba(0,0,0,0.1)"></span>' + esc(config.colour || config.color) + '</span>'; }
+      var gates = config.gates;
+      if (gates && Array.isArray(gates) && gates.length > 0) {
+        h += '<span style="color:var(--sw-text-sec)">Gates</span><span style="font-weight:600">';
+        gates.forEach(function(g, gi) {
+          if (gi > 0) h += ', ';
+          h += esc(g.type || 'Gate') + ' ' + esc(String(g.width || '')) + 'mm';
+        });
+        h += '</span>';
+      } else if (config.gateCount) {
+        h += '<span style="color:var(--sw-text-sec)">Gates</span><span style="font-weight:600">' + config.gateCount + '</span>';
+      }
+      if (config.plinths) { h += '<span style="color:var(--sw-text-sec)">Plinths</span><span style="font-weight:600">' + esc(String(config.plinths)) + '</span>'; }
+      if (config.retaining) { h += '<span style="color:var(--sw-text-sec)">Retaining</span><span style="font-weight:600">' + esc(String(config.retaining)) + '</span>'; }
+      if (config.boundaries && Array.isArray(config.boundaries)) {
+        h += '<span style="color:var(--sw-text-sec)">Boundaries</span><span style="font-weight:600">';
+        config.boundaries.forEach(function(b, bi) { if (bi > 0) h += ', '; h += esc(b.description || b.side || String(b.length || '') + 'm'); });
+        h += '</span>';
+      }
+    } else {
+      if (config.roofStyle) { h += '<span style="color:var(--sw-text-sec)">Roof</span><span style="font-weight:600">' + humanise('roofStyle', config.roofStyle) + '</span>'; }
+      if (config.roofing) { h += '<span style="color:var(--sw-text-sec)">Panels</span><span style="font-weight:600">' + humanise('roofing', config.roofing) + '</span>'; }
+      if (config.sheetColor || config.colour) {
+        var sc = config.sheetColor || config.colour;
+        h += '<span style="color:var(--sw-text-sec)">Sheet</span><span style="font-weight:600;display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:' + (COLORBOND[sc] || '#ccc') + ';display:inline-block;border:1px solid rgba(0,0,0,0.1)"></span>' + esc(sc) + '</span>';
+      }
+      if (config.steelColor) {
+        h += '<span style="color:var(--sw-text-sec)">Steel</span><span style="font-weight:600;display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:' + (COLORBOND[config.steelColor] || '#888') + ';display:inline-block;border:1px solid rgba(0,0,0,0.1)"></span>' + esc(config.steelColor) + '</span>';
+      }
+      if (config.connection) { h += '<span style="color:var(--sw-text-sec)">Attach</span><span style="font-weight:600">' + humanise('connection', config.connection) + '</span>'; }
+      if (config.posts) { h += '<span style="color:var(--sw-text-sec)">Posts</span><span style="font-weight:600">' + esc(String(config.posts)) + (config.postSize ? ' × ' + humanise('postSize', config.postSize) : '') + '</span>'; }
+      if (config.beams) { h += '<span style="color:var(--sw-text-sec)">Beams</span><span style="font-weight:600">' + esc(String(config.beams)) + (config.beamSize ? ' × ' + humanise('beamSize', config.beamSize) : '') + '</span>'; }
+    }
+    h += '</div>';
+
+    // Client notes from scope
+    var client = job.scope_json.client || {};
+    if (client.notes) {
+      h += '<div style="padding:8px 10px;background:var(--sw-light);border-radius:6px;font-size:13px;margin-bottom:12px"><strong>Notes:</strong> ' + esc(client.notes) + '</div>';
+    }
+
+    // Pricing section for Tier 2+
+    if (canSeePricing() && job.scope_json.pricing) {
+      var p = job.scope_json.pricing;
+      h += '<div style="padding:10px;background:#E8F4FD;border-radius:8px;margin-bottom:12px">';
+      h += '<div style="font-weight:700;margin-bottom:6px">Budget</div>';
+      if (p.totalIncGST || p.total) h += '<div>Quoted: <strong>$' + Math.round(p.totalIncGST || p.total).toLocaleString() + '</strong> inc GST</div>';
+      if (p.labour) {
+        var lab = p.labour;
+        if (lab.days && lab.dayRate) h += '<div>Labour: ' + lab.days + ' days × $' + lab.dayRate + '/day = $' + (lab.days * lab.dayRate).toLocaleString() + '</div>';
+      }
+      h += '</div>';
+    }
 
     // 3D Viewer button
     if (config.length || config.totalLength) {
-      h += '<div style="margin-top:12px">';
+      h += '<div style="margin-top:4px">';
       h += '<button class="btn btn-secondary" style="width:100%;font-weight:700" onclick="open3DViewer()">';
       h += '🔲 View 3D Model</button>';
       h += '</div>';
@@ -4038,22 +4097,30 @@
       var statusLabel = isDraft ? 'awaiting approval' : po.status;
       var poReceipts = receiptPhotos.filter(function(r) { return r.po_id === po.id; });
 
-      h += '<div class="po-card" style="padding:10px;margin-bottom:10px;background:var(--sw-light);border-radius:10px;border-left:3px solid ' + statusColor + '">';
+      h += '<div class="po-card" style="padding:12px;margin-bottom:12px;background:var(--sw-card);border-radius:12px;border-left:4px solid ' + statusColor + ';box-shadow:var(--sw-shadow)">';
 
       // Header
       h += '  <div style="display:flex;justify-content:space-between;align-items:center">';
       h += '    <div>';
-      h += '      <strong style="font-size:14px">' + esc(po.supplier_name) + '</strong>';
+      h += '      <strong style="font-size:15px">' + esc(po.supplier_name) + '</strong>';
       h += '      <div style="font-size:11px;color:var(--sw-text-sec)">' + esc(po.po_number || '') + '</div>';
       h += '    </div>';
-      h += '    <span class="status-pill" style="background:' + statusColor + '20;color:' + statusColor + ';font-size:11px">' + esc(statusLabel) + '</span>';
+      h += '    <span class="status-pill" style="background:' + statusColor + '20;color:' + statusColor + ';font-size:11px;font-weight:700">' + esc(statusLabel) + '</span>';
       h += '  </div>';
 
-      // Delivery/Pickup badge
+      // Delivery/Pickup badge — prominent
       if (po.delivery_date) {
-        h += '<div><span class="po-delivery-badge delivery">🚛 DELIVERY — ' + formatDate(po.delivery_date) + '</span></div>';
+        h += '<div style="margin-top:8px;padding:10px 12px;background:#E8F5E9;border-radius:8px;display:flex;align-items:center;gap:8px">';
+        h += '  <span style="font-size:20px">🚛</span>';
+        h += '  <div><div style="font-size:13px;font-weight:700;color:#2E7D32">DELIVERY</div>';
+        h += '  <div style="font-size:12px;color:#388E3C">' + formatDate(po.delivery_date) + '</div></div>';
+        h += '</div>';
       } else if (isApproved) {
-        h += '<div><span class="po-delivery-badge pickup">📦 PICKUP — ' + esc(po.supplier_name) + '</span></div>';
+        h += '<div style="margin-top:8px;padding:10px 12px;background:#E3F2FD;border-radius:8px;display:flex;align-items:center;gap:8px">';
+        h += '  <span style="font-size:20px">📦</span>';
+        h += '  <div><div style="font-size:13px;font-weight:700;color:#1565C0">PICKUP REQUIRED</div>';
+        h += '  <div style="font-size:12px;color:#1976D2">' + esc(po.supplier_name) + '</div></div>';
+        h += '</div>';
       }
 
       // Line items
