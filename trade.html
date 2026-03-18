@@ -3754,16 +3754,24 @@
   function renderScopeGallery(data, phase) {
     var media = data.media || [];
     var scopePhotos = media.filter(function(m) { return m.phase === 'scope'; });
-    if (scopePhotos.length === 0) return '';
+    var docPhotos = (data.documents || []).filter(function(d) {
+      return d.visible_to_trades && d.type === 'site_photo' && d.storage_url;
+    });
+    var totalPhotos = scopePhotos.length + docPhotos.length;
+    if (totalPhotos === 0) return '';
     if (phase === 'complete') return ''; // completion photos take priority
 
     var h = '<div class="detail-section">';
     h += '<h3>Scope Photos</h3>';
-    h += '<div class="scope-gallery-count">📷 ' + scopePhotos.length + ' site photo' + (scopePhotos.length > 1 ? 's' : '') + ' from scope visit</div>';
+    h += '<div class="scope-gallery-count">📷 ' + totalPhotos + ' site photo' + (totalPhotos > 1 ? 's' : '') + ' from scope visit</div>';
     h += '<div class="scope-gallery">';
     scopePhotos.forEach(function(p) {
       var src = p.thumbnail_url || p.storage_url;
       h += '<img src="' + esc(src) + '" alt="' + esc(p.label || 'Scope') + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\', \'.scope-gallery\')">';
+    });
+    // Also include uploaded site photos from documents
+    docPhotos.forEach(function(d) {
+      h += '<img src="' + esc(d.storage_url) + '" alt="' + esc(d.file_name || 'Site') + '" onclick="openLightbox(\'' + esc(d.storage_url) + '\')">';
     });
     h += '</div>';
     h += '</div>';
@@ -4189,6 +4197,49 @@
     return h;
   }
 
+  function renderTradeDocuments(data, phase) {
+    var docs = (data.documents || []).filter(function(d) {
+      // Only show visible docs that aren't site_photo (those go in gallery) and have a URL
+      return d.visible_to_trades && d.type !== 'site_photo' && (d.storage_url || d.pdf_url);
+    });
+    if (docs.length === 0) return '';
+
+    // Type display config
+    var typeLabels = {
+      council_plans: { icon: '🏛️', label: 'Council Plans' },
+      engineering: { icon: '📐', label: 'Engineering Drawings' },
+      work_order: { icon: '📋', label: 'Work Order' },
+      approval: { icon: '✅', label: 'Approval' },
+      supplier_quote: { icon: '💰', label: 'Supplier Quote' },
+      quote: { icon: '📄', label: 'Quote' },
+      general: { icon: '📎', label: 'Document' },
+    };
+
+    var h = '<div class="detail-section">';
+    h += '<h3>Approvals &amp; Documents</h3>';
+
+    docs.forEach(function(d) {
+      var url = d.storage_url || d.pdf_url;
+      var cfg = typeLabels[d.type] || typeLabels.general;
+      var name = d.file_name || cfg.label;
+      var isPdf = /\.pdf$/i.test(name) || (d.pdf_url && !d.storage_url);
+
+      h += '<a href="' + esc(url) + '" target="_blank" style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--sw-card);border-radius:10px;margin-bottom:8px;text-decoration:none;color:var(--sw-text);box-shadow:var(--sw-shadow)">';
+      h += '  <span style="font-size:24px">' + cfg.icon + '</span>';
+      h += '  <div style="flex:1;min-width:0">';
+      h += '    <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(cfg.label) + '</div>';
+      if (name !== cfg.label) {
+        h += '  <div style="font-size:12px;color:var(--sw-text-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(name) + '</div>';
+      }
+      h += '  </div>';
+      h += '  <span style="font-size:12px;color:var(--sw-mid);font-weight:600">' + (isPdf ? 'PDF' : 'View') + ' →</span>';
+      h += '</a>';
+    });
+
+    h += '</div>';
+    return h;
+  }
+
   function renderExistingSections(data, phase) {
     var job = data.job;
     var docs = data.documents || [];
@@ -4551,6 +4602,9 @@
 
     // ── Section 9: Enhanced Scope of Work ──
     html += renderEnhancedScope(data, phase);
+
+    // ── Approvals & Documents ──
+    html += renderTradeDocuments(data, phase);
 
     // ── Section 10: Enhanced Materials / POs ──
     html += renderEnhancedPOs(data, phase);

@@ -7040,37 +7040,58 @@ function renderFilesView(data) {
     html += '</div>';
   }
 
-  // Documents — enhanced with quote numbers and status tracking
-  if ((data.documents || []).length > 0) {
-    html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Documents (' + data.documents.length + ')</div>';
-    data.documents.forEach(function(doc) {
+  // ── Upload Documents ──
+  html += '<div style="margin-top:16px;margin-bottom:16px">';
+  html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px">Upload Files</div>';
+  html += '<div id="jdUploadArea" style="border:2px dashed var(--sw-border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:var(--sw-light);transition:border-color 0.2s" onclick="document.getElementById(\'jdFileInput\').click()" ondragover="event.preventDefault();this.style.borderColor=\'var(--sw-orange)\'" ondragleave="this.style.borderColor=\'var(--sw-border)\'" ondrop="event.preventDefault();this.style.borderColor=\'var(--sw-border)\';handleDocDrop(event)">';
+  html += '  <div style="font-size:24px;margin-bottom:4px">&#128206;</div>';
+  html += '  <div style="font-size:13px;color:var(--sw-text-sec)">Drag files here or tap to upload</div>';
+  html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">Photos, PDFs, videos</div>';
+  html += '</div>';
+  html += '<input type="file" id="jdFileInput" multiple accept="image/*,video/*,.pdf,.doc,.docx" style="display:none" onchange="handleDocFiles(this.files)">';
+  html += '<div id="jdUploadQueue" style="margin-top:8px"></div>';
+  html += '</div>';
+
+  // Documents — with visibility controls
+  var allDocs = data.documents || [];
+  if (allDocs.length > 0) {
+    html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Documents (' + allDocs.length + ')</div>';
+    allDocs.forEach(function(doc) {
+      var url = doc.storage_url || doc.pdf_url;
+      var name = doc.file_name || doc.type || 'Document';
+      var isVisible = doc.visible_to_trades;
+
+      // Type badge colours
+      var typeColors = {
+        council_plans: '#8B5CF6', engineering: '#3B82F6', work_order: '#F59E0B',
+        supplier_quote: '#EF4444', site_photo: '#10B981', approval: '#6366F1',
+        quote: '#F97316', general: '#6B7280'
+      };
+      var badgeColor = typeColors[doc.type] || '#6B7280';
+
       html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;">';
       html += '<div style="display:flex;align-items:center;gap:8px;">';
-      // Quote number or type
-      if (doc.quote_number) {
-        html += '<span style="font-weight:700;color:var(--sw-dark);">' + escapeHtml(doc.quote_number) + '</span>';
-      }
-      html += '<span style="text-transform:capitalize;">' + escapeHtml(doc.type || 'Document') + '</span>';
+
+      // Type badge
+      html += '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:2px 6px;border-radius:3px;background:' + badgeColor + '20;color:' + badgeColor + ';white-space:nowrap">' + escapeHtml((doc.type || 'general').replace(/_/g, ' ')) + '</span>';
+
+      // File name
+      html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(name) + '</span>';
+
+      // Version
       if (doc.version > 1) html += '<span style="color:var(--sw-text-sec);font-size:11px;">v' + doc.version + '</span>';
-      // Status badge
-      var qStatus = 'Draft';
-      var qColor = 'var(--sw-text-sec)';
-      if (doc.client_accepted) { qStatus = 'Accepted'; qColor = 'var(--sw-green)'; }
-      else if (doc.client_declined) { qStatus = 'Declined'; qColor = 'var(--sw-red)'; }
-      else if (doc.client_viewed_at) { qStatus = 'Viewed'; qColor = '#2563EB'; }
-      else if (doc.sent_to_client) { qStatus = 'Sent'; qColor = 'var(--sw-orange)'; }
-      html += '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:1px 6px;background:' + qColor + '20;color:' + qColor + ';">' + qStatus + '</span>';
-      html += '<span style="flex:1;"></span>';
-      if (doc.pdf_url) html += '<a href="' + escapeHtml(doc.pdf_url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;">View PDF</a>';
+
+      // Visibility toggle
+      html += '<button onclick="toggleDocVisibility(\'' + doc.id + '\', ' + !isVisible + ')" style="background:none;border:1px solid var(--sw-border);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;color:' + (isVisible ? 'var(--sw-green)' : 'var(--sw-text-sec)') + ';white-space:nowrap" title="' + (isVisible ? 'Visible to trades' : 'Hidden from trades') + '">' + (isVisible ? '&#128065; Trades' : '&#128274; Hidden') + '</button>';
+
+      // View button
+      if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;">View</a>';
+
       html += '</div>';
-      // Date timeline
-      var timeline = [];
-      if (doc.created_at) timeline.push('Created ' + fmtDate(doc.created_at));
-      if (doc.sent_at) timeline.push('Sent ' + fmtDate(doc.sent_at));
-      if (doc.client_viewed_at) timeline.push('Viewed ' + fmtDate(doc.client_viewed_at));
-      if (doc.client_accepted_at) timeline.push('Accepted ' + fmtDate(doc.client_accepted_at));
-      if (timeline.length > 0) {
-        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + timeline.join(' &rarr; ') + '</div>';
+
+      // Date
+      if (doc.created_at) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">' + fmtDate(doc.created_at) + '</div>';
       }
       html += '</div>';
     });
@@ -7104,6 +7125,109 @@ function renderFilesView(data) {
 
   document.getElementById('jdFiles').innerHTML = html;
 }
+
+window.handleDocDrop = function(e) {
+  var files = e.dataTransfer.files;
+  if (files.length > 0) handleDocFiles(files);
+};
+
+window.handleDocFiles = function(files) {
+  if (!_currentJobData || !_currentJobData.job) return;
+  var queue = document.getElementById('jdUploadQueue');
+
+  Array.from(files).forEach(function(file) {
+    // Auto-detect type from file
+    var docType = 'general';
+    var fname = file.name.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fname)) docType = 'site_photo';
+    else if (/council|permit|approval/i.test(fname)) docType = 'council_plans';
+    else if (/engineer|structural|cert/i.test(fname)) docType = 'engineering';
+    else if (/quote|supplier/i.test(fname)) docType = 'supplier_quote';
+    else if (/work.?order|wo\b/i.test(fname)) docType = 'work_order';
+
+    // Show upload row with type selector
+    var rowId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+    var rowHtml = '<div id="' + rowId + '" style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px">';
+    rowHtml += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(file.name) + '</span>';
+    rowHtml += '<select id="' + rowId + '_type" style="font-size:11px;padding:2px 4px;border:1px solid var(--sw-border);border-radius:4px">';
+    ['site_photo','council_plans','engineering','supplier_quote','work_order','approval','general'].forEach(function(t) {
+      rowHtml += '<option value="' + t + '"' + (t === docType ? ' selected' : '') + '>' + t.replace(/_/g, ' ') + '</option>';
+    });
+    rowHtml += '</select>';
+    rowHtml += '<label style="font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px"><input type="checkbox" id="' + rowId + '_vis" ' + (['site_photo','council_plans','engineering','work_order','approval'].includes(docType) ? 'checked' : '') + '> Trades</label>';
+    rowHtml += '<span id="' + rowId + '_status" style="font-size:11px;color:var(--sw-text-sec)">Ready</span>';
+    rowHtml += '</div>';
+    queue.innerHTML += rowHtml;
+
+    // Start upload
+    uploadOneDocument(file, _currentJobData.job.id, rowId);
+  });
+};
+
+window.uploadOneDocument = async function(file, jobId, rowId) {
+  var statusEl = document.getElementById(rowId + '_status');
+  var typeEl = document.getElementById(rowId + '_type');
+  var visEl = document.getElementById(rowId + '_vis');
+
+  try {
+    statusEl.textContent = 'Uploading...';
+    statusEl.style.color = 'var(--sw-orange)';
+
+    var docType = typeEl ? typeEl.value : 'general';
+    var visible = visEl ? visEl.checked : false;
+
+    // 1. Get signed upload URL
+    var urlData = await opsPost('upload_document', {
+      jobId: jobId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      type: docType,
+      visible_to_trades: visible,
+    });
+
+    // 2. Upload binary
+    var uploadResp = await fetch(urlData.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!uploadResp.ok) throw new Error('Upload failed: ' + uploadResp.status);
+
+    // 3. Confirm upload
+    await opsPost('confirm_document_upload', {
+      jobId: jobId,
+      publicUrl: urlData.publicUrl,
+      path: urlData.path,
+      fileName: file.name,
+      type: docType,
+      visible_to_trades: visible,
+    });
+
+    statusEl.textContent = 'Done';
+    statusEl.style.color = 'var(--sw-green)';
+
+    // Refresh files view after short delay
+    setTimeout(function() {
+      if (_currentJobId) {
+        openJobDetail(_currentJobId);
+      }
+    }, 1000);
+
+  } catch (err) {
+    statusEl.textContent = 'Error: ' + (err.message || err);
+    statusEl.style.color = 'var(--sw-red, #EF4444)';
+  }
+};
+
+window.toggleDocVisibility = async function(docId, newValue) {
+  try {
+    await opsPost('toggle_document_visibility', { documentId: docId, visible_to_trades: newValue });
+    // Refresh
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch (err) {
+    alert('Error: ' + (err.message || err));
+  }
+};
 
 async function submitJobNote() {
   var input = document.getElementById('jdNoteInput');
