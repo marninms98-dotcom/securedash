@@ -897,6 +897,14 @@
     .btn-secondary { background: transparent; color: var(--sw-mid); border: 1px solid var(--sw-border); }
     .btn-secondary:hover { background: var(--sw-light); border-color: var(--sw-mid-light); }
     .btn-sm { padding: 5px 10px; font-size: 11px; }
+    .btn-sm.btn-green { background: #27ae60; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; }
+    .btn-sm.btn-green:hover { background: #219a52; }
+    .btn-sm.btn-red { background: #e74c3c; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; }
+    .btn-sm.btn-red:hover { background: #c0392b; }
+    .btn-sm.btn-blue { background: #3498db; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; }
+    .btn-sm.btn-blue:hover { background: #2980b9; }
+    .btn-danger { background: #e74c3c !important; color: #fff !important; }
+    .btn-danger:hover { background: #c0392b !important; }
     .btn-cta { background: var(--sw-orange); color: #fff; }
     .btn-cta:hover { background: var(--sw-orange-hover); }
 
@@ -1896,6 +1904,7 @@
                 <th onclick="sortTable('invoiceTable',5,'number')">Total</th>
                 <th onclick="sortTable('invoiceTable',6,'number')">Due</th>
                 <th onclick="sortTable('invoiceTable',7,'date')">Due Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="invoiceTableBody"></tbody>
@@ -2366,6 +2375,18 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('sendConfirmModal')">Cancel</button>
       <button class="btn btn-primary" id="sendConfirmBtn" onclick="">Approve &amp; Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Action Confirm Modal -->
+<div class="modal-overlay" id="invActionModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title" id="invActionTitle">Confirm Action</div>
+    <div id="invActionBody" style="font-size:13px; line-height:1.6; margin-bottom:16px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('invActionModal')">Cancel</button>
+      <button class="btn btn-primary" id="invActionBtn">Confirm</button>
     </div>
   </div>
 </div>
@@ -4639,6 +4660,24 @@ function sortTable(tableId, colIdx, type) {
   rows.forEach(function(r) { tbody.appendChild(r); });
 }
 
+function invoiceActions(inv) {
+  var status = (inv.status || '').toUpperCase();
+  var hasPaid = (inv.amount_paid || 0) > 0;
+
+  if (status === 'DRAFT') {
+    return '<button class="btn btn-sm btn-green" onclick="approveInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\')">Approve</button> ' +
+           '<button class="btn btn-sm btn-red" onclick="deleteInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Delete</button>';
+  }
+  if (status === 'AUTHORISED' || status === 'SUBMITTED') {
+    if (hasPaid) return '<span style="color:var(--sw-text-sec);font-size:12px;">Has payment</span>';
+    return '<button class="btn btn-sm btn-blue" onclick="sendInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\')">Send</button> ' +
+           '<button class="btn btn-sm btn-red" onclick="voidInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Void</button>';
+  }
+  if (status === 'PAID') return '<span style="color:var(--sw-text-sec);font-size:12px;">Paid</span>';
+  if (status === 'VOIDED' || status === 'DELETED') return '<span style="color:var(--sw-text-sec);font-size:12px;">&mdash;</span>';
+  return '';
+}
+
 function renderInvoiceTable(invoices) {
   var tbody = document.getElementById('invoiceTableBody');
   var todayStr = new Date().toISOString().slice(0, 10);
@@ -4659,7 +4698,7 @@ function renderInvoiceTable(invoices) {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No invoices' + (_invStatusFilter !== 'all' ? ' matching filter' : '') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No invoices' + (_invStatusFilter !== 'all' ? ' matching filter' : '') + '</td></tr>';
     return;
   }
 
@@ -4675,6 +4714,7 @@ function renderInvoiceTable(invoices) {
     html += '<td style="font-family:var(--sw-font-num);">' + fmt$(inv.total) + '</td>';
     html += '<td style="font-family:var(--sw-font-num);' + (isOverdue ? ' color:var(--sw-red); font-weight:700;' : '') + '">' + fmt$(inv.amount_due) + '</td>';
     html += '<td>' + fmtDate(inv.due_date) + '</td>';
+    html += '<td style="white-space:nowrap;" onclick="event.stopPropagation();">' + invoiceActions(inv) + '</td>';
     html += '</tr>';
   });
   tbody.innerHTML = html;
@@ -4698,6 +4738,68 @@ function drillInvoice(reference, invoiceNumber) {
   if (invoiceNumber) {
     window.open('https://go.xero.com/AccountsReceivable/Search?queryString=' + encodeURIComponent(invoiceNumber), '_blank');
   }
+}
+
+// ── Invoice Action Handlers ──
+function _openInvAction(title, bodyHtml, btnClass, btnLabel, onConfirm) {
+  document.getElementById('invActionTitle').textContent = title;
+  document.getElementById('invActionBody').innerHTML = bodyHtml;
+  var btn = document.getElementById('invActionBtn');
+  btn.className = 'btn ' + btnClass;
+  btn.textContent = btnLabel;
+  btn.onclick = async function() {
+    closeModal('invActionModal');
+    try { await onConfirm(); } catch(e) { alert('Failed: ' + e.message); }
+  };
+  document.getElementById('invActionModal').classList.add('active');
+}
+
+async function deleteInvoice(xeroId, invNumber, total) {
+  _openInvAction('Delete Draft Invoice',
+    'This will permanently delete <b>' + invNumber + '</b> ($' + (total||0).toLocaleString('en-AU', {minimumFractionDigits:2}) + ') from Xero.<br><br>This cannot be undone.',
+    'btn-danger', 'Delete',
+    async function() {
+      var result = await opsPost('void_invoice', { xero_invoice_id: xeroId });
+      if (result.error) { alert('Error: ' + result.error); return; }
+      showToast(invNumber + ' deleted', 'success');
+      loadInvoices();
+    });
+}
+
+async function voidInvoice(xeroId, invNumber, total) {
+  _openInvAction('Void Invoice',
+    'This will void <b>' + invNumber + '</b> ($' + (total||0).toLocaleString('en-AU', {minimumFractionDigits:2}) + ') in Xero.<br><br>The invoice will be marked as VOIDED and removed from your receivables. This cannot be undone.',
+    'btn-danger', 'Void Invoice',
+    async function() {
+      var result = await opsPost('void_invoice', { xero_invoice_id: xeroId, void: true });
+      if (result.error) { alert('Error: ' + result.error); return; }
+      showToast(invNumber + ' voided', 'success');
+      loadInvoices();
+    });
+}
+
+async function approveInvoice(xeroId, invNumber) {
+  _openInvAction('Approve Invoice',
+    'This will approve <b>' + invNumber + '</b> and mark it as AUTHORISED in Xero.<br><br>Once approved, it will appear in your receivables.',
+    'btn-primary', 'Approve',
+    async function() {
+      var result = await opsPost('approve_invoice', { xero_invoice_id: xeroId });
+      if (result.error) { alert('Error: ' + result.error); return; }
+      showToast(invNumber + ' approved', 'success');
+      loadInvoices();
+    });
+}
+
+async function sendInvoice(xeroId, invNumber) {
+  _openInvAction('Send Invoice to Client',
+    'This will email <b>' + invNumber + '</b> to the client via Xero.<br><br>The client will receive the invoice at the email address on their Xero contact record.',
+    'btn-primary', 'Send',
+    async function() {
+      var result = await opsPost('send_invoice_email', { xero_invoice_id: xeroId });
+      if (result.error) { alert('Error: ' + result.error); return; }
+      showToast(invNumber + ' sent to client', 'success');
+      loadInvoices();
+    });
 }
 
 var _allPOs = [];
