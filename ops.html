@@ -908,6 +908,77 @@
     .btn-cta { background: var(--sw-orange); color: #fff; }
     .btn-cta:hover { background: var(--sw-orange-hover); }
 
+    /* ── AI Annotation Dots & Popover ── */
+    .ai-dot {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 10px; height: 10px; border-radius: 50%; cursor: pointer;
+      position: relative; vertical-align: middle; margin-left: 6px; flex-shrink: 0;
+    }
+    .ai-dot-amber { background: #e67e22; }
+    .ai-dot-info { background: #3498db; }
+    .ai-dot-red { background: #e74c3c; }
+    .ai-dot-learning { background: #9b59b6; }
+    .ai-dot-badge {
+      width: auto; min-width: 16px; height: 16px; padding: 0 4px;
+      font-size: 9px; font-weight: 700; color: #fff; border-radius: 8px;
+    }
+    @keyframes ai-dot-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(230,126,34,0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(230,126,34,0); }
+    }
+    .ai-dot-pulse { animation: ai-dot-pulse 2s ease-in-out 3; }
+
+    .ai-popover {
+      position: fixed; width: 300px; max-height: 380px; overflow-y: auto;
+      background: var(--sw-card, #fff); border: 1px solid var(--sw-border, #ddd);
+      box-shadow: 0 8px 24px rgba(41,60,70,0.18); z-index: 200;
+      padding: 0; font-size: 13px;
+    }
+    .ai-popover-item {
+      padding: 12px 14px; border-bottom: 1px solid var(--sw-light, #f4f4f4);
+    }
+    .ai-popover-item:last-child { border-bottom: none; }
+    .ai-popover-item .ann-title {
+      font-weight: 600; color: var(--sw-dark, #293C46); margin-bottom: 4px; font-size: 13px;
+    }
+    .ai-popover-item .ann-body {
+      font-size: 11px; color: var(--sw-text-sec, #777); margin-bottom: 8px; line-height: 1.4;
+    }
+    .ai-popover-item .ann-meta {
+      font-size: 10px; color: var(--sw-mid, #4C6A7C); display: flex; gap: 8px; align-items: center; margin-bottom: 6px;
+    }
+    .ai-popover-item .ann-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .ai-popover-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; border-radius: 3px;
+    }
+    .ai-popover-btn-primary { background: var(--sw-dark, #293C46); color: #fff; }
+    .ai-popover-btn-primary:hover { background: var(--sw-dark-deep, #1e2d35); }
+    .ai-popover-btn-secondary { background: transparent; color: var(--sw-mid, #4C6A7C); border: 1px solid var(--sw-border, #ddd); }
+    .ai-popover-btn-secondary:hover { background: var(--sw-light, #f0f0f0); }
+    .ai-popover-btn-ghost { background: transparent; color: var(--sw-text-sec, #999); }
+    .ai-popover-btn-ghost:hover { color: var(--sw-dark, #293C46); }
+    .ai-popover-input {
+      width: 100%; padding: 6px 8px; font-size: 11px; border: 1px solid var(--sw-border, #ddd);
+      margin-bottom: 6px; outline: none;
+    }
+    .ai-popover-input:focus { border-color: var(--sw-mid, #4C6A7C); }
+
+    /* ── Inbox Tab ── */
+    .inbox-card {
+      background: var(--sw-card, #fff); padding: 14px; margin-bottom: 8px; box-shadow: var(--sw-shadow);
+      border-left: 3px solid var(--sw-border, #ddd);
+    }
+    .inbox-card-amber { border-left-color: #e67e22; }
+    .inbox-card-red { border-left-color: #e74c3c; }
+    .inbox-card-info { border-left-color: #3498db; }
+    .inbox-card-learning { border-left-color: #9b59b6; }
+    .inbox-filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .inbox-chip {
+      padding: 4px 12px; font-size: 11px; font-weight: 600; border: 1px solid var(--sw-border, #ddd);
+      cursor: pointer; background: transparent; color: var(--sw-mid, #4C6A7C);
+    }
+    .inbox-chip.active { background: var(--sw-dark, #293C46); color: #fff; border-color: var(--sw-dark, #293C46); }
+
     /* ── Filter Bar ── */
     .filter-bar {
       display: flex;
@@ -1685,6 +1756,7 @@
         <button onclick="showView('jobs')" data-view="jobs">Jobs</button>
         <button onclick="showView('financials')" data-view="financials">Financials</button>
         <button onclick="showView('materials')" data-view="materials">Materials</button>
+        <button onclick="showView('inbox')" data-view="inbox">Inbox <span id="inboxBadge" class="nav-badge" style="display:none;"></span></button>
       </div>
       <!-- Persistent search bar -->
       <div style="margin-left:16px;position:relative;flex-shrink:0">
@@ -2038,6 +2110,20 @@
       <div class="materials-kanban" id="materialsKanban"></div>
     </div>
 
+    <!-- ═══════════ INBOX TAB ═══════════ -->
+    <div id="viewInbox" class="view">
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0 0 12px 0;">AI Annotations</h3>
+        <div class="inbox-filters">
+          <button class="inbox-chip active" onclick="filterInbox('all')">All</button>
+          <button class="inbox-chip" onclick="filterInbox('financial')">Financial</button>
+          <button class="inbox-chip" onclick="filterInbox('operational')">Operational</button>
+          <button class="inbox-chip" onclick="filterInbox('learning')">Learning</button>
+        </div>
+      </div>
+      <div id="inboxList"></div>
+    </div>
+
   </div><!-- /container -->
 
   <!-- Mobile Nav -->
@@ -2047,6 +2133,7 @@
     <button onclick="showView('jobs')" data-view="jobs"><span class="nav-icon">&#128188;</span>Jobs</button>
     <button onclick="showView('financials')" data-view="financials"><span class="nav-icon">&#128176;</span>Money</button>
     <button onclick="showView('materials')" data-view="materials"><span class="nav-icon">&#128230;</span>Materials</button>
+    <button onclick="showView('inbox')" data-view="inbox"><span class="nav-icon">&#128172;</span>Inbox<span id="inboxBadgeMobile" class="nav-badge" style="display:none;"></span></button>
   </div>
 
   <!-- ══════════ FULL JOB DETAIL VIEW ══════════ -->
@@ -2980,6 +3067,320 @@ function opsPost(action, body) {
 }
 
 // ════════════════════════════════════════════════════════════
+// AI ANNOTATIONS ENGINE
+// ════════════════════════════════════════════════════════════
+
+var _annotationCache = {};       // key: 'global' or 'job:{id}' → { data, ts }
+var _activePopover = null;       // current popover element
+var _currentJobAnnotations = []; // annotations for open job
+var _dismissLog = [];            // timestamps of recent dismissals (fatigue prevention)
+var _inlineSuppressedUntil = 0;  // timestamp: suppress inline dots until this time
+
+// 1. Fetch annotations (cached per scope)
+async function loadAnnotations(scope, entityType, entityId) {
+  var cacheKey = scope === 'entity' ? entityType + ':' + entityId : 'global';
+  var ttl = scope === 'entity' ? 5 * 60 * 1000 : 15 * 60 * 1000;
+  var cached = _annotationCache[cacheKey];
+  if (cached && Date.now() - cached.ts < ttl) return cached.data;
+
+  try {
+    var params = { scope: scope };
+    if (entityType) params.entity_type = entityType;
+    if (entityId) params.entity_id = entityId;
+    var resp = await opsFetch('annotations', params);
+    var annotations = resp.annotations || [];
+    _annotationCache[cacheKey] = { data: annotations, ts: Date.now() };
+    return annotations;
+  } catch (e) {
+    console.error('[annotations] load error:', e);
+    return [];
+  }
+}
+
+// 2. Render annotation dots into a container
+function renderAnnotationDots(annotations, uiLocation, container) {
+  if (!annotations || !annotations.length || !container) return;
+  // Fatigue prevention: suppress inline dots during cooldown (Inbox still shows all)
+  if (_inlineSuppressedUntil > Date.now()) return;
+  var filtered = annotations.filter(function(a) { return !uiLocation || a.ui_location === uiLocation || a.effective_priority >= 80; });
+  if (!filtered.length) return;
+
+  var dotContainer = document.createElement('div');
+  dotContainer.style.cssText = 'display:flex;align-items:center;gap:4px;margin:6px 0;';
+
+  if (filtered.length <= 3) {
+    filtered.forEach(function(ann) {
+      var dot = document.createElement('span');
+      dot.className = 'ai-dot ai-dot-' + getSeverityClass(ann) + ' ai-dot-pulse';
+      dot.title = ann.title;
+      dot.onclick = function(e) { e.stopPropagation(); openAnnotationPopover([ann], null, dot); };
+      dotContainer.appendChild(dot);
+    });
+  } else {
+    var dot = document.createElement('span');
+    dot.className = 'ai-dot ai-dot-badge ai-dot-amber ai-dot-pulse';
+    dot.textContent = filtered.length;
+    dot.title = filtered.length + ' annotations';
+    dot.onclick = function(e) { e.stopPropagation(); openAnnotationPopover(filtered, null, dot); };
+    dotContainer.appendChild(dot);
+  }
+
+  container.insertBefore(dotContainer, container.firstChild);
+}
+
+function getSeverityClass(ann) {
+  if (ann.category === 'learning') return 'learning';
+  if (ann.severity === 'red' || ann.severity === 'amber') return ann.severity;
+  return 'info';
+}
+
+// 3. Open popover anchored to a dot
+function openAnnotationPopover(annotations, overflow, anchorEl) {
+  closeAnnotationPopover();
+  if (!annotations.length) return;
+
+  var pop = document.createElement('div');
+  pop.className = 'ai-popover';
+
+  annotations.forEach(function(ann) {
+    var item = document.createElement('div');
+    item.className = 'ai-popover-item';
+    item.id = 'ann-item-' + ann.id;
+
+    var titleHtml = '<div class="ann-title">' + escapeHtml(ann.title) + '</div>';
+    var bodyHtml = ann.body ? '<div class="ann-body">' + escapeHtml(ann.body) + '</div>' : '';
+    var meta = '<div class="ann-meta">';
+    meta += '<span style="text-transform:capitalize;">' + (ann.category || '') + '</span>';
+    if (ann.confidence) meta += '<span>' + Math.round(ann.confidence * 100) + '% conf</span>';
+    var age = getAnnotationAge(ann.created_at);
+    if (age) meta += '<span>' + age + '</span>';
+    meta += '</div>';
+
+    var actionsHtml = renderAnnotationResponse(ann);
+    item.innerHTML = titleHtml + bodyHtml + meta + actionsHtml;
+    pop.appendChild(item);
+  });
+
+  // Position relative to anchor
+  document.body.appendChild(pop);
+  _activePopover = pop;
+  positionPopover(pop, anchorEl);
+
+  // Close on outside click (delay to avoid immediate close)
+  setTimeout(function() {
+    document.addEventListener('click', _popoverOutsideClick);
+  }, 50);
+}
+
+function _popoverOutsideClick(e) {
+  if (_activePopover && !_activePopover.contains(e.target)) {
+    closeAnnotationPopover();
+  }
+}
+
+function positionPopover(pop, anchor) {
+  var rect = anchor.getBoundingClientRect();
+  var popH = pop.offsetHeight;
+  var spaceBelow = window.innerHeight - rect.bottom - 16;
+
+  if (spaceBelow >= popH || spaceBelow > rect.top) {
+    pop.style.top = (rect.bottom + 6) + 'px';
+  } else {
+    pop.style.top = Math.max(8, rect.top - popH - 6) + 'px';
+  }
+
+  var left = Math.min(rect.left, window.innerWidth - 316);
+  pop.style.left = Math.max(8, left) + 'px';
+}
+
+// 4. Close popover
+function closeAnnotationPopover() {
+  if (_activePopover) {
+    _activePopover.remove();
+    _activePopover = null;
+  }
+  document.removeEventListener('click', _popoverOutsideClick);
+}
+
+// 5. Resolve annotation
+async function resolveAnnotation(annotationId, responseValue, responseText) {
+  try {
+    var resp = await opsPost('resolve_annotation', {
+      annotation_id: annotationId,
+      response_value: responseValue,
+      response_text: responseText || null,
+    });
+
+    // Fatigue prevention: track dismissals, suppress inline after 3 in 30min
+    if (responseValue === 'dismiss') {
+      var thirtyMinAgo = Date.now() - 30 * 60 * 1000;
+      _dismissLog = _dismissLog.filter(function(ts) { return ts > thirtyMinAgo; });
+      _dismissLog.push(Date.now());
+      if (_dismissLog.length >= 3) {
+        _inlineSuppressedUntil = Date.now() + 30 * 60 * 1000;
+        console.log('[annotations] Inline dots suppressed for 30min after 3 dismissals');
+      }
+    }
+
+    // Remove from cache
+    Object.keys(_annotationCache).forEach(function(k) {
+      if (_annotationCache[k] && _annotationCache[k].data) {
+        _annotationCache[k].data = _annotationCache[k].data.filter(function(a) { return a.id !== annotationId; });
+      }
+    });
+    _currentJobAnnotations = _currentJobAnnotations.filter(function(a) { return a.id !== annotationId; });
+
+    // Fade out the item or close popover
+    var item = document.getElementById('ann-item-' + annotationId);
+    if (item) {
+      item.style.transition = 'opacity 0.3s'; item.style.opacity = '0';
+      setTimeout(function() {
+        item.remove();
+        if (_activePopover && !_activePopover.querySelector('.ai-popover-item')) closeAnnotationPopover();
+      }, 300);
+    }
+
+    // Handle action responses
+    if (resp.action) {
+      closeAnnotationPopover();
+      if (resp.action.action === 'open_po_modal' && resp.action.job_id) {
+        openPOModal(resp.action.job_id);
+      } else if (resp.action.action === 'open_invoice_modal' && resp.action.job_id) {
+        openJobDetail(resp.action.job_id);
+        setTimeout(function() { showJobSubView('money'); }, 500);
+      } else if (resp.action.action === 'open_comms_tab' && resp.action.job_id) {
+        openJobDetail(resp.action.job_id);
+        setTimeout(function() { showJobSubView('comms'); }, 500);
+      } else if (resp.action.action === 'send_payment_reminder') {
+        if (resp.action.job_id) {
+          openJobDetail(resp.action.job_id);
+          setTimeout(function() { showJobSubView('comms'); }, 500);
+        }
+      }
+    }
+
+    // Refresh inbox badge
+    refreshInboxBadge();
+    return resp;
+  } catch (e) {
+    console.error('[annotations] resolve error:', e);
+    alert('Failed to resolve: ' + e.message);
+  }
+}
+
+// 6. Render response buttons
+function renderAnnotationResponse(ann) {
+  if (ann.response_type === 'dismiss') {
+    return '<div class="ann-actions"><button class="ai-popover-btn ai-popover-btn-ghost" onclick="resolveAnnotation(\'' + ann.id + '\',\'dismiss\')">Dismiss</button></div>';
+  }
+
+  var html = '';
+  if (ann.response_type === 'input') {
+    html += '<input class="ai-popover-input" id="ann-input-' + ann.id + '" placeholder="Add context...">';
+  }
+
+  html += '<div class="ann-actions">';
+  (ann.response_options || []).forEach(function(opt) {
+    var btnClass = 'ai-popover-btn ai-popover-btn-' + (opt.style || 'secondary');
+    var onclick;
+    if (ann.response_type === 'input' && opt.value !== 'dismiss') {
+      onclick = 'resolveAnnotation(\'' + ann.id + '\',\'' + opt.value + '\',document.getElementById(\'ann-input-' + ann.id + '\').value)';
+    } else {
+      onclick = 'resolveAnnotation(\'' + ann.id + '\',\'' + opt.value + '\')';
+    }
+    html += '<button class="' + btnClass + '" onclick="' + onclick + '">' + escapeHtml(opt.label || opt.value) + '</button>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// Helper: human-readable age
+function getAnnotationAge(dateStr) {
+  if (!dateStr) return '';
+  var mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+// ── Inbox Tab ──
+var _inboxFilter = 'all';
+
+async function loadInbox() {
+  var list = document.getElementById('inboxList');
+  if (!list) return;
+  list.innerHTML = '<div class="loading" style="padding:12px;">Loading annotations...</div>';
+
+  var annotations = await loadAnnotations('global');
+  renderInboxList(annotations);
+  refreshInboxBadge();
+}
+
+function filterInbox(category) {
+  _inboxFilter = category;
+  document.querySelectorAll('.inbox-chip').forEach(function(c) { c.classList.remove('active'); });
+  event.target.classList.add('active');
+  var cached = _annotationCache['global'];
+  if (cached) renderInboxList(cached.data);
+}
+
+function renderInboxList(annotations) {
+  var list = document.getElementById('inboxList');
+  if (!list) return;
+
+  var filtered = annotations;
+  if (_inboxFilter !== 'all') {
+    filtered = annotations.filter(function(a) { return a.category === _inboxFilter; });
+  }
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px;">No annotations' + (_inboxFilter !== 'all' ? ' in ' + _inboxFilter : '') + '</div>';
+    return;
+  }
+
+  var html = '';
+  filtered.slice(0, 30).forEach(function(ann) {
+    var borderClass = 'inbox-card inbox-card-' + getSeverityClass(ann);
+    html += '<div class="' + borderClass + '" id="inbox-ann-' + ann.id + '">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px;">';
+    html += '<div style="font-weight:600;font-size:13px;color:var(--sw-dark);">' + escapeHtml(ann.title) + '</div>';
+    html += '<span style="font-size:10px;color:var(--sw-text-sec);white-space:nowrap;margin-left:8px;">' + getAnnotationAge(ann.created_at) + '</span>';
+    html += '</div>';
+
+    if (ann.body) html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:6px;line-height:1.4;">' + escapeHtml(ann.body) + '</div>';
+
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+    html += '<span style="font-size:10px;padding:2px 8px;background:var(--sw-light);color:var(--sw-mid);font-weight:600;text-transform:capitalize;">' + (ann.category || '') + '</span>';
+    if (ann.entity_type === 'job' && ann.entity_id) {
+      html += '<a href="#" onclick="event.preventDefault();closeAnnotationPopover();openJobDetail(\'' + ann.entity_id + '\')" style="font-size:10px;color:var(--sw-mid);">Open Job &#8599;</a>';
+    }
+    html += '</div>';
+
+    html += renderAnnotationResponse(ann);
+    html += '</div>';
+  });
+
+  if (filtered.length > 30) {
+    html += '<div style="padding:12px;text-align:center;font-size:12px;color:var(--sw-text-sec);">' + (filtered.length - 30) + ' more annotations</div>';
+  }
+
+  list.innerHTML = html;
+}
+
+async function refreshInboxBadge() {
+  try {
+    var anns = await loadAnnotations('global');
+    var count = anns.filter(function(a) { return (a.effective_priority || a.priority) >= 50; }).length;
+    var badge = document.getElementById('inboxBadge');
+    var badgeMobile = document.getElementById('inboxBadgeMobile');
+    if (badge) { badge.textContent = count || ''; badge.style.display = count > 0 ? 'inline' : 'none'; }
+    if (badgeMobile) { badgeMobile.textContent = count || ''; badgeMobile.style.display = count > 0 ? 'inline' : 'none'; }
+  } catch (e) { /* non-critical */ }
+}
+
+// ════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════
 // CREW LIST — cached from list_users
 // ════════════════════════════════════════════════════════════
@@ -3091,6 +3492,7 @@ function showView(view) {
   if (view === 'jobs') loadJobs();
   if (view === 'financials') loadFinancials();
   if (view === 'materials') loadMaterials();
+  if (view === 'inbox') loadInbox();
 }
 
 function restoreTab() {
@@ -3103,7 +3505,7 @@ function restoreTab() {
     setTimeout(function() { openJobDetailByRef(jobRef); }, 500);
     return;
   }
-  var validTabs = ['today', 'calendar', 'jobs', 'financials', 'materials'];
+  var validTabs = ['today', 'calendar', 'jobs', 'financials', 'materials', 'inbox'];
   if (hash && validTabs.indexOf(hash) >= 0) { showView(hash); return; }
   var saved = localStorage.getItem('sw_ops_tab');
   if (saved && validTabs.indexOf(saved) >= 0) { showView(saved); return; }
@@ -3289,6 +3691,8 @@ async function loadToday() {
     loadMorningBrief();
     // AI alerts from daily-digest
     loadAiAlerts();
+    // Refresh inbox badge (non-blocking)
+    refreshInboxBadge();
     // Pending SMS actions (non-blocking)
     loadPendingSms();
   } catch (e) {
@@ -5725,6 +6129,16 @@ async function openJobDetail(jobId) {
     var jobNum = data.job.job_number || jobId.slice(0, 8);
     if (history.pushState) history.pushState({ job: jobId }, '', '#job/' + jobNum);
 
+    // Load annotations for this job (async, non-blocking)
+    loadAnnotations('entity', 'job', jobId).then(function(anns) {
+      _currentJobAnnotations = anns || [];
+      // If overview is showing, inject dots
+      var overviewEl = document.getElementById('jdOverview');
+      if (overviewEl && overviewEl.innerHTML && _currentJobAnnotations.length > 0) {
+        renderAnnotationDots(_currentJobAnnotations, 'job_overview', overviewEl);
+      }
+    }).catch(function() { _currentJobAnnotations = []; });
+
     renderHealthBar(data);
     // Render the active sub-view (default to overview)
     var activeTab = localStorage.getItem('sw_jd_tab') || 'overview';
@@ -5993,6 +6407,24 @@ function renderOverviewView(data) {
     html += '<button class="btn btn-sm" style="background:' + color + ';color:#fff;" onclick="changeJobStatus(\x27' + j.id + '\x27,\x27' + s + '\x27)">' + (STATUS_LABELS[s] || s) + '</button></div>';
   });
   html += '</div>';
+
+  // AI Annotations section (between Next Actions and Progress)
+  if (_currentJobAnnotations && _currentJobAnnotations.length > 0) {
+    var jobAnns = _currentJobAnnotations.filter(function(a) { return a.ui_location === 'job_overview' || (a.effective_priority || a.priority) >= 80; });
+    if (jobAnns.length > 0) {
+      html += '<div style="margin-bottom:12px;">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">AI Insights</div>';
+      jobAnns.forEach(function(ann) {
+        var borderColor = ann.severity === 'amber' ? '#e67e22' : ann.category === 'learning' ? '#9b59b6' : '#3498db';
+        html += '<div style="background:' + borderColor + '08;padding:10px 12px;margin-bottom:4px;border-left:3px solid ' + borderColor + ';" id="ann-overview-' + ann.id + '">';
+        html += '<div style="font-size:13px;font-weight:600;color:var(--sw-dark);margin-bottom:4px;">' + escapeHtml(ann.title) + '</div>';
+        if (ann.body) html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:6px;">' + escapeHtml(ann.body) + '</div>';
+        html += renderAnnotationResponse(ann);
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+  }
 
   // Section 4: Progress Checklist
   html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
