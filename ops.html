@@ -3816,12 +3816,23 @@ function renderSwimlaneView(container, range) {
     });
   });
 
+  // Build name→userId lookup from crew list
+  var crewIdByName = {};
+  _crewList.forEach(function(u) { crewIdByName[u.name] = u.id; });
+
   // Merge in all known crew members (even those without assignments this period)
   _crewList.forEach(function(u) {
     if (!crewMap[u.name]) {
       crewMap[u.name] = { division: u.division || '', events: {}, userId: u.id };
     } else {
-      crewMap[u.name].userId = u.id; // attach userId to existing crew entries
+      crewMap[u.name].userId = u.id;
+    }
+  });
+
+  // Also attach userId to any crew entries that match by cleaned name
+  Object.keys(crewMap).forEach(function(name) {
+    if (!crewMap[name].userId && crewIdByName[name]) {
+      crewMap[name].userId = crewIdByName[name];
     }
   });
 
@@ -4150,7 +4161,12 @@ function handleCalDrop(event, cell) {
 }
 
 function handleCellClick(date, crew, userId) {
-  // On mobile or as fallback: open assignment modal pre-filled
+  // Resolve userId — use passed value, or look up from crew list by name
+  if (!userId && _crewList.length > 0) {
+    var match = _crewList.find(function(u) { return u.name === crew; }) ||
+      _crewList.find(function(u) { return u.name.toLowerCase() === crew.toLowerCase(); });
+    if (match) userId = match.id;
+  }
   openAssignmentModal(null, date, userId || crew);
 }
 
