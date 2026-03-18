@@ -1044,6 +1044,51 @@
     .weather-bar .weather-temp { font-size: 20px; font-weight: 700; }
     .weather-bar .weather-detail { opacity: 0.75; font-size: 12px; }
     .weather-bar .weather-rain { color: #5DADE2; font-weight: 600; }
+    .weather-warning {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .weather-warning-rain {
+      background: rgba(231, 76, 60, 0.15);
+      color: #E74C3C;
+    }
+    .weather-warning-heat {
+      background: rgba(241, 90, 41, 0.15);
+      color: #F15A29;
+    }
+    .weather-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 12px;
+      color: var(--sw-mid);
+      white-space: nowrap;
+    }
+    .weather-badge-warn {
+      color: #E74C3C;
+      font-weight: 600;
+    }
+    .weather-detail-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--sw-light);
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .weather-detail-card .wd-icon { font-size: 22px; }
+    .weather-detail-card .wd-temp { font-size: 16px; font-weight: 700; color: var(--sw-dark); }
+    .weather-detail-card .wd-label { color: var(--sw-text-sec); }
+    .weather-detail-card .wd-rain { color: #5DADE2; font-weight: 600; }
+    .weather-detail-card .wd-heat { color: #E74C3C; font-weight: 600; }
 
     /* Today's job card accent */
     .job-card.today-card { border-left: 3px solid var(--sw-orange); }
@@ -2518,6 +2563,7 @@
         }
         html += '  <div class="job-card-meta">';
         html += '    <span>' + formatDate(a.scheduled_date) + '</span>';
+        html += '    <span data-weather-date="' + (a.scheduled_date || '') + '"></span>';
         if (a.start_time) html += '<span>' + a.start_time.slice(0, 5) + '</span>';
         if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
         html += '    <span class="status-pill ' + statusClass + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
@@ -2560,6 +2606,8 @@
 
     // Load weather async (non-blocking)
     loadWeather();
+    // Render weather badges immediately if data already cached
+    if (weatherData) renderWeatherBadges();
 
     // Check for schedule notifications + update nav badge
     checkScheduleNotifications();
@@ -2637,11 +2685,17 @@
         { key: 'complete', label: 'Done' },
       ];
       html += '<div class="status-bar" id="statusBar">';
+      var needsAck = !myAssignment.acknowledged_at && job.scope_json;
       statusSteps.forEach(function(step) {
         var isPast = statusOrder(step.key) <= statusOrder(curStatus);
+        var isDisabled = needsAck && step.key === 'confirmed' && curStatus === 'scheduled';
         html += '<button data-status="' + step.key + '"';
         html += ' class="' + (isPast ? 'active' : '') + '"';
-        html += ' onclick="updateMyStatus(\'' + myAssignment.id + '\', \'' + step.key + '\')"';
+        if (isDisabled) {
+          html += ' disabled title="Read scope first"';
+        } else {
+          html += ' onclick="updateMyStatus(\'' + myAssignment.id + '\', \'' + step.key + '\')"';
+        }
         html += '>' + step.label + '</button>';
       });
       html += '</div>';
@@ -2650,6 +2704,14 @@
       loadTimerState();
       html += '<div class="timer-card" id="timerCard">';
       html += renderTimerCard(myAssignment, job);
+      html += '</div>';
+    }
+
+    // ── Acknowledge Banner ──
+    if (myAssignment && !myAssignment.acknowledged_at && job.scope_json) {
+      html += '<div id="ackBanner" style="padding:14px 16px;background:#E8F4FD;border:1px solid #B3D9F2;border-radius:10px;margin-bottom:12px;text-align:center">';
+      html += '  <div style="font-size:13px;color:#2980B9;margin-bottom:10px">📋 Review the scope below, then confirm you\'ve read it</div>';
+      html += '  <button onclick="acknowledgeScope(\'' + myAssignment.id + '\')" style="background:#2980B9;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">✓ I\'ve Read &amp; Understood</button>';
       html += '</div>';
     }
 
@@ -2688,6 +2750,12 @@
     html += '  </div>';
     html += '</div>';
 
+    // ── Weather for scheduled date ──
+    var detailSchedDate = myAssignment ? myAssignment.scheduled_date : null;
+    if (detailSchedDate) {
+      html += getWeatherDetailHtml(detailSchedDate);
+    }
+
     // ── Variation Request Button ──
     if (myAssignment && ['in_progress', 'confirmed'].indexOf(myAssignment.status) >= 0) {
       html += '<div class="detail-section">';
@@ -2712,7 +2780,7 @@
       html += '<div class="detail-section">';
       html += '  <h3>Scope of Work</h3>';
       if (job.job_number) html += '<div style="font-size:12px;color:var(--sw-mid);margin-bottom:8px">' + esc(job.job_number) + '</div>';
-      html += renderScopeReadable(job.scope_json, job.type);
+      html += renderScopeReadable(job.scope_json, job.type, canSeePricing());
       html += '</div>';
     }
 
@@ -2736,6 +2804,74 @@
       });
       html += '</div>';
     }
+
+    // ── Labour Budget Card ──
+    (function loadLabourBudget() {
+      var lbId = 'labourBudgetCard';
+      html += '<div class="detail-section" id="' + lbId + '">';
+      html += '  <h3>Labour Budget</h3>';
+      html += '  <div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div>';
+      html += '</div>';
+
+      // Async fetch after render
+      setTimeout(function() {
+        api('trade_labour_budget', { jobId: job.id }).then(function(lb) {
+          var card = document.getElementById(lbId);
+          if (!card) return;
+          var inner = '<h3>Labour Budget</h3>';
+
+          if (!lb || lb.budget == null || lb.budget === 0) {
+            inner += '<div style="font-size:13px;color:var(--sw-text-sec)">No labour budget allocated</div>';
+            card.innerHTML = inner;
+            return;
+          }
+
+          var budget = Number(lb.budget) || 0;
+          var logged = Number(lb.logged_hours) || 0;
+          var spent = Number(lb.spent) || 0;
+          var remainder = budget - spent;
+          var remainColor = remainder >= 0 ? 'var(--sw-green)' : '#E74C3C';
+
+          // Top stat row
+          inner += '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:12px">';
+          inner += '  <div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '    <div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px">Budget</div>';
+          inner += '    <div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + budget.toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:0}) + '</div>';
+          inner += '  </div>';
+          inner += '  <div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '    <div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px">Logged</div>';
+          inner += '    <div style="font-size:18px;font-weight:700;color:var(--sw-dark)">' + logged.toFixed(1) + ' hrs</div>';
+          inner += '  </div>';
+          inner += '  <div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '    <div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px">Remainder</div>';
+          inner += '    <div style="font-size:18px;font-weight:700;color:' + remainColor + '">$' + Math.abs(remainder).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:0}) + (remainder < 0 ? ' over' : '') + '</div>';
+          inner += '  </div>';
+          inner += '</div>';
+
+          // Breakdown by trade
+          if (lb.breakdown && lb.breakdown.length > 0) {
+            inner += '<div style="border-top:1px solid var(--sw-border);padding-top:10px">';
+            inner += '  <div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px">Hours by Trade</div>';
+            lb.breakdown.forEach(function(t) {
+              var tName = t.name || t.trade_name || 'Unknown';
+              var tHours = Number(t.hours) || 0;
+              inner += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:13px">';
+              inner += '  <span style="color:var(--sw-dark)">' + esc(tName) + '</span>';
+              inner += '  <span style="font-weight:600;color:var(--sw-dark)">' + tHours.toFixed(1) + ' hrs</span>';
+              inner += '</div>';
+            });
+            inner += '</div>';
+          }
+
+          card.innerHTML = inner;
+        }).catch(function() {
+          var card = document.getElementById(lbId);
+          if (card) {
+            card.innerHTML = '<h3>Labour Budget</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load labour budget</div>';
+          }
+        });
+      }, 0);
+    })();
 
     // ── Work Order (structured data from work_orders table) ──
     if (wo) {
@@ -2786,8 +2922,33 @@
       html += '</div>';
     }
 
-    // ── Materials / Purchase Orders ──
+    // ── Work Order fallback: render from scope_json if no PDF and no work_orders record ──
     var pos = data.purchaseOrders || [];
+    if (!workOrderDoc && !wo && job.scope_json) {
+      html += '<div class="detail-section">';
+      html += '  <h3>Work Order</h3>';
+      html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:8px">Generated from scope data</div>';
+      html += renderScopeReadable(job.scope_json, job.type, canSeePricing());
+
+      // Materials from POs
+      if (pos.length > 0) {
+        html += '<div style="margin-top:12px;font-weight:700">Materials Required</div>';
+        pos.forEach(function(po) {
+          html += '<div style="font-size:12px;color:var(--sw-mid);margin-top:6px">' + esc(po.supplier_name) + '</div>';
+          (po.line_items || []).forEach(function(li) {
+            if (li.description) html += '<div style="padding-left:12px;font-size:13px">' + esc(li.description) + (li.quantity ? ' ×' + li.quantity : '') + '</div>';
+          });
+        });
+      }
+
+      // Notes
+      if (job.notes) {
+        html += '<div style="margin-top:12px;padding:10px;background:var(--sw-light);border-radius:8px;font-size:13px"><strong>Notes:</strong> ' + esc(job.notes) + '</div>';
+      }
+      html += '</div>';
+    }
+
+    // ── Materials / Purchase Orders ──
     if (pos.length > 0) {
       html += '<div class="detail-section">';
       html += '  <h3>Materials &amp; Receipts</h3>';
@@ -2844,6 +3005,21 @@
           });
           html += '    </div>';
           html += '  </div>';
+        }
+
+        // Materials received button — for approved POs
+        if (isApproved) {
+          var mrKey = 'mr_' + po.id;
+          var materialsReceived = localStorage.getItem(mrKey);
+          if (materialsReceived) {
+            html += '  <div style="margin-top:8px;padding:8px;background:#E8F8E8;border-radius:8px;font-size:13px;color:#27AE60;text-align:center;font-weight:600">✓ Materials Received</div>';
+          } else {
+            html += '  <div style="margin-top:8px">';
+            html += '    <button class="btn btn-secondary btn-small" onclick="confirmMaterials(\'' + po.id + '\', \'' + esc(po.po_number || '') + '\', \'' + esc(job.id) + '\')" style="width:100%;font-size:12px;padding:8px;background:#E8F4FD;color:#2980B9;border:1px solid #B3D9F2">';
+            html += '      📦 All Materials Received';
+            html += '    </button>';
+            html += '  </div>';
+          }
         }
 
         // Receipt upload button — only for approved POs
@@ -3151,6 +3327,41 @@
     } else {
       sendUpdate(null);
     }
+  };
+
+  // ── Confirm materials received ──
+  window.confirmMaterials = function(poId, poNumber, jobId) {
+    api('add_note', null, { jobId: jobId, text: 'Materials received for PO ' + poNumber }).then(function() {
+      localStorage.setItem('mr_' + poId, '1');
+      // Replace button with confirmed badge
+      var card = document.querySelector('.po-card button[onclick*="' + poId + '"]');
+      if (card && card.parentNode) {
+        card.parentNode.innerHTML = '<div style="padding:8px;background:#E8F8E8;border-radius:8px;font-size:13px;color:#27AE60;text-align:center;font-weight:600">✓ Materials Received</div>';
+      }
+      toast('Materials confirmed');
+      if (navigator.vibrate) navigator.vibrate([10, 40, 10]);
+    }).catch(function(err) { toast(friendlyError(err), true); });
+  };
+
+  // ── Acknowledge scope ──
+  window.acknowledgeScope = function(assignmentId) {
+    var btn = document.querySelector('#ackBanner button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+    api('update_my_assignment', null, { assignmentId: assignmentId, acknowledged: true }).then(function() {
+      var banner = document.getElementById('ackBanner');
+      if (banner) banner.remove();
+      // Enable the Confirm button
+      var confirmBtn = document.querySelector('#statusBar button[data-status="confirmed"]');
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.onclick = function() { updateMyStatus(assignmentId, 'confirmed'); };
+      }
+      toast('Scope acknowledged');
+      if (navigator.vibrate) navigator.vibrate([10, 40, 10]);
+    }).catch(function(err) {
+      toast(friendlyError(err), true);
+      if (btn) { btn.disabled = false; btn.textContent = '✓ I\'ve Read & Understood'; }
+    });
   };
 
   function renderNote(n) {
@@ -4283,6 +4494,8 @@
     html += '</div>';
 
     container.innerHTML = html;
+    // Render weather badges on schedule cards
+    if (weatherData) renderWeatherBadges();
   }
 
   function renderAvailCalendar() {
@@ -4452,7 +4665,7 @@
       html += '</div>';
       html += '    </div>';
       html += '    <div style="text-align:right">';
-      html += '      <div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + formatDate(a.scheduled_date) + '</div>';
+      html += '      <div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + formatDate(a.scheduled_date) + ' <span data-weather-date="' + (a.scheduled_date || '') + '"></span></div>';
       if (a.start_time) html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + a.start_time.slice(0, 5) + '</div>';
       if (isTentative) html += '<div style="font-size:11px;color:var(--sw-yellow);font-weight:600">(tentative)</div>';
       html += '    </div>';
@@ -4606,13 +4819,21 @@
     // Totals card
     html += '<div class="hours-totals">';
     html += '  <div class="hours-totals-row"><span>Total Hours</span><span>' + data.total_hours.toFixed(2) + ' hrs</span></div>';
+    // Editable rate row — pre-filled from profile but user can adjust before submitting
+    html += '  <div class="hours-totals-row"><span>Rate</span><span style="display:flex;align-items:center;gap:4px">';
+    html += '    <span style="font-size:14px;color:var(--sw-mid)">$</span>';
+    html += '    <input type="number" id="hoursRateInput" step="0.01" min="0" value="' + (data.rate > 0 ? data.rate.toFixed(2) : '') + '" placeholder="0.00" style="width:70px;padding:4px 6px;border:1px solid var(--sw-border);border-radius:6px;font-size:14px;font-weight:600;color:var(--sw-dark);font-family:var(--sw-font);text-align:right" oninput="recalcHoursTotals()" />';
+    html += '    <span style="font-size:12px;color:var(--sw-text-sec)">/hr</span>';
+    html += '  </span></div>';
     if (data.rate > 0) {
-      html += '  <div class="hours-totals-row"><span>Rate</span><span>$' + data.rate.toFixed(2) + '/hr</span></div>';
-      html += '  <div class="hours-totals-row"><span>Subtotal</span><span>$' + data.subtotal.toFixed(2) + '</span></div>';
-      html += '  <div class="hours-totals-row"><span>GST (10%)</span><span>$' + data.gst.toFixed(2) + '</span></div>';
-      html += '  <div class="hours-totals-row grand"><span>Total</span><span>$' + data.total.toFixed(2) + '</span></div>';
+      html += '  <div class="hours-totals-row" id="hoursSubtotalRow"><span>Subtotal</span><span>$' + data.subtotal.toFixed(2) + '</span></div>';
+      html += '  <div class="hours-totals-row" id="hoursGstRow"><span>GST (10%)</span><span>$' + data.gst.toFixed(2) + '</span></div>';
+      html += '  <div class="hours-totals-row grand" id="hoursTotalRow"><span>Total</span><span>$' + data.total.toFixed(2) + '</span></div>';
     } else {
-      html += '  <div class="hours-totals-row" style="color:var(--sw-yellow)"><span colspan="2">Set your hourly rate in Profile to see totals</span></div>';
+      html += '  <div class="hours-totals-row" id="hoursSubtotalRow"><span>Subtotal</span><span>—</span></div>';
+      html += '  <div class="hours-totals-row" id="hoursGstRow"><span>GST (10%)</span><span>—</span></div>';
+      html += '  <div class="hours-totals-row grand" id="hoursTotalRow"><span>Total</span><span>—</span></div>';
+      html += '  <div style="font-size:11px;color:var(--sw-yellow);margin-top:4px">Enter your hourly rate above to see totals</div>';
     }
     html += '</div>';
 
@@ -4666,10 +4887,8 @@
       html += '  &#10003; Submitted to Xero';
       if (data.xero_bill_number) html += ' — ' + esc(data.xero_bill_number);
       html += '</div>';
-    } else if (data.assignments && data.assignments.length > 0 && data.rate > 0) {
+    } else if (data.assignments && data.assignments.length > 0) {
       html += '<button class="hours-submit-btn" id="btnSubmitHours" onclick="submitTradeHours()">Submit Invoice for This Week</button>';
-    } else if (data.rate === 0 && data.assignments && data.assignments.length > 0) {
-      html += '<div class="hours-no-data" style="padding:16px">Set your hourly rate in Profile before submitting</div>';
     }
 
     container.innerHTML = html;
@@ -4677,8 +4896,64 @@
 
   window.shiftWeek = shiftWeek;
 
+  // Recalculate totals when user edits the rate inline on the hours view
+  window.recalcHoursTotals = function() {
+    if (!_hoursData) return;
+    var input = document.getElementById('hoursRateInput');
+    var rate = parseFloat(input ? input.value : 0) || 0;
+
+    var subtotal = rate * _hoursData.total_hours;
+    var gst = subtotal * 0.1;
+    var total = subtotal + gst;
+
+    // Update cached data so submit uses correct figures
+    _hoursData.rate = rate;
+    _hoursData.subtotal = subtotal;
+    _hoursData.gst = gst;
+    _hoursData.total = total;
+
+    var subEl = document.getElementById('hoursSubtotalRow');
+    var gstEl = document.getElementById('hoursGstRow');
+    var totEl = document.getElementById('hoursTotalRow');
+    if (rate > 0) {
+      if (subEl) subEl.innerHTML = '<span>Subtotal</span><span>$' + subtotal.toFixed(2) + '</span>';
+      if (gstEl) gstEl.innerHTML = '<span>GST (10%)</span><span>$' + gst.toFixed(2) + '</span>';
+      if (totEl) totEl.innerHTML = '<span>Total</span><span>$' + total.toFixed(2) + '</span>';
+    } else {
+      if (subEl) subEl.innerHTML = '<span>Subtotal</span><span>&mdash;</span>';
+      if (gstEl) gstEl.innerHTML = '<span>GST (10%)</span><span>&mdash;</span>';
+      if (totEl) totEl.innerHTML = '<span>Total</span><span>&mdash;</span>';
+    }
+
+    // Also update per-assignment amounts in cached data
+    if (_hoursData.assignments) {
+      _hoursData.assignments.forEach(function(a) {
+        a.amount = rate * a.hours;
+      });
+    }
+
+    // If rate changed and is valid, silently save it to profile too
+    if (rate > 0 && rate !== _tradeRate) {
+      _tradeRate = rate;
+      api('set_trade_rate', null, { hourly_rate: rate }).catch(function() {});
+    }
+  };
+
   window.submitTradeHours = function() {
     if (!_hoursData || _hoursData.already_submitted) return;
+
+    // Read rate from the inline input in case user edited it
+    var rateInput = document.getElementById('hoursRateInput');
+    var editedRate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+    if (editedRate <= 0) {
+      toast('Enter your hourly rate before submitting', true);
+      return;
+    }
+    // Recalc with latest rate
+    _hoursData.rate = editedRate;
+    _hoursData.subtotal = editedRate * _hoursData.total_hours;
+    _hoursData.gst = _hoursData.subtotal * 0.1;
+    _hoursData.total = _hoursData.subtotal + _hoursData.gst;
 
     var totalStr = '$' + _hoursData.total.toFixed(2);
     showConfirm('Submit Invoice', 'Submit ' + totalStr + ' (inc GST) for week ending ' + _hoursData.week_ending + ' to Xero?', 'Submit').then(function(ok) {
@@ -4689,6 +4964,7 @@
 
       api('submit_trade_invoice', null, {
         week_ending: _hoursData.week_ending,
+        hourly_rate: editedRate,
         notes: ''
       }).then(function(res) {
         toast('Invoice submitted to Xero as draft bill' + (res.xero_bill_number ? ' — ' + res.xero_bill_number : ''));
@@ -6030,7 +6306,7 @@
   }
 
   // Render full scope-of-work as readable HTML for job detail view
-  function renderScopeReadable(scopeJson, type) {
+  function renderScopeReadable(scopeJson, type, showPricing) {
     if (!scopeJson) return '<div style="font-size:13px;color:var(--sw-text-sec)">No scope data available</div>';
     try {
       var config = scopeJson.config || scopeJson;
@@ -6075,6 +6351,19 @@
       // Notes from scope
       var client = scopeJson.client || {};
       if (client.notes) html += '<div style="margin-top:8px;padding:8px 10px;background:var(--sw-light);border-radius:6px;font-size:13px"><strong>Notes:</strong> ' + esc(client.notes) + '</div>';
+
+      // Pricing section for Tier 2+
+      if (showPricing && scopeJson.pricing) {
+        var p = scopeJson.pricing;
+        html += '<div style="margin-top:12px;padding:10px;background:#E8F4FD;border-radius:8px">';
+        html += '<div style="font-weight:700;margin-bottom:6px">Budget</div>';
+        if (p.totalIncGST || p.total) html += '<div>Quoted: <strong>$' + Math.round(p.totalIncGST || p.total).toLocaleString() + '</strong> inc GST</div>';
+        if (p.labour) {
+          var lab = p.labour;
+          if (lab.days && lab.dayRate) html += '<div>Labour: ' + lab.days + ' days × $' + lab.dayRate + '/day = $' + (lab.days * lab.dayRate).toLocaleString() + '</div>';
+        }
+        html += '</div>';
+      }
 
       html += '</div>';
       return html;
@@ -6246,63 +6535,115 @@
   // WEATHER — Open-Meteo API (free, no key)
   // ══════════════════════════════════════════════════
 
-  var _weatherCache = null;
-  var _weatherCacheTime = 0;
+  // ── Weather Integration (14-day Open-Meteo forecast) ──
+  var WEATHER_CACHE_KEY = 'sw_weather_cache';
+  var WMO_CODES = {
+    0: { icon: '☀️', label: 'Clear' },
+    1: { icon: '🌤', label: 'Mainly clear' },
+    2: { icon: '⛅', label: 'Partly cloudy' },
+    3: { icon: '☁️', label: 'Overcast' },
+    45: { icon: '🌫', label: 'Fog' },
+    48: { icon: '🌫', label: 'Fog' },
+    51: { icon: '🌦', label: 'Light drizzle' },
+    53: { icon: '🌦', label: 'Drizzle' },
+    55: { icon: '🌧', label: 'Heavy drizzle' },
+    61: { icon: '🌧', label: 'Light rain' },
+    63: { icon: '🌧', label: 'Rain' },
+    65: { icon: '🌧️', label: 'Heavy rain' },
+    80: { icon: '🌦', label: 'Showers' },
+    81: { icon: '🌧', label: 'Heavy showers' },
+    82: { icon: '⛈', label: 'Violent showers' },
+    95: { icon: '⛈', label: 'Thunderstorm' },
+    96: { icon: '⛈', label: 'Thunderstorm + hail' },
+    99: { icon: '⛈', label: 'Severe thunderstorm' },
+  };
+  var weatherData = null;
 
-  function loadWeather() {
+  async function loadWeather() {
+    try {
+      var cached = JSON.parse(sessionStorage.getItem(WEATHER_CACHE_KEY) || 'null');
+      if (cached && Date.now() - cached.ts < 3600000) { weatherData = cached.data; renderWeatherBar(); return; }
+    } catch(e) {}
+    try {
+      var res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=-31.95&longitude=115.86&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=Australia%2FPerth&forecast_days=14');
+      var json = await res.json();
+      var days = {};
+      var d = json.daily;
+      for (var i = 0; i < d.time.length; i++) {
+        var code = d.weather_code[i];
+        var wmo = WMO_CODES[code] || { icon: '🌡', label: 'Unknown' };
+        days[d.time[i]] = { icon: wmo.icon, label: wmo.label, max: Math.round(d.temperature_2m_max[i]), min: Math.round(d.temperature_2m_min[i]), rain_mm: d.precipitation_sum[i], rain_pct: d.precipitation_probability_max[i], wind_max: Math.round(d.wind_speed_10m_max[i]) };
+      }
+      weatherData = days;
+      sessionStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: days }));
+      renderWeatherBar();
+    } catch (e) { console.log('[weather]', e.message); }
+  }
+
+  function getWeatherForDate(dateStr) {
+    if (!weatherData || !dateStr) return null;
+    return weatherData[dateStr] || null;
+  }
+
+  function renderWeatherBar() {
     var el = document.getElementById('weatherBar');
     if (!el) return;
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var w = getWeatherForDate(todayStr);
+    if (!w) return;
 
-    // Cache for 30 minutes
-    if (_weatherCache && Date.now() - _weatherCacheTime < 30 * 60 * 1000) {
-      el.innerHTML = _weatherCache;
-      return;
+    var html = '<div class="weather-bar">';
+    html += '<span class="weather-icon">' + w.icon + '</span>';
+    html += '<span class="weather-temp">' + w.max + '°</span>';
+    html += '<span>' + w.label + ' · ' + w.min + '–' + w.max + '°</span>';
+    if (w.rain_pct > 10) html += '<span class="weather-rain">' + w.rain_pct + '% rain</span>';
+    if (w.wind_max > 30) html += '<span class="weather-detail">Wind ' + w.wind_max + ' km/h</span>';
+    html += '</div>';
+
+    // Rain warning
+    if (w.rain_pct > 50) {
+      html += '<div class="weather-warning weather-warning-rain">';
+      html += '🌧️ Rain expected today — check with Shaun about outdoor work';
+      html += '</div>';
+    }
+    // Extreme heat warning
+    if (w.max >= 38) {
+      html += '<div class="weather-warning weather-warning-heat">';
+      html += '🔥 Extreme heat (' + w.max + '°) — hydrate, take breaks';
+      html += '</div>';
     }
 
-    // Perth, WA coordinates
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=-31.95&longitude=115.86&current=temperature_2m,weather_code,wind_speed_10m&daily=precipitation_probability_max,temperature_2m_max,temperature_2m_min&timezone=Australia%2FPerth&forecast_days=1';
+    el.innerHTML = html;
 
-    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
-      var current = data.current || {};
-      var daily = data.daily || {};
-      var temp = Math.round(current.temperature_2m || 0);
-      var maxTemp = Math.round((daily.temperature_2m_max || [])[0] || temp);
-      var minTemp = Math.round((daily.temperature_2m_min || [])[0] || temp);
-      var rainProb = (daily.precipitation_probability_max || [])[0] || 0;
-      var wind = Math.round(current.wind_speed_10m || 0);
-      var code = current.weather_code || 0;
+    // Also inject weather badges on visible job cards
+    renderWeatherBadges();
+  }
 
-      // WMO weather code to emoji + description
-      var weather = weatherCodeToEmoji(code);
-
-      var html = '<div class="weather-bar">';
-      html += '<span class="weather-icon">' + weather.icon + '</span>';
-      html += '<span class="weather-temp">' + temp + '°</span>';
-      html += '<span>' + weather.label + ' · ' + minTemp + '–' + maxTemp + '°</span>';
-      if (rainProb > 10) html += '<span class="weather-rain">' + rainProb + '% rain</span>';
-      if (wind > 30) html += '<span class="weather-detail">Wind ' + wind + ' km/h</span>';
-      html += '</div>';
-
-      _weatherCache = html;
-      _weatherCacheTime = Date.now();
-      if (el) el.innerHTML = html;
-    }).catch(function() {
-      // Silent fail — weather is non-critical
+  function renderWeatherBadges() {
+    if (!weatherData) return;
+    var badges = document.querySelectorAll('[data-weather-date]');
+    badges.forEach(function(el) {
+      var dateStr = el.getAttribute('data-weather-date');
+      var w = getWeatherForDate(dateStr);
+      if (!w) return;
+      var warnClass = (w.rain_pct > 50 || w.max >= 38) ? ' weather-badge-warn' : '';
+      el.innerHTML = '<span class="weather-badge' + warnClass + '">' + w.icon + ' ' + w.max + '°</span>';
     });
   }
 
-  function weatherCodeToEmoji(code) {
-    if (code === 0) return { icon: '☀️', label: 'Clear' };
-    if (code <= 3) return { icon: '⛅', label: 'Partly cloudy' };
-    if (code <= 48) return { icon: '🌫️', label: 'Foggy' };
-    if (code <= 57) return { icon: '🌦️', label: 'Drizzle' };
-    if (code <= 67) return { icon: '🌧️', label: 'Rain' };
-    if (code <= 77) return { icon: '🌨️', label: 'Snow' };
-    if (code <= 82) return { icon: '🌧️', label: 'Showers' };
-    if (code <= 86) return { icon: '🌨️', label: 'Snow showers' };
-    if (code === 95) return { icon: '⛈️', label: 'Thunderstorm' };
-    if (code <= 99) return { icon: '⛈️', label: 'Thunderstorm + hail' };
-    return { icon: '🌤️', label: 'Fair' };
+  function getWeatherDetailHtml(dateStr) {
+    var w = getWeatherForDate(dateStr);
+    if (!w) return '';
+    var html = '<div class="weather-detail-card">';
+    html += '<span class="wd-icon">' + w.icon + '</span>';
+    html += '<span class="wd-temp">' + w.min + '–' + w.max + '°</span>';
+    html += '<span class="wd-label">' + w.label + '</span>';
+    if (w.rain_pct > 10) html += '<span class="wd-rain">' + w.rain_pct + '% rain</span>';
+    if (w.wind_max > 30) html += '<span class="wd-label">Wind ' + w.wind_max + ' km/h</span>';
+    if (w.max >= 38) html += '<span class="wd-heat">Extreme heat</span>';
+    if (w.rain_pct > 50) html += '<span class="wd-rain">Rain likely</span>';
+    html += '</div>';
+    return html;
   }
 
   // ══════════════════════════════════════════════════
