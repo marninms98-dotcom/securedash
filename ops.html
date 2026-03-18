@@ -2968,11 +2968,28 @@ async function loadCrewList() {
   if (_crewList.length > 0) return;
   try {
     var data = await opsFetch('list_users');
-    _crewList = (data.users || []).map(function(u) {
+    // Map email prefixes to clean first names
+    var CREW_NAME_MAP = {
+      'isaac.b3lch3r': 'Isaac',
+      'khairopomare': 'Khairo',
+      'marninms98': 'Marnin',
+      'shaunlee': 'Shaun',
+      'brotheremeka': 'Henry',
+      'ryanhumpries': 'Ryan',
+    };
+    // Hide duplicate/invalid users by email prefix
+    var CREW_HIDE = ['isaac']; // hide the non-real Isaac (isaac.b3lch3r is the real one)
+    _crewList = (data.users || []).filter(function(u) {
+      var prefix = u.email ? u.email.split('@')[0].toLowerCase() : '';
+      return !CREW_HIDE.some(function(h) { return prefix === h; });
+    }).map(function(u) {
       var div = '';
       if (u.role === 'installer' || u.role === 'lead_installer') div = 'trade';
       if (u.email && u.email.indexOf('fenc') !== -1) div = 'fencing';
-      return { id: u.id, name: u.name || u.email.split('@')[0], email: u.email, role: u.role || '', division: div };
+      var rawName = u.name || u.email.split('@')[0];
+      var emailPrefix = u.email ? u.email.split('@')[0].toLowerCase() : '';
+      var displayName = CREW_NAME_MAP[emailPrefix] || rawName;
+      return { id: u.id, name: displayName, email: u.email, role: u.role || '', division: div };
     }).sort(function(a, b) { return a.name.localeCompare(b.name); });
   } catch (e) {
     console.warn('Failed to load crew list:', e);
@@ -3794,7 +3811,9 @@ function renderSwimlaneView(container, range) {
   // Merge in all known crew members (even those without assignments this period)
   _crewList.forEach(function(u) {
     if (!crewMap[u.name]) {
-      crewMap[u.name] = { division: u.division || '', events: {} };
+      crewMap[u.name] = { division: u.division || '', events: {}, userId: u.id };
+    } else {
+      crewMap[u.name].userId = u.id; // attach userId to existing crew entries
     }
   });
 
@@ -3903,7 +3922,7 @@ function renderSwimlaneView(container, range) {
       html += ' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"';
       html += ' ondragleave="this.classList.remove(\'drag-over\')"';
       html += ' ondrop="handleCalDrop(event,this)"';
-      html += ' onclick="handleCellClick(\'' + dateStr + '\',\'' + crew.replace(/'/g, "\\'") + '\')"';
+      html += ' onclick="handleCellClick(\'' + dateStr + '\',\'' + crew.replace(/'/g, "\\'") + '\',\'' + (crewData.userId || '') + '\')"';
       html += '>';
 
       // Leave badge
@@ -4125,9 +4144,9 @@ function handleCalDrop(event, cell) {
   _calDragData = null;
 }
 
-function handleCellClick(date, crew) {
+function handleCellClick(date, crew, userId) {
   // On mobile or as fallback: open assignment modal pre-filled
-  openAssignmentModal(null, date, crew);
+  openAssignmentModal(null, date, userId || crew);
 }
 
 // ── Schedule Modal (from sidebar drag) ──
