@@ -2601,6 +2601,77 @@
   }
 
   // ══════════════════════════════════════════════════
+  // OFFLINE ACTION QUEUE
+  // ══════════════════════════════════════════════════
+
+  function queueOfflineAction(action, postBody) {
+    var queue = [];
+    try { queue = JSON.parse(localStorage.getItem('sw_action_queue') || '[]'); } catch(e) {}
+    queue.push({ action: action, body: postBody, ts: new Date().toISOString() });
+    localStorage.setItem('sw_action_queue', JSON.stringify(queue));
+  }
+
+  function syncOfflineQueue() {
+    var queue = [];
+    try { queue = JSON.parse(localStorage.getItem('sw_action_queue') || '[]'); } catch(e) {}
+    if (queue.length === 0) return;
+
+    var remaining = [];
+    var chain = Promise.resolve();
+
+    queue.forEach(function(item) {
+      chain = chain.then(function() {
+        return api(item.action, null, item.body).then(function() {
+          // Success — don't add to remaining
+        }).catch(function() {
+          // Still failing — keep in queue
+          remaining.push(item);
+        });
+      });
+    });
+
+    chain.then(function() {
+      localStorage.setItem('sw_action_queue', JSON.stringify(remaining));
+      if (remaining.length === 0 && queue.length > 0) {
+        toast('Synced ' + queue.length + ' queued action' + (queue.length > 1 ? 's' : ''));
+      }
+    });
+  }
+
+  // Retry queue on connectivity restore + page load
+  window.addEventListener('online', function() {
+    setTimeout(syncOfflineQueue, 2000); // Brief delay for connection to stabilize
+  });
+  // Run on page load after auth is ready
+  var _queueSyncScheduled = false;
+  function scheduleSyncAfterAuth() {
+    if (_queueSyncScheduled) return;
+    _queueSyncScheduled = true;
+    setTimeout(syncOfflineQueue, 5000);
+  }
+
+  // Phase update helper — optimistic UI + server sync + queue fallback
+  function updatePhaseOnServer(assignmentId, phase) {
+    var body = { assignmentId: assignmentId, phase: phase };
+    // Capture GPS if available
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        body.latitude = pos.coords.latitude;
+        body.longitude = pos.coords.longitude;
+        body.accuracy = pos.coords.accuracy;
+      }, function() {}, { timeout: 3000, maximumAge: 60000 });
+    }
+    api('update_job_phase', null, body).catch(function(err) {
+      // Network failure — queue for retry
+      if (err.name === 'AbortError' || err.message === 'Failed to fetch' || !navigator.onLine) {
+        queueOfflineAction('update_job_phase', body);
+        toast('Phase saved offline — will sync when connected');
+      }
+      // Auth errors or validation errors are not queued (they'd fail again)
+    });
+  }
+
+  // ══════════════════════════════════════════════════
   // IMAGE COMPRESSION — client-side before upload
   // ══════════════════════════════════════════════════
 
@@ -2775,6 +2846,9 @@
 
     // Sync any pending offline notes
     syncPendingNotes();
+
+    // Sync queued phase updates
+    scheduleSyncAfterAuth();
 
     // Show PWA home screen onboarding for iOS users (delayed)
     setTimeout(checkPwaOnboarding, 2000);
@@ -3627,6 +3701,9 @@
   window.confirmAllMaterials = function(jobId) {
     if (navigator.vibrate) navigator.vibrate(10);
     localStorage.setItem('sw_matcheck_' + jobId, 'good');
+    // Update phase to working
+    var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
+    if (myAssignment) updatePhaseOnServer(myAssignment.id, 'working');
     if (_currentJob) renderJobDetail(_currentJob);
   };
 
@@ -3651,6 +3728,9 @@
   window.materialsCheckDone = function(jobId, allGood) {
     if (navigator.vibrate) navigator.vibrate(10);
     localStorage.setItem('sw_matcheck_' + jobId, allGood ? 'good' : 'missing');
+    // Update phase
+    var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
+    if (myAssignment && allGood) updatePhaseOnServer(myAssignment.id, 'working');
 
     if (!allGood) {
       // Report materials issue
@@ -4979,6 +5059,7 @@
     var btn = document.querySelector('#ackBanner button');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
     api('update_my_assignment', null, { assignmentId: assignmentId, acknowledged: true }).then(function() {
+      updatePhaseOnServer(assignmentId, 'acknowledged');
       var banner = document.getElementById('ackBanner');
       if (banner) banner.remove();
       // Enable the Confirm button
@@ -6833,10 +6914,8 @@
       _timeTrackingState = 'travelling';
       _travelStartTime = new Date().toISOString();
       saveTimerState();
-      // Update assignment status to confirmed
-      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'confirmed' }).catch(function() {});
-      // GPS capture
-      captureGPS();
+      // Update phase on server (also syncs legacy status)
+      updatePhaseOnServer(assignmentId, 'travelling');
       // Auto-SMS (Tier 2+)
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
@@ -6853,16 +6932,14 @@
       _timeTrackingState = 'on_site';
       _onSiteStartTime = new Date().toISOString();
       saveTimerState();
-      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'in_progress' }).catch(function() {});
-      captureGPS();
+      updatePhaseOnServer(assignmentId, 'working');
     } else if (action === 'arrived') {
       // Stop travel timer, start on-site
       _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
       _timeTrackingState = 'on_site';
       _onSiteStartTime = new Date().toISOString();
       saveTimerState();
-      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'in_progress' }).catch(function() {});
-      captureGPS();
+      updatePhaseOnServer(assignmentId, 'arrived');
       // Auto "arrived" SMS
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
@@ -6874,14 +6951,17 @@
       _stoppedOnsiteMins = Math.round((Date.now() - new Date(_onSiteStartTime).getTime()) / 60000);
       _timeTrackingState = 'stopped';
       saveTimerState();
+      updatePhaseOnServer(assignmentId, 'wrap_up');
     } else if (action === 'resume') {
       _timeTrackingState = 'on_site';
       _onSiteStartTime = new Date().toISOString();
       saveTimerState();
+      updatePhaseOnServer(assignmentId, 'working');
     } else if (action === 'done') {
       var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
       var rounded = roundTo15(totalMins);
       var hours = (rounded / 60).toFixed(2);
+      updatePhaseOnServer(assignmentId, 'complete');
       api('update_my_assignment', null, { assignmentId: assignmentId, status: 'complete' }).then(function() {
         toast('Done — ' + formatMins(rounded) + ' logged');
         clearTimerState();
