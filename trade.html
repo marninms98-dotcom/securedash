@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
   <title>SecureWorks — Trade</title>
 
   <!-- PWA -->
@@ -2526,9 +2528,32 @@
   function getAuthToken() {
     if (!cloud || !cloud.supabase) return Promise.resolve(null);
     return cloud.supabase.auth.getSession().then(function(res) {
-      return (res.data && res.data.session && res.data.session.access_token) || null;
+      var session = res.data && res.data.session;
+      if (!session) return null;
+      // Proactively refresh if token expires within 5 minutes
+      var expiresAt = session.expires_at;
+      if (expiresAt && (expiresAt * 1000 - Date.now()) < 300000) {
+        return cloud.supabase.auth.refreshSession().then(function(ref) {
+          return (ref.data && ref.data.session && ref.data.session.access_token) || session.access_token;
+        }).catch(function() { return session.access_token; });
+      }
+      return session.access_token;
     }).catch(function() { return null; });
   }
+
+  // Refresh session when app comes back from background (screen unlock, tab switch)
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && cloud && cloud.supabase && _user) {
+      cloud.supabase.auth.refreshSession().catch(function() {});
+    }
+  });
+
+  // Periodic refresh every 20 minutes to prevent expiry during long on-site sessions
+  setInterval(function() {
+    if (cloud && cloud.supabase && _user) {
+      cloud.supabase.auth.refreshSession().catch(function() {});
+    }
+  }, 1200000);
 
   // ══════════════════════════════════════════════════
   // API HELPER — JWT auth + timeout
@@ -4343,8 +4368,8 @@
       h += '<div style="padding:8px 10px;background:var(--sw-light);border-radius:6px;font-size:13px;margin-bottom:12px"><strong>Notes:</strong> ' + esc(client.notes) + '</div>';
     }
 
-    // Pricing section for Tier 2+
-    if (canSeePricing() && job.scope_json.pricing) {
+    // Pricing section for Tier 3 only (budget is confidential)
+    if (canSeeFullPricing() && job.scope_json.pricing) {
       var p = job.scope_json.pricing;
       h += '<div style="padding:10px;background:#E8F4FD;border-radius:8px;margin-bottom:12px">';
       h += '<div style="font-weight:700;margin-bottom:6px">Budget</div>';

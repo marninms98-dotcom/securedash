@@ -5,7 +5,7 @@
 // API calls always go to network (no stale data for job lists).
 // ════════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'sw-trade-v6'
+const CACHE_NAME = 'sw-trade-v7'
 
 // App shell — these files are cached for instant load
 const SHELL_FILES = [
@@ -57,24 +57,32 @@ self.addEventListener('fetch', (event) => {
     return // Let browser handle normally (network only)
   }
 
-  // App shell files — cache-first with network fallback
+  // HTML files — network-first (always get latest code, fall back to cache offline)
+  if (event.request.destination === 'document' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+        }
+        return response
+      }).catch(() => caches.match(event.request))
+    )
+    return
+  }
+
+  // Other shell files (JS, CSS) — cache-first with background update
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      if (cached) {
-        // Return cache immediately, update in background
-        const fetchPromise = fetch(event.request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
-          }
-          return response
-        }).catch(() => cached)
+      const fetchPromise = fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+        }
+        return response
+      }).catch(() => cached)
 
-        return cached
-      }
-
-      // Not cached — fetch from network
-      return fetch(event.request)
+      return cached || fetchPromise
     })
   )
 })
