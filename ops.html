@@ -522,7 +522,7 @@
     }
     .cal-swim-cell.dimmed { opacity: 0.3; }
     .cal-swim-cell.weekend { background: var(--sw-bg); }
-    .cal-swim-cell.today-col { background: rgba(241,90,41,0.15); border-left: 2px solid rgba(241,90,41,0.4); border-right: 2px solid rgba(241,90,41,0.4); }
+    .cal-swim-cell.today-col { border-left: 2px solid rgba(241,90,41,0.35); border-right: 2px solid rgba(241,90,41,0.35); }
     .cal-swim-cell.avail-available { background: rgba(39,174,96,0.06); }
     .cal-swim-cell.avail-unavailable { background: rgba(231,76,60,0.06); }
     .cal-swim-cell.avail-leave { background: #f5f5f5; }
@@ -539,43 +539,31 @@
       cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-weight: 500; position: relative; user-select: none;
     }
-    /* Placeholder — ghost: barely visible */
+    /* ── Certainty = border + opacity (no background) ── */
     .cal-job-block.placeholder {
-      background: rgba(156,163,175,0.08); border: 1.5px dashed #ccc; color: #9CA3AF;
-      opacity: 0.35;
+      border: 1.5px dashed #ccc; color: #9CA3AF; opacity: 0.35;
     }
-    /* Tentative — present but uncommitted: neutral blue-grey */
     .cal-job-block.tentative {
-      background: rgba(143,164,178,0.12); border: 1px solid #8FA4B2; color: #4C6A7C;
-      opacity: 0.75;
+      border: 1px solid #8FA4B2; color: #4C6A7C; opacity: 0.80;
     }
-    /* Confirmed/Locked — solid, permanent */
     .cal-job-block.confirmed {
-      background: rgba(39,174,96,0.15); border: 2px solid #27AE60; color: #15803d;
-      opacity: 1; font-weight: 700;
+      border: 2px solid #27AE60; color: #15803d; opacity: 1; font-weight: 700;
     }
-    /* In progress (blue + solid border) */
     .cal-job-block.in_progress {
-      background: rgba(52,152,219,0.15); border: 2px solid #3498DB; color: #1e6faa;
+      border: 2px solid #3498DB; color: #1e6faa; opacity: 1;
     }
-    /* Completed (dark green + faded) */
     .cal-job-block.completed {
-      background: rgba(39,174,96,0.08); border: 1px solid rgba(39,174,96,0.3); color: #5a8a6d;
-      opacity: 0.5;
+      border: 1px solid rgba(39,174,96,0.3); color: #5a8a6d; opacity: 0.5;
     }
-    /* Readiness left border (replaces dot) */
-    .cal-job-block { border-left: 4px solid transparent; }
-    .cal-job-block.readiness-ready { border-left-color: #22C55E; }
-    .cal-job-block.readiness-at_risk { border-left-color: #F59E0B; }
-    .cal-job-block.readiness-blocked { border-left-color: #EF4444; }
-    /* Month mode: bolder readiness border */
-    .month-mode .cal-job-block { border-left-width: 5px; }
-    /* Division dot (inline, after job name) */
-    .cal-div-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-left: 3px; vertical-align: middle; }
-    .cal-div-dot.patio { background: var(--sw-orange); }
-    .cal-div-dot.fencing { background: var(--sw-mid); }
-    .cal-div-dot.decking { background: #E67E22; }
-    .cal-div-dot.miscellaneous { background: #8E44AD; }
+    /* ── Readiness = card background fill (loudest signal) ── */
+    .cal-job-block.readiness-ready { background: rgba(34,197,94,0.08) !important; }
+    .cal-job-block.readiness-at_risk { background: rgba(245,158,11,0.10) !important; }
+    .cal-job-block.readiness-blocked { background: rgba(239,68,60,0.10) !important; }
+    /* ── Type icons (inline SVG, replaces division dot) ── */
+    .cal-type-icon {
+      display: inline-block; width: 12px; height: 10px; margin-left: 3px;
+      vertical-align: middle; opacity: 0.7;
+    }
     /* Availability shading */
     .cal-swim-cell.avail-unavailable {
       background: rgba(231,76,60,0.08) !important;
@@ -607,6 +595,33 @@
     }
     .cal-cell-warning.conflict { color: var(--sw-red); }
     .cal-cell-warning.materials { color: #D97706; }
+
+    /* ── Compact Month Grid ── */
+    .cal-compact-month {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+      background: var(--sw-border); border: 1px solid var(--sw-border);
+    }
+    .cal-compact-month .cm-header {
+      background: var(--sw-dark); color: #fff; font-size: 11px; font-weight: 600;
+      text-align: center; padding: 6px 4px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .cal-compact-month .cm-cell {
+      background: var(--sw-card); min-height: 80px; padding: 4px; position: relative;
+      cursor: pointer; vertical-align: top;
+    }
+    .cal-compact-month .cm-cell.outside { background: var(--sw-warm-200); opacity: 0.5; }
+    .cal-compact-month .cm-cell.today { outline: 2px solid rgba(241,90,41,0.4); outline-offset: -2px; }
+    .cal-compact-month .cm-cell.weekend { background: var(--sw-warm-100); }
+    .cal-compact-month .cm-day-num {
+      font-size: 11px; font-weight: 600; color: var(--sw-text-sec); margin-bottom: 3px;
+    }
+    .cal-compact-month .cm-cell.today .cm-day-num { color: var(--sw-orange); font-weight: 700; }
+    .cal-compact-month .cm-pill {
+      font-size: 9px; padding: 2px 4px; border-radius: 3px; margin-bottom: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+      font-weight: 500;
+    }
+    .cal-compact-month .cm-pill:hover { opacity: 0.8; }
 
     /* Delivery row */
     .cal-delivery-block {
@@ -1943,6 +1958,7 @@
         <button id="btnRange1w" class="active" onclick="setCalRange('1w')">1 Week</button>
         <button id="btnRange2w" onclick="setCalRange('2w')">2 Weeks</button>
         <button id="btnRangeMonth" onclick="setCalRange('month')">Month</button>
+        <button id="btnMonthViewToggle" onclick="toggleMonthView()" style="display:none;font-size:11px;">Day View</button>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
         <div class="cal-division-filters">
           <button class="cal-div-pill active" data-caldiv="all" onclick="setCalDivision('all')">All</button>
@@ -4176,9 +4192,43 @@ var _calUnschedOpen = false;
 var _calAvailability = {}; // { 'CrewName_date': { status, note } }
 var _calReadiness = {};   // { jobId: { score, status, blockers, warnings, completeness } }
 var _calPopupAssignment = null; // currently open popup data
+var _calMonthView = 'swimlane'; // 'swimlane' or 'compact'
 
 // TODO Phase 2: BOM Perth weather strip along top of calendar — temperature and rain probability per day
 // TODO Phase 2: Estimated job duration auto-populated from scope_json based on job size
+
+// ── Readiness labels — plain English (overrides backend keys) ──
+var READINESS_LABELS = {
+  'crew_assigned': { missing: 'No crew assigned', done: 'Crew assigned' },
+  'pos_created': { missing: 'No purchase order for materials', done: 'Materials PO created' },
+  'work_order': { missing: 'No work order yet', done: 'Work order created' },
+  'materials_confirmed': { missing: 'Delivery not confirmed', done: 'Delivery confirmed' },
+  'deposit_received': { missing: 'No deposit received', done: 'Deposit received' },
+  'supplier_quote_doc': { missing: 'No supplier quote uploaded', done: 'Supplier quote uploaded' },
+  'site_photos_doc': { missing: 'No site photos', done: 'Site photos uploaded' },
+  'council_plans_doc': { missing: 'No council plans', done: 'Council plans uploaded' },
+  'engineering_doc': { missing: 'No engineering cert', done: 'Engineering cert uploaded' },
+  'asbestos_clearance': { missing: 'No asbestos clearance', done: 'Asbestos clearance done' },
+};
+
+// ── Type icons (inline SVG) ──
+function calTypeIconSvg(divType) {
+  var svgs = {
+    patio: '<svg class="cal-type-icon" viewBox="0 0 12 10" style="color:var(--sw-orange);"><path d="M1 9V5L6 1l5 4v4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+    fencing: '<svg class="cal-type-icon" viewBox="0 0 12 10" style="color:var(--sw-mid);"><path d="M1 2v7M4 1v8M7 1v8M10 2v7M0 4h12M0 7h12" fill="none" stroke="currentColor" stroke-width="1"/></svg>',
+    decking: '<svg class="cal-type-icon" viewBox="0 0 12 10" style="color:#E67E22;"><path d="M0 2h12M0 5h12M0 8h12" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  };
+  return svgs[divType] || svgs['patio'];
+}
+
+// ── Readiness display label (plain English) ──
+function readinessDisplayLabel(key, met) {
+  var entry = READINESS_LABELS[key];
+  if (entry) return met ? entry.done : entry.missing;
+  // Fallback: humanise the key
+  var label = key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+  return met ? label : 'No ' + label.toLowerCase();
+}
 
 function setCalRange(mode) {
   _calRangeMode = mode;
@@ -4316,7 +4366,21 @@ function renderCalendar() {
     titleEl.textContent = (_calRangeMode === '2w' ? '2 Weeks from ' : 'Week of ') + fmtDate(range.from);
   }
   var container = document.getElementById('calendarBody');
-  renderSwimlaneView(container, range);
+  // Show/hide month view toggle
+  var toggleBtn = document.getElementById('btnMonthViewToggle');
+  if (_calRangeMode === 'month') {
+    toggleBtn.style.display = '';
+    toggleBtn.textContent = _calMonthView === 'swimlane' ? 'Day View' : 'Crew View';
+  } else {
+    toggleBtn.style.display = 'none';
+    _calMonthView = 'swimlane'; // reset when leaving month mode
+  }
+  // Render compact or swimlane
+  if (_calRangeMode === 'month' && _calMonthView === 'compact') {
+    renderCompactMonth(container, range);
+  } else {
+    renderSwimlaneView(container, range);
+  }
   renderCalSummary(range);
   renderCalUnschedSidebar();
 }
@@ -4575,7 +4639,7 @@ function renderSwimlaneView(container, range) {
         if (isDraggable) {
           html += ' ondragstart="handleBlockDragStart(event,\'' + ev.assignment_id + '\')"';
         } else {
-          html += ' ondragstart="event.preventDefault();showToast(\'Locked — use Reschedule in popup\',\'warning\');return false;"';
+          html += ' ondragstart="event.preventDefault();showToast(\'Confirmed — use Reschedule in popup\',\'warning\');return false;"';
         }
         html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
         html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '"';
@@ -4586,9 +4650,11 @@ function renderSwimlaneView(container, range) {
         html += escapeHtml(ev.client_name || 'Unknown');
         // Lock icon on confirmed
         if (confStatus === 'confirmed') html += '<span class="cal-lock-icon">&#128274;</span>';
-        // Division dot (inline)
-        var divType = ev.job_type || 'patio';
-        html += '<span class="cal-div-dot ' + divType + '"></span>';
+        // Type icon (inline SVG, week view only)
+        if (!isMonthMode) {
+          var divType = ev.job_type || 'patio';
+          html += calTypeIconSvg(divType);
+        }
         html += '</div>';
       });
 
@@ -4696,9 +4762,9 @@ function renderCalSummary(range) {
   var unschedCount = _unschedJobs.length;
   var bar = document.getElementById('calSummaryBar');
   var html = '';
-  html += '<span class="stat" style="color:#22C55E"><span class="stat-val">' + lockedReady + '</span> Locked & Ready</span>';
-  html += '<span class="stat" style="color:#EF4444"><span class="stat-val">' + lockedExposed + '</span> Locked but Exposed</span>';
-  html += '<span class="stat" style="color:#F59E0B"><span class="stat-val">' + tentativeCount + '</span> Tentative</span>';
+  html += '<span class="stat" style="color:#22C55E"><span class="stat-val">' + lockedReady + '</span> Confirmed &amp; Ready</span>';
+  html += '<span class="stat" style="color:#EF4444"><span class="stat-val">' + lockedExposed + '</span> Confirmed — Not Ready</span>';
+  html += '<span class="stat" style="color:#F59E0B"><span class="stat-val">' + tentativeCount + '</span> Planned</span>';
   html += '<span class="stat"><span class="stat-val">' + unschedCount + '</span> Unscheduled</span>';
   if (revenue > 0) {
     html += '<span class="stat" style="margin-left:auto;"><span class="stat-val">$' + Math.round(revenue).toLocaleString() + '</span> revenue</span>';
@@ -4707,6 +4773,101 @@ function renderCalSummary(range) {
     html += '<span class="conflict-warn" onclick="highlightConflicts()">&#9888; ' + conflictCount + ' conflict' + (conflictCount > 1 ? 's' : '') + '</span>';
   }
   bar.innerHTML = html;
+}
+
+// ── Compact Month Grid (day-based view) ──
+function renderCompactMonth(container, range) {
+  var dates = getCalDays(range);
+  var todayStr = new Date().toISOString().slice(0, 10);
+
+  // Build a map: dateStr → [events]
+  var dayEvents = {};
+  _calEvents.forEach(function(ev) {
+    if (_calDivFilter !== 'all') {
+      var div = ev.job_type || 'patio';
+      if (_calDivFilter === 'patio' && div !== 'patio' && div !== 'decking') return;
+      if (_calDivFilter === 'fencing' && div !== 'fencing') return;
+    }
+    var start = ev.scheduled_date;
+    var end = ev.scheduled_end || start;
+    dates.forEach(function(ds) {
+      if (ds >= start && ds <= end) {
+        if (!dayEvents[ds]) dayEvents[ds] = [];
+        // Avoid duplicate job entries per day
+        var already = dayEvents[ds].some(function(x) { return x.job_id === ev.job_id && x.assignment_id === ev.assignment_id; });
+        if (!already) dayEvents[ds].push(ev);
+      }
+    });
+  });
+
+  // Find the first Monday on or before the first date, and last Sunday on or after the last date
+  var firstDate = new Date(dates[0] + 'T00:00:00');
+  var lastDate = new Date(dates[dates.length - 1] + 'T00:00:00');
+  // Go back to Monday
+  var startDow = (firstDate.getDay() + 6) % 7;
+  var gridStart = new Date(firstDate);
+  gridStart.setDate(gridStart.getDate() - startDow);
+  // Go forward to Sunday
+  var endDow = (lastDate.getDay() + 6) % 7;
+  var gridEnd = new Date(lastDate);
+  gridEnd.setDate(gridEnd.getDate() + (6 - endDow));
+
+  var html = '<div class="cal-compact-month">';
+  // Header row
+  var dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  dayNames.forEach(function(d) { html += '<div class="cm-header">' + d + '</div>'; });
+
+  // Day cells
+  var cursor = new Date(gridStart);
+  while (cursor <= gridEnd) {
+    var ds = cursor.toISOString().slice(0, 10);
+    var inRange = ds >= dates[0] && ds <= dates[dates.length - 1];
+    var dow = (cursor.getDay() + 6) % 7;
+    var cellClass = 'cm-cell';
+    if (!inRange) cellClass += ' outside';
+    if (ds === todayStr) cellClass += ' today';
+    if (dow >= 5) cellClass += ' weekend';
+
+    html += '<div class="' + cellClass + '" onclick="handleCompactDayClick(\'' + ds + '\')">';
+    html += '<div class="cm-day-num">' + cursor.getDate() + '</div>';
+
+    var evts = dayEvents[ds] || [];
+    evts.forEach(function(ev) {
+      var rd = _calReadiness[ev.job_id];
+      var bgColor = 'var(--sw-card)';
+      if (rd) {
+        if (rd.status === 'ready') bgColor = 'rgba(34,197,94,0.15)';
+        else if (rd.status === 'at_risk') bgColor = 'rgba(245,158,11,0.18)';
+        else if (rd.status === 'blocked') bgColor = 'rgba(239,68,60,0.18)';
+      }
+      var cs = ev.confirmation_status || 'tentative';
+      var borderStyle = cs === 'confirmed' ? '2px solid #27AE60' : cs === 'placeholder' ? '1px dashed #ccc' : '1px solid #8FA4B2';
+      html += '<div class="cm-pill" style="background:' + bgColor + ';border:' + borderStyle + ';"';
+      html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
+      html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '">';
+      html += escapeHtml(ev.client_name || 'Unknown');
+      if (cs === 'confirmed') html += ' 🔒';
+      html += '</div>';
+    });
+
+    html += '</div>';
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function toggleMonthView() {
+  _calMonthView = _calMonthView === 'swimlane' ? 'compact' : 'swimlane';
+  var btn = document.getElementById('btnMonthViewToggle');
+  btn.textContent = _calMonthView === 'swimlane' ? 'Day View' : 'Crew View';
+  loadCalendar();
+}
+
+function handleCompactDayClick(dateStr) {
+  // Open assignment modal for that day
+  openAssignmentModal(null, dateStr);
 }
 
 // ── Unscheduled Sidebar ──
@@ -4822,7 +4983,7 @@ function openScheduleModal(jobId, crew, date) {
     '<div class="form-group"><label class="form-label">Duration (days)</label><input type="number" class="form-input" id="schedDuration" value="1" min="1" max="30"></div>' +
     '<div style="display:flex;gap:8px;margin-top:16px;">' +
     '<button class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>' +
-    '<button class="btn btn-primary" style="background:var(--sw-orange);" onclick="submitScheduleFromModal(\'' + jobId + '\')">Create Tentative</button>' +
+    '<button class="btn btn-primary" style="background:var(--sw-orange);" onclick="submitScheduleFromModal(\'' + jobId + '\')">Create Planned</button>' +
     '</div>';
   modal.classList.add('open');
   backdrop.classList.add('open');
@@ -4866,9 +5027,9 @@ async function moveAssignment(assignmentId, newCrew, newDate) {
   var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
   if (!ev) return;
 
-  // Locked jobs cannot be dragged — must use Reschedule
+  // Confirmed jobs cannot be dragged — must use Reschedule
   if (ev.confirmation_status === 'confirmed') {
-    showToast('Locked — use Reschedule in the job popup', 'warning');
+    showToast('Confirmed — use Reschedule in the job popup', 'warning');
     return;
   }
 
@@ -4911,11 +5072,10 @@ function openCalJobPopup(event, assignmentId) {
 
   var popup = document.getElementById('calJobPopup');
   var confStatus = ev.confirmation_status || 'tentative';
-  var statusLabels = { placeholder: 'Placeholder', tentative: 'Tentative', confirmed: 'Locked' };
+  var statusLabels = { placeholder: 'Placeholder', tentative: 'Planned', confirmed: 'Confirmed' };
 
   var readiness = _calReadiness[ev.job_id];
   var rdColors = { blocked: '#EF4444', at_risk: '#F59E0B', ready: '#22C55E' };
-  var rdLabels = { blocked: 'Blocked', at_risk: 'At Risk', ready: 'Ready' };
   var isBlocked = readiness && readiness.status === 'blocked';
   var isReady = readiness && readiness.status === 'ready';
   var isLocked = confStatus === 'confirmed';
@@ -4965,7 +5125,12 @@ function openCalJobPopup(event, assignmentId) {
   });
   html += '</select>';
   if (readiness) {
-    html += '<span style="font-size:12px;font-weight:600;color:' + (rdColors[readiness.status] || '#6B7280') + '">' + (rdLabels[readiness.status] || readiness.status) + ' (' + readiness.score + '%)</span>';
+    var unmetCount = ((readiness.blockers || []).filter(function(b) { return !b.met; }).length) + ((readiness.warnings || []).filter(function(w) { return !w.met; }).length);
+    var rdText = '';
+    if (readiness.status === 'blocked') rdText = 'Not Ready — ' + unmetCount + ' item' + (unmetCount !== 1 ? 's' : '') + ' to do';
+    else if (readiness.status === 'at_risk') rdText = unmetCount + ' item' + (unmetCount !== 1 ? 's' : '') + ' to do';
+    else rdText = '✓ Ready';
+    html += '<span style="font-size:12px;font-weight:600;color:' + (rdColors[readiness.status] || '#6B7280') + '">' + rdText + '</span>';
   }
   html += '</div>';
 
@@ -4976,7 +5141,7 @@ function openCalJobPopup(event, assignmentId) {
   if (unmetBlockers.length > 0) {
     html += '<div class="cal-popup-blocker">';
     unmetBlockers.forEach(function(b) {
-      html += '<div class="cal-popup-blocker-item">&#128308; ' + escapeHtml(b.label);
+      html += '<div class="cal-popup-blocker-item">&#128308; ' + escapeHtml(readinessDisplayLabel(b.key, false));
       var fixBtn = getBlockerFixButton(b.key, ev.job_id);
       if (fixBtn) html += fixBtn;
       html += '</div>';
@@ -4988,7 +5153,7 @@ function openCalJobPopup(event, assignmentId) {
   if (unmetWarnings.length > 0) {
     html += '<details style="font-size:11px;margin-top:4px;"><summary style="cursor:pointer;color:#D97706;font-weight:600;">' + unmetWarnings.length + ' warning' + (unmetWarnings.length > 1 ? 's' : '') + '</summary>';
     unmetWarnings.forEach(function(w) {
-      html += '<div style="padding:2px 0;color:#D97706;">&#128992; ' + escapeHtml(w.label) + '</div>';
+      html += '<div style="padding:2px 0;color:#D97706;">&#128992; ' + escapeHtml(readinessDisplayLabel(w.key, false)) + '</div>';
     });
     html += '</details>';
   }
@@ -4996,31 +5161,20 @@ function openCalJobPopup(event, assignmentId) {
   // 7. Context-dependent actions
   html += '<div class="cal-job-popup-actions" style="margin-top:10px;">';
 
-  if (isBlocked && !isLocked) {
-    // Blocked: primary = fix top blocker, secondary = Lock & Notify
-    var topFix = unmetBlockers.length > 0 ? getBlockerFixButton(unmetBlockers[0].key, ev.job_id, true) : '';
-    if (topFix) html += topFix;
-    html += '<button class="btn-confirm-notify btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Lock & Notify</button>';
-    // Overflow: Edit Dates, Full Record, Remove
-    html += popupOverflow(assignmentId, ev.job_id, confStatus);
-  } else if (!isLocked && isReady) {
-    // Tentative + ready: primary = Lock & Notify
-    html += '<button class="btn-primary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Lock & Notify</button>';
+  if (!isLocked) {
+    // Not confirmed (placeholder or planned): show both confirm options
+    html += '<button class="btn-primary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Confirm &amp; Notify Client</button>';
+    html += '<button class="btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Confirm Date</button>';
     html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openEditAssignmentModal(\'' + assignmentId + '\')">Edit Dates</button>';
     html += popupOverflow(assignmentId, ev.job_id, confStatus);
   } else if (isLocked && isReady) {
-    // Locked + ready: clean, short
-    html += '<button class="btn-secondary-action" style="color:#D97706;" onclick="rescheduleLockedJob(\'' + assignmentId + '\')">Reschedule</button>';
-    html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Full Record</button>';
-  } else if (isLocked && !isReady) {
-    // Locked + warnings/blocked: show fix actions + reschedule
+    // Confirmed + ready: clean, two buttons
     html += '<button class="btn-secondary-action" style="color:#D97706;" onclick="rescheduleLockedJob(\'' + assignmentId + '\')">Reschedule</button>';
     html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Full Record</button>';
   } else {
-    // Default (placeholder or tentative, not ready, not blocked)
-    html += '<button class="btn-confirm btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Lock</button>';
-    html += '<button class="btn-confirm-notify btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Lock & Notify</button>';
-    html += popupOverflow(assignmentId, ev.job_id, confStatus);
+    // Confirmed + not ready: reschedule + full record (blocker fix buttons are in the blocker box above)
+    html += '<button class="btn-secondary-action" style="color:#D97706;" onclick="rescheduleLockedJob(\'' + assignmentId + '\')">Reschedule</button>';
+    html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Full Record</button>';
   }
 
   html += '</div>';
@@ -5037,9 +5191,9 @@ function openCalJobPopup(event, assignmentId) {
 // Helper: blocker fix button
 function getBlockerFixButton(key, jobId, primary) {
   var cls = primary ? 'btn-primary-action' : '';
-  if (key === 'pos_created') return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'money\')},300)">Create PO</button>';
-  if (key === 'work_order') return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'build\')},300)">Create WO</button>';
-  if (key && key.indexOf('_doc') !== -1) return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'files\')},300)">Upload</button>';
+  if (key === 'pos_created') return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'money\')},300)">Create Materials PO</button>';
+  if (key === 'work_order') return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'build\')},300)">Create Work Order</button>';
+  if (key && key.indexOf('_doc') !== -1) return '<button class="' + cls + '" onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\');setTimeout(function(){showJobSubView(\'files\')},300)">Upload Document</button>';
   return '';
 }
 
@@ -5100,11 +5254,11 @@ async function confirmAssignment(assignmentId, notify) {
   if (ev) {
     var rd = _calReadiness[ev.job_id];
     if (rd && rd.status === 'blocked') {
-      var blockerList = (rd.blockers || []).filter(function(b) { return !b.met; }).map(function(b) { return b.label; }).join(', ');
+      var blockerList = (rd.blockers || []).filter(function(b) { return !b.met; }).map(function(b) { return readinessDisplayLabel(b.key, false); }).join(', ');
       showConfirmModal(
-        'Lock with Blockers?',
-        'This job has unresolved blockers: <strong>' + escapeHtml(blockerList) + '</strong>. Locking commits the date — the crew and client will expect it.',
-        'Lock Anyway',
+        'Confirm with outstanding items?',
+        'This job still has items to do: <strong>' + escapeHtml(blockerList) + '</strong>. Confirming the date means crew and client will expect this date.',
+        'Confirm Anyway',
         function() { doConfirmAssignment(assignmentId, notify); },
         { danger: true }
       );
@@ -5122,7 +5276,7 @@ async function doConfirmAssignment(assignmentId, notify) {
       notifyClient: notify,
     });
     closeCalJobPopup();
-    showToast(notify ? 'Locked & client notified' : 'Locked', 'success');
+    showToast(notify ? 'Confirmed & client notified' : 'Confirmed', 'success');
     loadCalendar();
   } catch (e) {
     showToast('Error: ' + e.message, 'warning');
@@ -5145,7 +5299,7 @@ window.updateCertainty = async function(assignmentId, newStatus) {
       confirmation_status: newStatus,
     });
     closeCalJobPopup();
-    var labels = { placeholder: 'Placeholder', tentative: 'Tentative' };
+    var labels = { placeholder: 'Placeholder', tentative: 'Planned' };
     showToast('Set to ' + (labels[newStatus] || newStatus), 'success');
     loadCalendar();
   } catch (e) {
@@ -5158,8 +5312,8 @@ window.rescheduleLockedJob = function(assignmentId) {
   if (!ev) return;
 
   showConfirmModal(
-    'Reschedule Locked Job?',
-    'This job is locked. Client and crew were notified for <strong>' + fmtDate(ev.scheduled_date) + '</strong>. Rescheduling will unlock it back to tentative.',
+    'Reschedule Confirmed Job?',
+    'This will move the job back to Planned status. The client was already notified for <strong>' + fmtDate(ev.scheduled_date) + '</strong>.',
     'Reschedule',
     async function() {
       try {
@@ -5168,7 +5322,7 @@ window.rescheduleLockedJob = function(assignmentId) {
           confirmation_status: 'tentative',
         });
         closeCalJobPopup();
-        showToast('Unlocked — now tentative. Drag or edit dates to reschedule.', 'success');
+        showToast('Back to Planned. Drag or edit dates to reschedule.', 'success');
         loadCalendar();
       } catch (e) {
         showToast('Error: ' + e.message, 'warning');
@@ -5203,8 +5357,8 @@ function openBulkConfirm() {
     var cs = ev.confirmation_status || 'tentative';
     return cs === 'tentative' || cs === 'placeholder';
   }).length;
-  if (unlockedCount === 0) { showToast('No unlocked assignments to confirm', 'warning'); return; }
-  document.getElementById('calBulkText').textContent = 'Lock ' + unlockedCount + ' assignment' + (unlockedCount > 1 ? 's' : '') + '?';
+  if (unlockedCount === 0) { showToast('No unconfirmed assignments', 'warning'); return; }
+  document.getElementById('calBulkText').textContent = 'Confirm ' + unlockedCount + ' assignment' + (unlockedCount > 1 ? 's' : '') + '?';
   document.getElementById('calBulkBar').classList.add('open');
 }
 
@@ -5223,7 +5377,7 @@ async function executeBulkConfirm() {
   var ids = unlocked.map(function(ev) { return ev.assignment_id; });
   try {
     await opsPost('bulk_confirm', { assignmentIds: ids });
-    showToast(ids.length + ' assignments locked', 'success');
+    showToast(ids.length + ' assignments confirmed', 'success');
   } catch (e) {
     showToast('Error: ' + e.message, 'warning');
   }
