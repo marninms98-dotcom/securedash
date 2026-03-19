@@ -4306,7 +4306,7 @@ function renderSwimlaneView(container, range) {
     return a.localeCompare(b);
   });
 
-  // ── Phase 4: Filter crew rows to field crew + assigned users + Unassigned ──
+  // ── Filter crew rows: always show field crew (capacity view), hide admin/sales unless assigned ──
   var fieldCrewIds = new Set();
   _crewList.forEach(function(u) {
     if (['installer','trade','subcontractor','lead_installer'].includes(u.role)) fieldCrewIds.add(u.id);
@@ -4318,8 +4318,12 @@ function renderSwimlaneView(container, range) {
     var cd = crewMap[name];
     if (!cd) return false;
     var userId = cd.userId;
-    if (!userId) return Object.keys(cd.events).length > 0; // Has assignments in view
-    return fieldCrewIds.has(userId) || assignedUserIds.has(userId);
+    // Always show field crew — empty rows show available capacity
+    if (userId && fieldCrewIds.has(userId)) return true;
+    // Non-field roles: only show if they have assignments in this range
+    if (userId) return assignedUserIds.has(userId);
+    // No userId match: show if they have events
+    return Object.keys(cd.events).length > 0;
   });
 
   if (crewNames.length === 0) crewNames = ['No assignments'];
