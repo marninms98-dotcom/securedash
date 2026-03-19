@@ -1478,6 +1478,10 @@
     .wiz-btn-secondary { background: var(--sw-light); color: var(--sw-text-sec); }
     .wiz-btn-skip { background: none; border: 1px solid var(--sw-border); color: var(--sw-text-sec); }
     .wiz-btn:disabled { opacity: 0.4; pointer-events: none; }
+    /* Smooth range slider on mobile */
+    input[type="range"] { touch-action: none; -webkit-appearance: none; appearance: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: var(--sw-orange); cursor: pointer; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+    input[type="range"]::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: var(--sw-light); }
     .wiz-photo-prompt {
       display: flex; align-items: center; gap: 10px;
       padding: 12px; background: var(--sw-card); border-radius: 10px;
@@ -6947,17 +6951,27 @@
     return h;
   }
 
+  function updateTimerDisplay() {
+    var el = document.getElementById('timerElapsed');
+    if (!el) return;
+    var src = _timeTrackingState === 'travelling' ? _travelStartTime : _onSiteStartTime;
+    if (src) el.textContent = formatElapsed(src);
+  }
+
   function startTimerTick() {
     clearInterval(_timerTickInterval);
     if (_timeTrackingState === 'travelling' || _timeTrackingState === 'on_site') {
-      _timerTickInterval = setInterval(function() {
-        var el = document.getElementById('timerElapsed');
-        if (!el) { clearInterval(_timerTickInterval); return; }
-        var src = _timeTrackingState === 'travelling' ? _travelStartTime : _onSiteStartTime;
-        el.textContent = formatElapsed(src);
-      }, 10000);
+      updateTimerDisplay(); // immediate update (catches time elapsed while backgrounded)
+      _timerTickInterval = setInterval(updateTimerDisplay, 10000);
     }
   }
+
+  // When app comes back from background, immediately update the timer
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && (_timeTrackingState === 'travelling' || _timeTrackingState === 'on_site')) {
+      updateTimerDisplay();
+    }
+  });
 
   window.timerAction = function(action, assignmentId) {
     if (navigator.vibrate) navigator.vibrate(10);
@@ -7005,8 +7019,9 @@
       saveTimerState();
       updatePhaseOnServer(assignmentId, 'wrap_up');
     } else if (action === 'resume') {
+      // Resume: start a new on-site timer, but carry forward the already-accumulated minutes
       _timeTrackingState = 'on_site';
-      _onSiteStartTime = new Date().toISOString();
+      _onSiteStartTime = new Date(Date.now() - (_stoppedOnsiteMins * 60000)).toISOString();
       saveTimerState();
       updatePhaseOnServer(assignmentId, 'working');
     } else if (action === 'done') {
@@ -8665,6 +8680,12 @@
   var _eodLearn = '';
   var _eodTimesheetAdjusted = false;
 
+  // Step navigation for EOD (exposed to global scope for inline onclick)
+  window.eodGoStep = function(step) {
+    _eodStep = step;
+    renderEodStep();
+  };
+
   window.openEOD = function() {
     _eodStep = 1;
     _eodProgress = parseInt(localStorage.getItem('sw_progress_' + _currentJobId) || '50', 10);
@@ -8759,7 +8780,7 @@
     h += '</div>';
     body.innerHTML = h;
 
-    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="_eodStep=2;renderEodStep()">Next &mdash; Photos</button>';
+    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(2)">Next &mdash; Photos</button>';
   }
 
   window.eodUpdateProgress = function(val) {
@@ -8810,8 +8831,8 @@
 
     var fh = '';
     fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=3;renderEodStep()">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=3;renderEodStep()">Next</button>';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(3)">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(3)">Next</button>';
     fh += '</div>';
     footer.innerHTML = fh;
   }
@@ -8867,8 +8888,8 @@
 
     var fh = '';
     fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=4;renderEodStep()">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=4;renderEodStep()">Next</button>';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(4)">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(4)">Next</button>';
     fh += '</div>';
     footer.innerHTML = fh;
   }
@@ -8976,8 +8997,8 @@
 
     var fh = '';
     fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="_eodStep=5;renderEodStep()">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="_eodStep=5;renderEodStep()">Next</button>';
+    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(5)">Skip</button>';
+    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(5)">Next</button>';
     fh += '</div>';
     footer.innerHTML = fh;
   }
