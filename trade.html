@@ -1631,6 +1631,8 @@
       font-size: 16px;
       margin-bottom: 2px;
     }
+    .collapsible-ref summary::-webkit-details-marker { display: none; }
+    .collapsible-ref[open] summary span:last-child { transform: rotate(90deg); }
     .sf-expanded {
       background: var(--sw-card);
       border-radius: 12px;
@@ -3374,6 +3376,7 @@
     h += '<div>';
     h += '<span class="job-hero-badge">' + esc(type) + '</span>';
     if (job.job_number) h += '<span class="job-hero-number">' + esc(job.job_number) + '</span>';
+    if (phase === 'complete') h += '<span style="background:#27AE60;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;margin-left:6px">COMPLETED</span>';
     h += '</div>';
 
     // Client name
@@ -3382,6 +3385,12 @@
     // Address (deduplicated)
     var addr = dedupeAddress(job.site_address, job.site_suburb);
     h += '<div class="job-hero-address">' + esc(addr) + '</div>';
+
+    // Compact mode for travelling/on_site — skip scope summary and meta row
+    if (phase === 'travelling' || phase === 'on_site') {
+      h += '</div>';
+      return h;
+    }
 
     // Scope summary — humanised
     var scopeParts = [];
@@ -3416,7 +3425,7 @@
   }
 
   function renderWeatherStrip(data, phase) {
-    if (phase === 'complete' || phase === 'end_of_day') return '';
+    if (phase === 'complete' || phase === 'end_of_day' || phase === 'travelling' || phase === 'on_site') return '';
     var myAssignment = getMyAssignment(data);
     var schedDate = myAssignment ? myAssignment.scheduled_date : null;
     if (!schedDate) return '';
@@ -3431,12 +3440,12 @@
     var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
 
     var steps = [
-      { key: 'travel', icon: '🚗', label: "On My Way", phase: 'travelling' },
-      { key: 'arrived', icon: '📍', label: 'Arrived', phase: 'on_site' },
-      { key: 'materials', icon: '📦', label: 'Materials', phase: 'on_site' },
-      { key: 'working', icon: '🔨', label: 'Working', phase: 'on_site' },
-      { key: 'eod', icon: '🏁', label: 'Done Today', phase: 'end_of_day' },
-      { key: 'complete', icon: '✅', label: 'Complete', phase: 'complete' },
+      { key: 'travel', icon: '🚗', label: "On My Way", phase: 'travelling', sub: 'Starts travel timer' },
+      { key: 'arrived', icon: '📍', label: 'Arrived', phase: 'on_site', sub: 'Logs arrival on site' },
+      { key: 'materials', icon: '📦', label: 'Materials', phase: 'on_site', sub: 'Confirm materials' },
+      { key: 'working', icon: '🔨', label: 'Working', phase: 'on_site', sub: 'On-site timer running' },
+      { key: 'eod', icon: '🏁', label: 'Done Today', phase: 'end_of_day', sub: 'Stops timer' },
+      { key: 'complete', icon: '✅', label: 'Complete', phase: 'complete', sub: 'Final sign-off' },
     ];
 
     // Determine which step is current based on phase + timer
@@ -3468,6 +3477,7 @@
       h += '<div class="' + cls + '">';
       h += '<span class="sf-step-icon">' + (i < currentIdx ? '✓' : steps[i].icon) + '</span>';
       h += steps[i].label;
+      if (i === currentIdx && steps[i].sub) h += '<div style="font-size:9px;font-weight:400;color:var(--sw-text-sec);margin-top:1px">' + steps[i].sub + '</div>';
       h += '</div>';
     }
     h += '</div>';
@@ -3483,7 +3493,7 @@
       loadTimerState();
       if (_timeTrackingState === 'idle') {
         h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:8px">Ready to head to site?</div>';
-        h += '<button class="sf-action-btn" style="background:' + color + '" onclick="timerAction(\'start_travel\', \'' + myAssignment.id + '\')">';
+        h += '<button class="sf-action-btn" style="background:' + color + '" onclick="confirmThenTravel(\'' + myAssignment.id + '\')">';
         h += '🚗 I\'m On My Way</button>';
         h += '<div style="margin-top:8px">';
         h += '<button class="sf-action-btn" style="background:var(--sw-light);color:var(--sw-text);font-size:13px;min-width:140px;padding:10px 20px" onclick="timerAction(\'go_on_site\', \'' + myAssignment.id + '\')">';
@@ -3501,20 +3511,49 @@
       h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_travelStartTime) + '</div>';
       h += '<button class="sf-action-btn" style="background:' + color + '" onclick="timerAction(\'arrived\', \'' + myAssignment.id + '\')">';
       h += '📍 Arrived On Site</button>';
+      // Undo link — visible for 5 minutes after starting travel
+      var travelStartedAt = parseInt(localStorage.getItem('sw_travel_started') || '0');
+      if (travelStartedAt && (Date.now() - travelStartedAt) < 300000) {
+        h += '<div style="margin-top:10px"><a href="#" onclick="event.preventDefault();undoTravel()" style="font-size:13px;color:var(--sw-text-sec);text-decoration:underline">Undo — I haven\'t left yet</a></div>';
+      }
     } else if (phase === 'on_site') {
       var matChecked = localStorage.getItem('sw_matcheck_' + job.id);
       if (!matChecked) {
-        // Materials check step
-        h += '<div style="font-size:15px;font-weight:700;margin-bottom:8px">Are all materials on site?</div>';
-        h += '<div class="materials-check">';
-        h += '<button class="mc-good" onclick="materialsCheckDone(\'' + esc(job.id) + '\', true)">✅ All Good</button>';
-        h += '<button class="mc-missing" onclick="materialsCheckDone(\'' + esc(job.id) + '\', false)">❌ Missing</button>';
-        h += '</div>';
+        // Materials check step — grouped by category from POs
+        h += '<div style="font-size:15px;font-weight:700;margin-bottom:8px">Materials Check</div>';
+        var pos = data.purchaseOrders || [];
+        var allItems = [];
+        pos.forEach(function(po) {
+          if (po.line_items) po.line_items.forEach(function(li) {
+            if (li.description) allItems.push(li.description);
+          });
+        });
+        if (allItems.length > 0) {
+          var cats = categorizeMaterials(allItems);
+          var catKeys = Object.keys(cats);
+          h += '<div id="matCheckList" style="margin-bottom:12px">';
+          catKeys.forEach(function(cat) {
+            h += '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sw-card);border-radius:8px;margin-bottom:6px;box-shadow:var(--sw-shadow);cursor:pointer">';
+            h += '<input type="checkbox" class="matcat-check" data-cat="' + esc(cat) + '" style="width:20px;height:20px;accent-color:var(--sw-green)">';
+            h += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(cat) + '</div>';
+            h += '<div style="font-size:12px;color:var(--sw-text-sec)">' + cats[cat].length + ' item' + (cats[cat].length > 1 ? 's' : '') + '</div></div>';
+            h += '<button onclick="event.preventDefault();event.stopPropagation();reportMaterialIssue(\'' + esc(job.id) + '\', \'' + esc(cat) + '\')" style="background:none;border:1px solid var(--sw-yellow);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--sw-yellow);cursor:pointer;font-weight:600">Issue</button>';
+            h += '</label>';
+          });
+          h += '</div>';
+          h += '<button class="sf-action-btn" style="background:var(--sw-green)" id="matConfirmBtn" onclick="confirmAllMaterials(\'' + esc(job.id) + '\')">✅ All Materials Confirmed</button>';
+        } else {
+          // Fallback: simple check if no PO items
+          h += '<div class="materials-check">';
+          h += '<button class="mc-good" onclick="materialsCheckDone(\'' + esc(job.id) + '\', true)">✅ All Good</button>';
+          h += '<button class="mc-missing" onclick="materialsCheckDone(\'' + esc(job.id) + '\', false)">❌ Missing</button>';
+          h += '</div>';
+        }
       } else {
         // Working state
         h += '<div style="font-size:14px;color:var(--sw-text-sec)">On Site</div>';
         h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_onSiteStartTime) + '</div>';
-        h += '<button class="sf-action-btn" style="background:var(--sw-text-sec)" onclick="timerAction(\'stop\', \'' + myAssignment.id + '\')">';
+        h += '<button class="sf-action-btn" style="background:var(--sw-text-sec)" onclick="confirmThenStop(\'' + myAssignment.id + '\')">';
         h += '🏁 Done For Today</button>';
       }
     } else if (phase === 'end_of_day') {
@@ -3546,6 +3585,58 @@
     return h;
   }
 
+  // Categorise PO items into material groups
+  function categorizeMaterials(items) {
+    var cats = {};
+    var rules = [
+      { re: /steel|beam|post|column|rafter|purlin|bracket/i, cat: 'Steel' },
+      { re: /panel|sheet|roofing|trimdek|spandek|corrugat/i, cat: 'Panels' },
+      { re: /gutter|fascia|flashing|barge/i, cat: 'Gutters & Flashing' },
+      { re: /screw|tek|rivet|bolt|nut|washer|fixing|silicone/i, cat: 'Fixings' },
+      { re: /concrete|cement|post\s*mix|rapid\s*set/i, cat: 'Concrete' },
+    ];
+    items.forEach(function(desc) {
+      var matched = false;
+      for (var i = 0; i < rules.length; i++) {
+        if (rules[i].re.test(desc)) {
+          if (!cats[rules[i].cat]) cats[rules[i].cat] = [];
+          cats[rules[i].cat].push(desc);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        if (!cats['Other']) cats['Other'] = [];
+        cats['Other'].push(desc);
+      }
+    });
+    return cats;
+  }
+
+  // Grouped materials confirmation
+  window.confirmAllMaterials = function(jobId) {
+    if (navigator.vibrate) navigator.vibrate(10);
+    localStorage.setItem('sw_matcheck_' + jobId, 'good');
+    if (_currentJob) renderJobDetail(_currentJob);
+  };
+
+  // Report issue for a specific material category
+  window.reportMaterialIssue = function(jobId, category) {
+    showConfirm('Report ' + category + ' Issue?', 'This will notify the office about missing or incorrect ' + category.toLowerCase() + '.', 'Report Issue').then(function(ok) {
+      if (!ok) return;
+      localStorage.setItem('sw_matissue_' + jobId, '1');
+      api('create_trade_alert', null, {
+        jobId: jobId,
+        issueType: 'materials_missing',
+        detail: category + ' — not on site or incorrect'
+      }).then(function() {
+        toast(category + ' issue reported');
+      }).catch(function() {
+        toast('Issue saved — will sync when online');
+      });
+    });
+  };
+
   // Materials check handler
   window.materialsCheckDone = function(jobId, allGood) {
     if (navigator.vibrate) navigator.vibrate(10);
@@ -3570,7 +3661,7 @@
   };
 
   function renderSafetyBanner(data, phase) {
-    if (phase === 'complete') return '';
+    if (phase === 'complete' || phase === 'travelling' || phase === 'end_of_day') return '';
     var job = data.job;
     var searchText = '';
     if (job.scope_json) searchText += JSON.stringify(job.scope_json).toLowerCase();
@@ -3604,7 +3695,7 @@
   }
 
   function renderSpecialInstructions(data, phase) {
-    if (phase === 'complete') return '';
+    if (phase !== 'pre_confirm' && phase !== 'confirmed') return '';
     var notes = data.notes || [];
     // Filter to admin notes (tier >= 2 if available, otherwise show all non-self notes)
     var adminNotes = [];
@@ -3650,7 +3741,7 @@
   }
 
   function renderHandoffCard(data, phase) {
-    if (phase === 'complete') return '';
+    if (phase !== 'pre_confirm' && phase !== 'confirmed') return '';
     var myAssignment = getMyAssignment(data);
     if (!myAssignment || !myAssignment.scheduled_date) return '';
 
@@ -3914,6 +4005,7 @@
   };
 
   function renderAcknowledgeBanner(data, phase) {
+    if (phase !== 'pre_confirm' && phase !== 'confirmed') return '';
     var myAssignment = getMyAssignment(data);
     if (!myAssignment) return '';
     if (myAssignment.acknowledged_at || !data.job.scope_json) return '';
@@ -4011,7 +4103,7 @@
   }
 
   function renderEnhancedVariation(data, phase) {
-    if (phase === 'on_site') return ''; // Handled by on-site tools
+    if (phase !== 'confirmed') return ''; // Only show in confirmed; on-site uses toolbar
     var myAssignment = getMyAssignment(data);
     if (!myAssignment) return '';
     if (['in_progress', 'confirmed'].indexOf(myAssignment.status) < 0) return '';
@@ -4056,7 +4148,42 @@
     }
   };
 
+  function wrapCollapsible(heading, contentHtml) {
+    if (!contentHtml) return '';
+    var h = '<details class="collapsible-ref" style="margin-bottom:12px">';
+    h += '<summary style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--sw-card);border-radius:10px;box-shadow:var(--sw-shadow);cursor:pointer;font-weight:700;font-size:14px;list-style:none;-webkit-appearance:none">';
+    h += '<span>' + heading + '</span>';
+    h += '<span style="font-size:18px;transition:transform 0.2s">▸</span>';
+    h += '</summary>';
+    h += '<div style="padding:8px 0">' + contentHtml + '</div>';
+    h += '</details>';
+    return h;
+  }
+
+  function renderKeyDimensions(data) {
+    var job = data.job;
+    if (!job.scope_json) return '';
+    var config = job.scope_json.config || job.scope_json;
+    var type = (job.type || 'patio').toLowerCase();
+    var parts = [];
+    if (type === 'fencing') {
+      if (config.totalLength || config.length) parts.push((config.totalLength || config.length) + 'm');
+      if (config.material) parts.push(humanise('material', config.material));
+      if (config.height) parts.push(config.height + 'mm');
+    } else {
+      if (config.length && config.projection) parts.push(config.length + 'm × ' + config.projection + 'm');
+      if (config.roofing) parts.push(humanise('roofing', config.roofing));
+    }
+    if (parts.length === 0) return '';
+    var h = '<div style="padding:14px 16px;background:var(--sw-card);border-radius:10px;box-shadow:var(--sw-shadow);margin-bottom:12px;text-align:center">';
+    h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-text-sec);margin-bottom:4px">Key Dimensions</div>';
+    h += '<div style="font-size:18px;font-weight:800;color:var(--sw-dark)">' + esc(parts.join(' · ')) + '</div>';
+    h += '</div>';
+    return h;
+  }
+
   function renderEnhancedScope(data, phase) {
+    if (phase === 'travelling' || phase === 'end_of_day' || phase === 'complete') return '';
     var job = data.job;
     if (!job.scope_json) return '';
     var config = job.scope_json.config || job.scope_json;
@@ -4155,6 +4282,7 @@
   }
 
   function renderEnhancedPOs(data, phase) {
+    if (phase === 'travelling' || phase === 'end_of_day') return '';
     var pos = data.purchaseOrders || [];
     var media = data.media || [];
     var receiptPhotos = media.filter(function(m) { return m.phase === 'receipt'; });
@@ -4267,6 +4395,7 @@
   }
 
   function renderTradeDocuments(data, phase) {
+    if (phase === 'travelling' || phase === 'end_of_day') return '';
     var docs = (data.documents || []).filter(function(d) {
       // Only show visible docs that aren't site_photo (those go in gallery) and have a URL
       return d.visible_to_trades && d.type !== 'site_photo' && (d.storage_url || d.pdf_url);
@@ -4322,8 +4451,8 @@
     var pos = data.purchaseOrders || [];
     var h = '';
 
-    // ── Crew List ──
-    if (crew.length > 0 && phase !== 'on_site') {
+    // ── Crew List (pre_confirm, confirmed only) ──
+    if (crew.length > 0 && (phase === 'pre_confirm' || phase === 'confirmed')) {
       var type = (job.type || 'patio').toLowerCase();
       var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
       h += '<div class="detail-section">';
@@ -4348,8 +4477,8 @@
       h += '</div>';
     }
 
-    // ── Labour Budget Card ──
-    (function loadLabourBudget() {
+    // ── Labour Budget Card (complete only) ──
+    if (phase === 'complete') (function loadLabourBudget() {
       var lbId = 'labourBudgetCard';
       h += '<div class="detail-section" id="' + lbId + '">';
       h += '  <h3>Labour Budget</h3>';
@@ -4406,8 +4535,8 @@
       }, 0);
     })();
 
-    // ── Work Order ──
-    if (wo) {
+    // ── Work Order (pre_confirm, confirmed, complete — only if has content) ──
+    if (wo && (phase === 'pre_confirm' || phase === 'confirmed' || phase === 'complete') && (wo.special_instructions || (wo.scope_items && wo.scope_items.length > 0))) {
       h += '<div class="detail-section">';
       h += '  <h3>Work Order — ' + esc(wo.wo_number || '') + '</h3>';
       if (wo.scope_items && wo.scope_items.length > 0) {
@@ -4438,38 +4567,17 @@
       h += '</div>';
     }
 
-    // ── Work Order PDF ──
+    // ── Work Order PDF (pre_confirm, confirmed, complete) ──
     var workOrderDoc = docs.find(function(d) { return d.type === 'work_order'; });
-    if (workOrderDoc) {
+    if (workOrderDoc && (phase === 'pre_confirm' || phase === 'confirmed' || phase === 'complete')) {
       h += '<div class="detail-section">';
       h += '  <h3>Work Order PDF</h3>';
       h += '  <a href="' + esc(workOrderDoc.pdf_url) + '" target="_blank" class="btn btn-secondary">View Work Order (v' + workOrderDoc.version + ')</a>';
       h += '</div>';
     }
 
-    // ── Work Order fallback ──
-    if (!workOrderDoc && !wo && job.scope_json) {
-      h += '<div class="detail-section">';
-      h += '  <h3>Work Order</h3>';
-      h += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:8px">Generated from scope data</div>';
-      h += renderScopeReadable(job.scope_json, job.type, canSeePricing());
-      if (pos.length > 0) {
-        h += '<div style="margin-top:12px;font-weight:700">Materials Required</div>';
-        pos.forEach(function(po) {
-          h += '<div style="font-size:12px;color:var(--sw-mid);margin-top:6px">' + esc(po.supplier_name) + '</div>';
-          (po.line_items || []).forEach(function(li) {
-            if (li.description) h += '<div style="padding-left:12px;font-size:13px">' + esc(li.description) + (li.quantity ? ' ×' + li.quantity : '') + '</div>';
-          });
-        });
-      }
-      if (job.notes) {
-        h += '<div style="margin-top:12px;padding:10px;background:var(--sw-light);border-radius:8px;font-size:13px"><strong>Notes:</strong> ' + esc(job.notes) + '</div>';
-      }
-      h += '</div>';
-    }
-
-    // ── Before/After Photos ──
-    if (scopePhotos.length > 0 && completionPhotos.length > 0) {
+    // ── Before/After Photos (complete only) ──
+    if (phase === 'complete' && scopePhotos.length > 0 && completionPhotos.length > 0) {
       h += '<div class="detail-section">';
       h += '  <h3>Before / After</h3>';
       var maxPairs = Math.min(scopePhotos.length, completionPhotos.length, 6);
@@ -4489,7 +4597,8 @@
       h += '</div>';
     }
 
-    // ── Completion Photos ──
+    // ── Completion Photos (complete only) ──
+    if (phase === 'complete') {
     h += '<div class="detail-section">';
     h += '  <h3>Completion Photos</h3>';
     if (completionPhotos.length > 0) {
@@ -4522,10 +4631,12 @@
     h += '    </div>';
     h += '  </div>';
     h += '</div>';
+    }
 
-    // ── Notes Timeline ──
+    // ── Notes / Activity Feed (on_site + complete) ──
+    if (phase === 'on_site' || phase === 'complete') {
     h += '<div class="detail-section">';
-    h += '  <h3>Notes</h3>';
+    h += '  <h3>' + (phase === 'on_site' ? 'Activity Feed' : 'Notes') + '</h3>';
     h += '  <div id="notesList">';
     var pendingNotes = [];
     try { pendingNotes = JSON.parse(localStorage.getItem('sw_pending_notes') || '[]'); } catch(e) {}
@@ -4544,6 +4655,7 @@
       h += '<div style="font-size:13px;color:var(--sw-text-sec)">No notes yet</div>';
     }
     h += '  </div>';
+    if (phase !== 'complete') {
     h += '  <div class="note-input-row">';
     h += '    <textarea id="noteInput" placeholder="Add a note..." rows="1" maxlength="2000" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,120)+\'px\'" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();addNote()}"></textarea>';
     if (window.SpeechRecognition || window.webkitSpeechRecognition) {
@@ -4551,10 +4663,12 @@
     }
     h += '    <button class="btn btn-primary btn-small" id="btnSendNote" onclick="addNote()">Send</button>';
     h += '  </div>';
+    }
     h += '</div>';
+    }
 
-    // ── Conversation Thread (Tier 3) ──
-    if (canSeeConversation() && job.ghl_contact_id) {
+    // ── Conversation Thread (Tier 3, complete only) ──
+    if (phase === 'complete' && canSeeConversation() && job.ghl_contact_id) {
       h += '<div class="detail-section">';
       h += '  <h3>Conversation</h3>';
       h += '  <div id="convThread"><div style="font-size:13px;color:var(--sw-text-sec)">Loading messages...</div></div>';
@@ -4565,8 +4679,8 @@
       h += '</div>';
     }
 
-    // ── Financial Summary (Tier 3) ──
-    if (canSeeFullPricing()) {
+    // ── Financial Summary (Tier 3, complete only) ──
+    if (phase === 'complete' && canSeeFullPricing()) {
       var hasFinancials = job.quoted_amount != null || job.invoiced_amount != null;
       if (hasFinancials) {
         h += '<div class="detail-section">';
@@ -4599,22 +4713,18 @@
       }
     }
 
-    // ── Action Buttons ──
+    // ── Service Report (complete only) ──
+    if (phase === 'complete') {
     h += '<div style="padding:8px 0 12px">';
     h += '  <button class="btn btn-primary" onclick="showView(\'report\')">';
     h += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>';
     h += '    Service Report';
     h += '  </button>';
     h += '</div>';
-    h += '<div style="padding:0 0 12px">';
-    h += '  <button class="btn btn-primary" style="background:var(--sw-yellow)" onclick="openIssueOverlay()">';
-    h += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>';
-    h += '    Report Issue';
-    h += '  </button>';
-    h += '</div>';
+    }
 
-    // Complete Job
-    if (myAssignment && (myAssignment.status === 'in_progress' || myAssignment.status === 'complete')) {
+    // Complete Job (on_site only)
+    if (phase === 'on_site' && myAssignment && (myAssignment.status === 'in_progress' || myAssignment.status === 'complete')) {
       h += '<div style="padding:0 0 24px">';
       h += '  <button class="btn btn-primary" style="background:var(--sw-green)" onclick="openWizard()">';
       h += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
@@ -4649,6 +4759,22 @@
     // ── Section 3: Smart Status Flow ──
     html += renderSmartStatusFlow(data, phase);
 
+    // ── Travelling: minimal view — just status flow + address card ──
+    if (phase === 'travelling') {
+      var addr = dedupeAddress(job.site_address, job.site_suburb);
+      html += '<div class="detail-section" style="text-align:center;padding:20px 16px">';
+      html += '  <div style="font-size:16px;font-weight:700;margin-bottom:6px">' + esc(job.client_name || 'Unknown') + '</div>';
+      html += '  <div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:12px">' + esc(addr) + '</div>';
+      var navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
+      if (navUrl) {
+        html += '  <button class="sf-action-btn" style="background:var(--sw-mid);font-size:16px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Navigate to Site</button>';
+      }
+      html += '</div>';
+      container.innerHTML = html;
+      startTimerTick();
+      return;
+    }
+
     // ── Section 4: Safety Banner ──
     html += renderSafetyBanner(data, phase);
 
@@ -4669,14 +4795,21 @@
       html += renderScopeGallery(data, phase);
     }
 
-    // ── Section 9: Enhanced Scope of Work ──
-    html += renderEnhancedScope(data, phase);
+    // ── On-site: key dimensions card + collapsible reference info ──
+    if (phase === 'on_site') {
+      html += renderKeyDimensions(data);
+      var refHtml = renderEnhancedScope(data, phase) + renderTradeDocuments(data, phase) + renderEnhancedPOs(data, phase);
+      html += wrapCollapsible('📋 Reference Info — Scope, Docs & Materials', refHtml);
+    } else {
+      // ── Section 9: Enhanced Scope of Work ──
+      html += renderEnhancedScope(data, phase);
 
-    // ── Approvals & Documents ──
-    html += renderTradeDocuments(data, phase);
+      // ── Approvals & Documents ──
+      html += renderTradeDocuments(data, phase);
 
-    // ── Section 10: Enhanced Materials / POs ──
-    html += renderEnhancedPOs(data, phase);
+      // ── Section 10: Enhanced Materials / POs ──
+      html += renderEnhancedPOs(data, phase);
+    }
 
     // ── Section: Variation (when not on-site — on-site uses toolbar) ──
     html += renderEnhancedVariation(data, phase);
@@ -6743,6 +6876,34 @@
         startTimerTick();
       }
     }
+  };
+
+  // Confirmation wrappers for status transitions
+  window.confirmThenTravel = function(assignmentId) {
+    showConfirm('Start Travelling?', 'This starts your travel timer and notifies the client.', "I'm On My Way").then(function(ok) {
+      if (ok) {
+        timerAction('start_travel', assignmentId);
+        // Store travel start time for undo window
+        localStorage.setItem('sw_travel_started', Date.now().toString());
+        if (_currentJob) renderJobDetail(_currentJob);
+      }
+    });
+  };
+
+  window.confirmThenStop = function(assignmentId) {
+    showConfirm('Done for today?', 'This stops the timer and opens your end-of-day report.', 'Yes, wrap up').then(function(ok) {
+      if (ok) timerAction('stop', assignmentId);
+    });
+  };
+
+  // Undo travel — available for 5 minutes after starting travel
+  window.undoTravel = function() {
+    _timeTrackingState = 'idle';
+    _travelStartTime = null;
+    saveTimerState();
+    localStorage.removeItem('sw_travel_started');
+    toast('Travel undone');
+    if (_currentJob) renderJobDetail(_currentJob);
   };
 
   function captureGPS() {
