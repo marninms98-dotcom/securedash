@@ -3529,6 +3529,16 @@
           });
         });
         if (allItems.length > 0) {
+          // Show expected colour prominently if available
+          var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
+          var expectedColour = scopeConfig.sheetColor || scopeConfig.colour || scopeConfig.color || '';
+          if (expectedColour) {
+            var colourHex = (typeof COLORBOND !== 'undefined' && COLORBOND[expectedColour]) || '#ccc';
+            h += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#FFF8E1;border:1px solid #FFD54F;border-radius:8px;margin-bottom:10px">';
+            h += '<span style="width:24px;height:24px;border-radius:4px;background:' + colourHex + ';border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>';
+            h += '<div style="font-size:13px;font-weight:600;color:#8D6E00">Expected colour: <strong>' + esc(expectedColour) + '</strong></div>';
+            h += '</div>';
+          }
           var cats = categorizeMaterials(allItems);
           var catKeys = Object.keys(cats);
           h += '<div id="matCheckList" style="margin-bottom:12px">';
@@ -4723,14 +4733,32 @@
     h += '</div>';
     }
 
-    // Complete Job (on_site only)
+    // Wrap-up actions (on_site only)
     if (phase === 'on_site' && myAssignment && (myAssignment.status === 'in_progress' || myAssignment.status === 'complete')) {
-      h += '<div style="padding:0 0 24px">';
-      h += '  <button class="btn btn-primary" style="background:var(--sw-green)" onclick="openWizard()">';
-      h += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-      h += '    Complete Job';
-      h += '  </button>';
-      h += '</div>';
+      // Determine if this is likely the last day
+      var dayInfo = getJobDayInfo(data);
+      var isLastDay = false;
+      if (dayInfo) {
+        var dayMatch = dayInfo.match(/Day (\d+) of (\d+)/);
+        if (dayMatch && parseInt(dayMatch[1]) >= parseInt(dayMatch[2])) isLastDay = true;
+      }
+
+      if (isLastDay) {
+        // Last day — show Complete Job as primary action
+        h += '<div style="padding:0 0 24px">';
+        h += '  <button class="btn btn-primary" style="background:var(--sw-green)" onclick="openWizard()">';
+        h += '    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+        h += '    Complete Job';
+        h += '  </button>';
+        h += '</div>';
+      } else {
+        // Not last day — Complete Job is secondary, behind a confirmation
+        h += '<div style="padding:0 0 12px">';
+        h += '  <button class="btn btn-secondary" style="color:var(--sw-green);border-color:var(--sw-green);font-size:13px" onclick="confirmThenComplete()">';
+        h += '    Complete Job Early';
+        h += '  </button>';
+        h += '</div>';
+      }
     }
 
     return h;
@@ -6880,7 +6908,7 @@
 
   // Confirmation wrappers for status transitions
   window.confirmThenTravel = function(assignmentId) {
-    showConfirm('Start Travelling?', 'This starts your travel timer and notifies the client.', "I'm On My Way").then(function(ok) {
+    showConfirm('Leave for Site?', 'This starts travel time for this job.', 'Leave now').then(function(ok) {
       if (ok) {
         timerAction('start_travel', assignmentId);
         // Store travel start time for undo window
@@ -6893,6 +6921,12 @@
   window.confirmThenStop = function(assignmentId) {
     showConfirm('Done for today?', 'This stops the timer and opens your end-of-day report.', 'Yes, wrap up').then(function(ok) {
       if (ok) timerAction('stop', assignmentId);
+    });
+  };
+
+  window.confirmThenComplete = function() {
+    showConfirm('Complete this job?', 'This is a multi-day job. Only mark complete if all work is finished.', 'Yes, job is done').then(function(ok) {
+      if (ok) openWizard();
     });
   };
 
