@@ -1990,33 +1990,18 @@
       flex: 1;
       position: relative;
       overflow: hidden;
-      padding: 16px;
+      padding: 0 16px;
     }
     .viewer-3d-canvas-wrap canvas {
       width: 100% !important;
       height: 100% !important;
       touch-action: none;
-      border-radius: 12px;
-    }
-    .viewer-3d-info {
-      position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.75);
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 100px;
-      font-size: 13px;
-      font-weight: 600;
-      pointer-events: none;
-      white-space: nowrap;
-      z-index: 2;
+      border-radius: 12px 12px 0 0;
     }
     .viewer-3d-reset {
       position: absolute;
-      top: 16px;
-      right: 16px;
+      top: 8px;
+      right: 24px;
       padding: 8px 14px;
       border-radius: 8px;
       border: none;
@@ -2026,6 +2011,38 @@
       font-weight: 600;
       cursor: pointer;
       z-index: 2;
+    }
+    .viewer-3d-dims {
+      padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .viewer-3d-dims-card {
+      background: #1e2a33;
+      border-radius: 0 0 12px 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+    }
+    .viewer-3d-dim-item {
+      display: flex;
+      flex-direction: column;
+      min-width: 70px;
+    }
+    .viewer-3d-dim-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgba(255,255,255,0.5);
+    }
+    .viewer-3d-dim-value {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
     }
 
     /* EOD Overlay (Phase 2 prep) */
@@ -8114,7 +8131,8 @@
       '<div class="viewer-3d-canvas-wrap" id="viewer3dCanvasWrap">' +
       '  <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#fff;font-size:14px" id="viewer3dLoading">Loading 3D engine...</div>' +
       '  <button class="viewer-3d-reset" onclick="reset3DView()">Reset View</button>' +
-      '</div>';
+      '</div>' +
+      '<div class="viewer-3d-dims"><div class="viewer-3d-dims-card" id="viewer3dDimsCard"></div></div>';
 
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
@@ -8148,6 +8166,99 @@
 
   var _viewer3dCamera, _viewer3dControls, _viewer3dRenderer;
 
+  // ── 3D Dimension Helpers ──
+
+  function makeDimLabel(text, size) {
+    // Canvas-rendered sprite: white bold text on dark pill background
+    // size: 'lg' (key dims), 'md' (secondary), 'sm' (post labels)
+    var fontSize = size === 'lg' ? 48 : size === 'md' ? 36 : 28;
+    var pad = size === 'lg' ? 24 : 16;
+    var cv = document.createElement('canvas');
+    var ctx = cv.getContext('2d');
+    ctx.font = '900 ' + fontSize + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+    var tw = ctx.measureText(text).width;
+    cv.width = Math.ceil(tw + pad * 2);
+    cv.height = Math.ceil(fontSize * 1.4 + pad);
+    // Pill background
+    ctx.fillStyle = 'rgba(20,30,38,0.88)';
+    var r = cv.height / 2;
+    ctx.beginPath();
+    ctx.moveTo(r, 0); ctx.lineTo(cv.width - r, 0); ctx.arc(cv.width - r, r, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(r, cv.height); ctx.arc(r, r, r, Math.PI / 2, -Math.PI / 2);
+    ctx.fill();
+    // Text
+    ctx.font = '900 ' + fontSize + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cv.width / 2, cv.height / 2);
+
+    var tex = new THREE.CanvasTexture(cv);
+    tex.minFilter = THREE.LinearFilter;
+    var mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false });
+    var sprite = new THREE.Sprite(mat);
+    var aspect = cv.width / cv.height;
+    var scale = size === 'lg' ? 1.1 : size === 'md' ? 0.8 : 0.6;
+    sprite.scale.set(scale * aspect, scale, 1);
+    sprite.renderOrder = 999;
+    return sprite;
+  }
+
+  function addDimLine(scene, p1, p2, text, size, offset) {
+    // Orange polyline between two points with label at midpoint
+    var orange = 0xF15A29;
+    var off = offset || new THREE.Vector3(0, 0, 0);
+    var a = new THREE.Vector3(p1.x + off.x, p1.y + off.y, p1.z + off.z);
+    var b = new THREE.Vector3(p2.x + off.x, p2.y + off.y, p2.z + off.z);
+
+    // Main dimension line (thick)
+    var lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    var lineMat = new THREE.LineBasicMaterial({ color: orange, linewidth: 2, depthTest: false });
+    var dimLine = new THREE.Line(lineGeo, lineMat);
+    dimLine.renderOrder = 998;
+    scene.add(dimLine);
+
+    // Endpoint dots
+    var dotGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    var dotMat = new THREE.MeshBasicMaterial({ color: orange, depthTest: false });
+    var dot1 = new THREE.Mesh(dotGeo, dotMat);
+    dot1.position.copy(a); dot1.renderOrder = 998;
+    scene.add(dot1);
+    var dot2 = new THREE.Mesh(dotGeo, dotMat);
+    dot2.position.copy(b); dot2.renderOrder = 998;
+    scene.add(dot2);
+
+    // Extension lines (short perpendicular ticks at endpoints)
+    // Determine tick direction based on line orientation
+    var dir = new THREE.Vector3().subVectors(b, a).normalize();
+    var tickLen = 0.12;
+    // For horizontal lines, tick vertically; for vertical lines, tick horizontally
+    var tick;
+    if (Math.abs(dir.y) > 0.8) {
+      tick = new THREE.Vector3(tickLen, 0, 0);
+    } else if (Math.abs(dir.x) > 0.8) {
+      tick = new THREE.Vector3(0, tickLen, 0);
+    } else {
+      tick = new THREE.Vector3(0, tickLen, 0);
+    }
+    var tickMat = new THREE.LineBasicMaterial({ color: orange, depthTest: false });
+    var t1 = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3().subVectors(a, tick), new THREE.Vector3().addVectors(a, tick)
+    ]);
+    var tick1 = new THREE.Line(t1, tickMat); tick1.renderOrder = 998; scene.add(tick1);
+    var t2 = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3().subVectors(b, tick), new THREE.Vector3().addVectors(b, tick)
+    ]);
+    var tick2 = new THREE.Line(t2, tickMat); tick2.renderOrder = 998; scene.add(tick2);
+
+    // Label at midpoint
+    if (text) {
+      var label = makeDimLabel(text, size || 'lg');
+      label.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      scene.add(label);
+    }
+  }
+
   function init3DScene() {
     var wrap = document.getElementById('viewer3dCanvasWrap');
     var loadingEl = document.getElementById('viewer3dLoading');
@@ -8167,7 +8278,7 @@
     scene.background = new THREE.Color(0x1a1a2e);
 
     // Camera
-    var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
     camera.position.set(8, 6, 8);
     _viewer3dCamera = camera;
 
@@ -8192,7 +8303,8 @@
     scene.add(dirLight);
 
     // Ground grid
-    var gridHelper = new THREE.GridHelper(20, 20, 0x444466, 0x333355);
+    var gridSize = type === 'fencing' ? Math.max(40, (Number(config.totalLength || config.length) || 20) * 1.5) : 20;
+    var gridHelper = new THREE.GridHelper(gridSize, Math.min(gridSize, 40), 0x444466, 0x333355);
     scene.add(gridHelper);
 
     // Build model based on job type
@@ -8202,17 +8314,15 @@
       buildPatioModel(scene, config);
     }
 
-    // Info overlay
-    var infoEl = document.createElement('div');
-    infoEl.className = 'viewer-3d-info';
-    var dims = '';
-    if (type === 'fencing') {
-      dims = (config.totalLength || config.length || '?') + 'm long × ' + ((config.height || 1800) / 1000).toFixed(1) + 'm high';
-    } else {
-      dims = (config.length || '?') + 'm × ' + (config.projection || '?') + 'm';
+    // Dimension summary card (HTML below canvas)
+    var dimsCard = document.getElementById('viewer3dDimsCard');
+    if (dimsCard) {
+      if (type === 'fencing') {
+        renderFenceDimsCard(dimsCard, config);
+      } else {
+        renderPatioDimsCard(dimsCard, config);
+      }
     }
-    infoEl.textContent = dims;
-    wrap.appendChild(infoEl);
 
     // Animate
     function animate() {
@@ -8232,6 +8342,43 @@
       renderer.setSize(w2, h2);
     };
     window.addEventListener('resize', window._viewer3dResize);
+  }
+
+  function renderPatioDimsCard(el, config) {
+    var length = Number(config.length) || 6;
+    var projection = Number(config.projection) || 3;
+    var heightMm = Number(config.height) || 2700;
+    var posts = Number(config.posts) || 2;
+    var postSizeStr = config.postSize || '90x90';
+    var area = (length * projection).toFixed(1);
+    var h = '';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Width (Span)</div><div class="viewer-3d-dim-value">' + length + 'm</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Depth</div><div class="viewer-3d-dim-value">' + projection + 'm</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Height</div><div class="viewer-3d-dim-value">' + heightMm + 'mm</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Area</div><div class="viewer-3d-dim-value">' + area + 'm²</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Posts</div><div class="viewer-3d-dim-value">' + posts + ' × ' + postSizeStr + '</div></div>';
+    if (config.sheetColor || config.colour) {
+      h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Roof</div><div class="viewer-3d-dim-value">' + esc(config.sheetColor || config.colour) + '</div></div>';
+    }
+    el.innerHTML = h;
+  }
+
+  function renderFenceDimsCard(el, config) {
+    var totalLength = Number(config.totalLength || config.length) || 20;
+    var heightMm = Number(config.height) || 1800;
+    var gates = config.gates || [];
+    var numPanels = Math.ceil(totalLength / 2.4);
+    var h = '';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Total Run</div><div class="viewer-3d-dim-value">' + totalLength + 'm</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Height</div><div class="viewer-3d-dim-value">' + heightMm + 'mm</div></div>';
+    h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Panels</div><div class="viewer-3d-dim-value">~' + numPanels + '</div></div>';
+    if (gates.length > 0) {
+      h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Gates</div><div class="viewer-3d-dim-value">' + gates.length + '</div></div>';
+    }
+    if (config.colour || config.color) {
+      h += '<div class="viewer-3d-dim-item"><div class="viewer-3d-dim-label">Colour</div><div class="viewer-3d-dim-value">' + esc(config.colour || config.color) + '</div></div>';
+    }
+    el.innerHTML = h;
   }
 
   function buildPatioModel(scene, config) {
@@ -8271,8 +8418,9 @@
     var postGeo = new THREE.BoxGeometry(postSize, height, postSize);
     var spacing = length / (posts + 1);
     for (var i = 0; i < posts; i++) {
+      var postX = spacing * (i + 1);
       var post = new THREE.Mesh(postGeo, steelMat);
-      post.position.set(spacing * (i + 1), height / 2, projection);
+      post.position.set(postX, height / 2, projection);
       scene.add(post);
 
       // Post edges
@@ -8280,6 +8428,11 @@
       var line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x333333 }));
       line.position.copy(post.position);
       scene.add(line);
+
+      // Post position label (small, at base)
+      var postLabel = makeDimLabel('P' + (i + 1) + ' @ ' + postX.toFixed(1) + 'm', 'sm');
+      postLabel.position.set(postX, -0.3, projection);
+      scene.add(postLabel);
     }
 
     // Beam along the front
@@ -8311,6 +8464,32 @@
     roofLine.position.copy(roof.position);
     scene.add(roofLine);
 
+    // ── DIMENSION ANNOTATIONS ──
+
+    // Width (Span) — along the front beam, offset forward
+    addDimLine(scene,
+      { x: 0, y: height, z: projection },
+      { x: length, y: height, z: projection },
+      length + 'm  SPAN', 'lg',
+      new THREE.Vector3(0, 0.4, 0.5)
+    );
+
+    // Depth (Projection) — along the right side, ground level
+    addDimLine(scene,
+      { x: length, y: 0, z: 0 },
+      { x: length, y: 0, z: projection },
+      projection + 'm  DEPTH', 'lg',
+      new THREE.Vector3(0.5, 0.15, 0)
+    );
+
+    // Height — right front post, vertical
+    addDimLine(scene,
+      { x: length + 0.5, y: 0, z: projection },
+      { x: length + 0.5, y: height, z: projection },
+      (height * 1000).toFixed(0) + 'mm', 'md',
+      new THREE.Vector3(0.3, 0, 0.3)
+    );
+
     // Center camera
     if (_viewer3dCamera) {
       _viewer3dCamera.position.set(length * 0.8, height * 1.2, projection * 2);
@@ -8335,6 +8514,7 @@
     var sheetMat = new THREE.MeshLambertMaterial({ color: sheetColor, side: THREE.DoubleSide });
 
     var postGeo = new THREE.BoxGeometry(0.065, height, 0.065);
+    var gatePositions = []; // track gate X positions for labels
 
     for (var i = 0; i < numPosts; i++) {
       var x = i * actualSpacing;
@@ -8354,7 +8534,6 @@
         var isGate = false;
         var gates = config.gates;
         if (gates && Array.isArray(gates)) {
-          // Simple: mark middle posts as gates
           var gatePosts = [];
           for (var g = 0; g < gates.length; g++) {
             gatePosts.push(Math.floor(numPosts / 2) + g);
@@ -8369,6 +8548,12 @@
           var gate = new THREE.Mesh(gateGeo, gateMat);
           gate.position.set(x + actualSpacing / 2, height * 0.45, 0);
           scene.add(gate);
+
+          // Gate label
+          gatePositions.push(x + actualSpacing / 2);
+          var gateLabel = makeDimLabel('GATE', 'md');
+          gateLabel.position.set(x + actualSpacing / 2, height + 0.3, 0);
+          scene.add(gateLabel);
         } else {
           var panelGeo = new THREE.PlaneGeometry(actualSpacing - 0.07, height);
           var panel = new THREE.Mesh(panelGeo, sheetMat);
@@ -8393,6 +8578,34 @@
     var bottomRail = new THREE.Mesh(railGeo, steelMat);
     bottomRail.position.set(totalLength / 2, 0.05, 0);
     scene.add(bottomRail);
+
+    // ── DIMENSION ANNOTATIONS ──
+
+    // Total run — along the top, offset above
+    addDimLine(scene,
+      { x: 0, y: height, z: 0 },
+      { x: totalLength, y: height, z: 0 },
+      totalLength + 'm  TOTAL RUN', 'lg',
+      new THREE.Vector3(0, 0.5, 0.5)
+    );
+
+    // Panel height — right end, vertical
+    addDimLine(scene,
+      { x: totalLength, y: 0, z: 0 },
+      { x: totalLength, y: height, z: 0 },
+      (height * 1000).toFixed(0) + 'mm', 'md',
+      new THREE.Vector3(0.4, 0, 0.4)
+    );
+
+    // Post spacing label (one example near the start)
+    if (numPosts > 2) {
+      addDimLine(scene,
+        { x: 0, y: 0, z: 0 },
+        { x: actualSpacing, y: 0, z: 0 },
+        actualSpacing.toFixed(2) + 'm  SPACING', 'sm',
+        new THREE.Vector3(0, -0.3, 0.4)
+      );
+    }
 
     // Center camera
     if (_viewer3dCamera) {
