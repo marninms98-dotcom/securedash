@@ -522,7 +522,7 @@
     }
     .cal-swim-cell.dimmed { opacity: 0.3; }
     .cal-swim-cell.weekend { background: var(--sw-bg); }
-    .cal-swim-cell.today-col { border-left: 2px solid rgba(241,90,41,0.35); border-right: 2px solid rgba(241,90,41,0.35); }
+    .cal-swim-cell.today-col { border-left: 2.5px solid rgba(241,90,41,0.5); border-right: 2.5px solid rgba(241,90,41,0.5); background: rgba(241,90,41,0.04); }
     .cal-swim-cell.avail-available { background: rgba(39,174,96,0.06); }
     .cal-swim-cell.avail-unavailable { background: rgba(231,76,60,0.06); }
     .cal-swim-cell.avail-leave { background: #f5f5f5; }
@@ -539,21 +539,21 @@
       cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-weight: 500; position: relative; user-select: none;
     }
-    /* ── Certainty = border + opacity (no background) ── */
+    /* ── Certainty = border + opacity only. Text colour stays neutral. ── */
     .cal-job-block.placeholder {
-      border: 1.5px dashed #ccc; color: #9CA3AF; opacity: 0.35;
+      border: 1.5px dashed #ccc; opacity: 0.35;
     }
     .cal-job-block.tentative {
-      border: 1px solid #8FA4B2; color: #4C6A7C; opacity: 0.80;
+      border: 1px solid var(--sw-border); opacity: 0.80;
     }
     .cal-job-block.confirmed {
-      border: 2px solid #27AE60; color: #15803d; opacity: 1; font-weight: 700;
+      border: 2px solid #27AE60; opacity: 1; font-weight: 700;
     }
     .cal-job-block.in_progress {
-      border: 2px solid #3498DB; color: #1e6faa; opacity: 1;
+      border: 2px solid #3498DB; opacity: 1;
     }
     .cal-job-block.completed {
-      border: 1px solid rgba(39,174,96,0.3); color: #5a8a6d; opacity: 0.5;
+      border: 1px solid rgba(39,174,96,0.3); opacity: 0.5;
     }
     /* ── Readiness = card background fill (loudest signal) ── */
     .cal-job-block.readiness-ready { background: rgba(34,197,94,0.08) !important; }
@@ -8470,6 +8470,7 @@ async function submitAssignment() {
 
     if (_editAssignmentId) {
       // Delete old assignment and create new one (update_assignment doesn't support crew changes)
+      var editEv = _calEvents.find(function(e) { return e.assignment_id === _editAssignmentId; });
       await opsPost('delete_assignment', { assignmentId: _editAssignmentId });
       await opsPost('create_assignment', {
         jobId: jobId,
@@ -8483,6 +8484,23 @@ async function submitAssignment() {
         role: 'lead_installer',
         notes: notes,
       });
+
+      // Sync dates to sibling assignments (other crew on same job)
+      if (editEv) {
+        var siblings = _calEvents.filter(function(e) {
+          return e.job_id === editEv.job_id && e.assignment_id !== _editAssignmentId;
+        });
+        for (var s = 0; s < siblings.length; s++) {
+          try {
+            await opsPost('update_assignment', {
+              assignmentId: siblings[s].assignment_id,
+              scheduled_date: date,
+              scheduled_end: endDate,
+            });
+          } catch(e) { /* best effort */ }
+        }
+      }
+
       _editAssignmentId = null;
       var totalAssigned = 1;
     } else {
