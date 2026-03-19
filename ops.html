@@ -2920,32 +2920,25 @@ function fmtTime(t) {
   return t.slice(0, 5);
 }
 
-// ── Weather (Open-Meteo, Perth) ──
-var WEATHER_CACHE_KEY = 'sw_weather_cache';
+// ── Weather (BOM Australia — Perth metro, geohash qd66hrm) ──
+var WEATHER_CACHE_KEY = 'sw_weather_cache_bom';
 var WEATHER_CACHE_TTL = 3600000; // 1 hour
 
-var WMO_CODES = {
-  0: { icon: '\u2600\uFE0F', label: 'Clear' },
-  1: { icon: '\uD83C\uDF24', label: 'Mainly clear' },
-  2: { icon: '\u26C5', label: 'Partly cloudy' },
-  3: { icon: '\u2601\uFE0F', label: 'Overcast' },
-  45: { icon: '\uD83C\uDF2B', label: 'Fog' },
-  48: { icon: '\uD83C\uDF2B', label: 'Fog' },
-  51: { icon: '\uD83C\uDF26', label: 'Light drizzle' },
-  53: { icon: '\uD83C\uDF26', label: 'Drizzle' },
-  55: { icon: '\uD83C\uDF27', label: 'Heavy drizzle' },
-  61: { icon: '\uD83C\uDF27', label: 'Light rain' },
-  63: { icon: '\uD83C\uDF27', label: 'Rain' },
-  65: { icon: '\uD83C\uDF27\uFE0F', label: 'Heavy rain' },
-  80: { icon: '\uD83C\uDF26', label: 'Showers' },
-  81: { icon: '\uD83C\uDF27', label: 'Heavy showers' },
-  82: { icon: '\u26C8', label: 'Violent showers' },
-  95: { icon: '\u26C8', label: 'Thunderstorm' },
-  96: { icon: '\u26C8', label: 'Thunderstorm + hail' },
-  99: { icon: '\u26C8', label: 'Severe thunderstorm' },
-};
-
 var weatherData = null;
+
+function bomWeatherIcon(shortText) {
+  if (!shortText) return '\uD83C\uDF21';
+  var t = shortText.toLowerCase();
+  if (t.indexOf('storm') !== -1 || t.indexOf('thunder') !== -1) return '\u26C8';
+  if (t.indexOf('heavy rain') !== -1 || t.indexOf('heavy shower') !== -1) return '\uD83C\uDF27\uFE0F';
+  if (t.indexOf('rain') !== -1 || t.indexOf('shower') !== -1) return '\uD83C\uDF27';
+  if (t.indexOf('drizzle') !== -1) return '\uD83C\uDF26';
+  if (t.indexOf('fog') !== -1) return '\uD83C\uDF2B';
+  if (t.indexOf('overcast') !== -1 || t.indexOf('cloudy') !== -1) return '\u2601\uFE0F';
+  if (t.indexOf('partly') !== -1 || t.indexOf('mostly sunny') !== -1) return '\u26C5';
+  if (t.indexOf('clear') !== -1 || t.indexOf('sunny') !== -1) return '\u2600\uFE0F';
+  return '\uD83C\uDF24';
+}
 
 async function loadWeather() {
   // Check cache
@@ -2959,25 +2952,31 @@ async function loadWeather() {
   } catch (e) {}
 
   try {
-    var res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=-31.95&longitude=115.86&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=Australia%2FPerth&forecast_days=14');
+    var res = await fetch('https://api.weather.bom.gov.au/v1/locations/qd66hrm/forecasts/daily', {
+      headers: { 'Accept': 'application/json' }
+    });
     var json = await res.json();
 
     // Build lookup by date
     var days = {};
-    var d = json.daily;
-    for (var i = 0; i < d.time.length; i++) {
-      var code = d.weather_code[i];
-      var wmo = WMO_CODES[code] || { icon: '\uD83C\uDF21', label: 'Unknown' };
-      days[d.time[i]] = {
-        date: d.time[i],
-        icon: wmo.icon,
-        label: wmo.label,
-        code: code,
-        max: Math.round(d.temperature_2m_max[i]),
-        min: Math.round(d.temperature_2m_min[i]),
-        rain_mm: d.precipitation_sum[i],
-        rain_pct: d.precipitation_probability_max[i],
-        wind_max: Math.round(d.wind_speed_10m_max[i]),
+    var forecasts = json.data || [];
+    for (var i = 0; i < forecasts.length; i++) {
+      var fc = forecasts[i];
+      var dateStr = (fc.date || '').slice(0, 10);
+      if (!dateStr) continue;
+      var shortText = fc.short_text || fc.extended_text || '';
+      var rainChance = (fc.rain || {}).chance || 0;
+      var rainAmount = (fc.rain || {}).amount || {};
+      var rainMm = rainAmount.max || rainAmount.min || 0;
+      days[dateStr] = {
+        date: dateStr,
+        icon: bomWeatherIcon(shortText),
+        label: shortText,
+        max: fc.temp_max != null ? Math.round(fc.temp_max) : null,
+        min: fc.temp_min != null ? Math.round(fc.temp_min) : null,
+        rain_mm: rainMm,
+        rain_pct: rainChance,
+        wind_max: null,
       };
     }
     weatherData = days;
@@ -2985,7 +2984,33 @@ async function loadWeather() {
     renderWeatherBanner();
     return days;
   } catch (e) {
-    console.log('[weather] Failed to load:', e.message);
+    console.log('[weather] BOM fetch failed, falling back to Open-Meteo:', e.message);
+    return loadWeatherFallback();
+  }
+}
+
+// Fallback to Open-Meteo if BOM is down (CORS issues etc)
+async function loadWeatherFallback() {
+  try {
+    var res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=-31.9505&longitude=115.8605&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=Australia%2FPerth&forecast_days=14');
+    var json = await res.json();
+    var WMO = { 0:'\u2600\uFE0F', 1:'\uD83C\uDF24', 2:'\u26C5', 3:'\u2601\uFE0F', 51:'\uD83C\uDF26', 53:'\uD83C\uDF26', 61:'\uD83C\uDF27', 63:'\uD83C\uDF27', 65:'\uD83C\uDF27', 80:'\uD83C\uDF26', 81:'\uD83C\uDF27', 95:'\u26C8' };
+    var days = {};
+    var d = json.daily;
+    for (var i = 0; i < d.time.length; i++) {
+      days[d.time[i]] = {
+        date: d.time[i], icon: WMO[d.weather_code[i]] || '\uD83C\uDF21', label: 'Forecast',
+        max: Math.round(d.temperature_2m_max[i]), min: Math.round(d.temperature_2m_min[i]),
+        rain_mm: d.precipitation_sum[i], rain_pct: d.precipitation_probability_max[i],
+        wind_max: Math.round(d.wind_speed_10m_max[i]),
+      };
+    }
+    weatherData = days;
+    sessionStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: days }));
+    renderWeatherBanner();
+    return days;
+  } catch (e2) {
+    console.log('[weather] Fallback also failed:', e2.message);
     return null;
   }
 }
@@ -2997,14 +3022,16 @@ function getWeatherForDate(dateStr) {
 
 function weatherBadgeHtml(dateStr, compact) {
   var w = getWeatherForDate(dateStr);
-  if (!w) return '';
+  if (!w || w.max == null) return '';
 
   var isRainy = w.rain_pct > 40 || w.rain_mm > 2;
   var isHot = w.max >= 38;
   var borderColor = isRainy ? '#e74c3c' : isHot ? '#F15A29' : '#4C6A7C';
+  var tempStr = w.max + '\u00B0' + (w.min != null ? '/' + w.min + '\u00B0' : '');
+  var windStr = w.wind_max != null ? ' | Wind: ' + w.wind_max + 'km/h' : '';
 
   if (compact) {
-    return '<span class="weather-badge-compact" title="' + w.label + ' ' + w.max + '\u00B0/' + w.min + '\u00B0 | Rain: ' + w.rain_pct + '% (' + w.rain_mm + 'mm) | Wind: ' + w.wind_max + 'km/h">' + w.icon + ' ' + w.max + '\u00B0</span>';
+    return '<span class="weather-badge-compact" title="' + w.label + ' ' + tempStr + ' | Rain: ' + (w.rain_pct || 0) + '% (' + (w.rain_mm || 0) + 'mm)' + windStr + '">' + w.icon + ' ' + w.max + '\u00B0</span>';
   }
 
   return '<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:1px solid ' + borderColor + '20;background:' + borderColor + '08;font-size:0.82rem;color:#293C46">'
