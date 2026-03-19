@@ -7006,6 +7006,35 @@ function renderFilesView(data) {
   var j = data.job;
   var html = '';
 
+  // ── Readiness Checklist (from backend) ──
+  var readiness = data.readiness;
+  if (readiness) {
+    var statusColors = { blocked: '#EF4444', at_risk: '#F59E0B', ready: '#22C55E' };
+    var statusLabels = { blocked: 'Blocked', at_risk: 'At Risk', ready: 'Ready' };
+    var statusIcons = { blocked: '&#128308;', at_risk: '&#128992;', ready: '&#128994;' };
+
+    html += '<div style="margin-bottom:16px;padding:12px;background:var(--sw-light);border-radius:8px;border-left:3px solid ' + (statusColors[readiness.status] || '#6B7280') + '">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:14px;font-weight:700">Job Readiness</div>';
+    html += '<div style="font-size:12px;font-weight:700;color:' + (statusColors[readiness.status] || '#6B7280') + '">' + statusIcons[readiness.status] + ' ' + (statusLabels[readiness.status] || readiness.status) + ' &middot; ' + readiness.score + '%</div>';
+    html += '</div>';
+
+    // Show all items grouped by severity
+    var allItems = [].concat(readiness.blockers || [], readiness.warnings || [], readiness.completeness || []);
+    allItems.forEach(function(item) {
+      var icon = item.met ? '&#9989;' : (item.severity === 'blocker' ? '&#128308;' : item.severity === 'warning' ? '&#128992;' : '&#9898;');
+      var textStyle = item.met ? 'color:var(--sw-text-sec);' : (item.severity === 'blocker' ? 'color:#EF4444;font-weight:600;' : item.severity === 'warning' ? 'color:#D97706;' : 'color:var(--sw-text-sec);');
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;' + textStyle + '">';
+      html += '<span>' + icon + '</span>';
+      html += '<span' + (item.met ? ' style="text-decoration:line-through;opacity:0.6"' : '') + '>' + escapeHtml(item.label) + '</span>';
+      if (!item.met && item.severity !== 'optional') {
+        html += '<span style="font-size:10px;text-transform:uppercase;letter-spacing:0.3px;opacity:0.7">' + item.severity + '</span>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   // Photos
   var jobPhotos = (data.media || []).filter(function(m) { return m.phase !== 'receipt'; });
   var receiptPhotos = (data.media || []).filter(function(m) { return m.phase === 'receipt'; });
@@ -7048,11 +7077,11 @@ function renderFilesView(data) {
   html += '  <div style="font-size:13px;color:var(--sw-text-sec)">Drag files here or tap to upload</div>';
   html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">Photos, PDFs, videos</div>';
   html += '</div>';
-  html += '<input type="file" id="jdFileInput" multiple accept="image/*,video/*,.pdf,.doc,.docx" style="display:none" onchange="handleDocFiles(this.files)">';
+  html += '<input type="file" id="jdFileInput" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" style="display:none" onchange="handleDocFiles(this.files)">';
   html += '<div id="jdUploadQueue" style="margin-top:8px"></div>';
   html += '</div>';
 
-  // Documents — with visibility controls
+  // Documents — with visibility controls, thumbnails, delete
   var allDocs = data.documents || [];
   if (allDocs.length > 0) {
     html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Documents (' + allDocs.length + ')</div>';
@@ -7065,12 +7094,28 @@ function renderFilesView(data) {
       var typeColors = {
         council_plans: '#8B5CF6', engineering: '#3B82F6', work_order: '#F59E0B',
         supplier_quote: '#EF4444', site_photo: '#10B981', approval: '#6366F1',
-        quote: '#F97316', general: '#6B7280'
+        quote: '#F97316', general: '#6B7280', client_reference: '#0EA5E9',
+        asbestos: '#DC2626', other: '#9CA3AF'
       };
       var badgeColor = typeColors[doc.type] || '#6B7280';
 
+      // File type icon
+      var fileIcon = '&#128196;'; // default doc
+      if (name && /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(name)) fileIcon = '&#128247;';
+      else if (name && /\.pdf$/i.test(name)) fileIcon = '&#128213;';
+      else if (name && /\.(mp4|mov|avi|webm)$/i.test(name)) fileIcon = '&#127909;';
+      else if (name && /\.(doc|docx)$/i.test(name)) fileIcon = '&#128462;';
+      else if (name && /\.(xls|xlsx)$/i.test(name)) fileIcon = '&#128202;';
+
       html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;">';
       html += '<div style="display:flex;align-items:center;gap:8px;">';
+
+      // Thumbnail or file icon
+      if (url && /\.(jpg|jpeg|png|gif|webp)$/i.test(name)) {
+        html += '<img src="' + escapeHtml(url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:3px;cursor:pointer;flex-shrink:0" onclick="window.open(\'' + escapeHtml(url) + '\',\'_blank\')">';
+      } else {
+        html += '<span style="font-size:20px;flex-shrink:0;width:32px;text-align:center">' + fileIcon + '</span>';
+      }
 
       // Type badge
       html += '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;padding:2px 6px;border-radius:3px;background:' + badgeColor + '20;color:' + badgeColor + ';white-space:nowrap">' + escapeHtml((doc.type || 'general').replace(/_/g, ' ')) + '</span>';
@@ -7087,11 +7132,17 @@ function renderFilesView(data) {
       // View button
       if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;">View</a>';
 
+      // Delete button
+      html += '<button onclick="deleteDocument(\'' + doc.id + '\',\'' + escapeHtml(name).replace(/'/g, "\\'") + '\')" style="background:none;border:none;cursor:pointer;padding:4px;font-size:14px;color:var(--sw-text-sec);opacity:0.5" title="Delete">&times;</button>';
+
       html += '</div>';
 
-      // Date
-      if (doc.created_at) {
-        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">' + fmtDate(doc.created_at) + '</div>';
+      // Date + uploaded by
+      var metaLine = '';
+      if (doc.created_at) metaLine += fmtDate(doc.created_at);
+      if (doc.uploaded_by) metaLine += (metaLine ? ' &middot; ' : '') + escapeHtml(doc.uploaded_by);
+      if (metaLine) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;margin-left:40px">' + metaLine + '</div>';
       }
       html += '</div>';
     });
@@ -7119,7 +7170,7 @@ function renderFilesView(data) {
   html += '<button class="btn btn-primary btn-sm" onclick="submitJobNote()">Add</button>';
   html += '</div>';
 
-  if (jobPhotos.length === 0 && receiptPhotos.length === 0 && (data.documents || []).length === 0 && noteEvents.length === 0) {
+  if (!readiness && jobPhotos.length === 0 && receiptPhotos.length === 0 && (data.documents || []).length === 0 && noteEvents.length === 0) {
     html = '<div class="empty-state"><div class="empty-state-icon">&#128247;</div><div class="empty-state-text">No files or notes yet</div></div>' + html.slice(html.lastIndexOf('<div class="jd-note-input-wrap">'));
   }
 
@@ -7136,21 +7187,24 @@ window.handleDocFiles = function(files) {
   var queue = document.getElementById('jdUploadQueue');
 
   Array.from(files).forEach(function(file) {
-    // Auto-detect type from file
+    // Auto-detect type from file name + MIME
     var docType = 'general';
     var fname = file.name.toLowerCase();
-    if (/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fname)) docType = 'site_photo';
+    var fmime = (file.type || '').toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fname) || fmime.startsWith('image/')) docType = 'site_photo';
     else if (/council|permit|approval/i.test(fname)) docType = 'council_plans';
     else if (/engineer|structural|cert/i.test(fname)) docType = 'engineering';
     else if (/quote|supplier/i.test(fname)) docType = 'supplier_quote';
     else if (/work.?order|wo\b/i.test(fname)) docType = 'work_order';
+    else if (/asbestos|hazmat/i.test(fname)) docType = 'asbestos';
+    else if (/reference|client.?ref/i.test(fname)) docType = 'client_reference';
 
     // Show upload row with type selector
     var rowId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
     var rowHtml = '<div id="' + rowId + '" style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px">';
     rowHtml += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(file.name) + '</span>';
     rowHtml += '<select id="' + rowId + '_type" style="font-size:11px;padding:2px 4px;border:1px solid var(--sw-border);border-radius:4px">';
-    ['site_photo','council_plans','engineering','supplier_quote','work_order','approval','general'].forEach(function(t) {
+    ['site_photo','council_plans','engineering','supplier_quote','work_order','approval','client_reference','asbestos','general','other'].forEach(function(t) {
       rowHtml += '<option value="' + t + '"' + (t === docType ? ' selected' : '') + '>' + t.replace(/_/g, ' ') + '</option>';
     });
     rowHtml += '</select>';
@@ -7223,6 +7277,16 @@ window.toggleDocVisibility = async function(docId, newValue) {
   try {
     await opsPost('toggle_document_visibility', { documentId: docId, visible_to_trades: newValue });
     // Refresh
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch (err) {
+    alert('Error: ' + (err.message || err));
+  }
+};
+
+window.deleteDocument = async function(docId, fileName) {
+  if (!confirm('Delete "' + fileName + '"? This cannot be undone.')) return;
+  try {
+    await opsPost('delete_document', { documentId: docId });
     if (_currentJobId) openJobDetail(_currentJobId);
   } catch (err) {
     alert('Error: ' + (err.message || err));
