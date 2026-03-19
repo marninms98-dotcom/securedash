@@ -5273,12 +5273,38 @@ async function confirmAssignment(assignmentId, notify) {
 
 async function doConfirmAssignment(assignmentId, notify) {
   try {
+    // Find all assignments for the same job and confirm them all
+    var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
+    var siblingIds = [];
+    if (ev) {
+      _calEvents.forEach(function(e) {
+        if (e.job_id === ev.job_id && e.assignment_id !== assignmentId) {
+          var cs = e.confirmation_status || 'tentative';
+          if (cs !== 'confirmed') siblingIds.push(e.assignment_id);
+        }
+      });
+    }
+
+    // Confirm the primary assignment (with optional client notification)
     await opsPost('confirm_assignment', {
       assignmentId: assignmentId,
       notifyClient: notify,
     });
+
+    // Silently confirm sibling assignments (same job, different crew)
+    for (var i = 0; i < siblingIds.length; i++) {
+      try {
+        await opsPost('confirm_assignment', {
+          assignmentId: siblingIds[i],
+          notifyClient: false,
+        });
+      } catch(e) { /* best effort */ }
+    }
+
     closeCalJobPopup();
-    showToast(notify ? 'Confirmed & client notified' : 'Confirmed', 'success');
+    var msg = notify ? 'Confirmed & client notified' : 'Confirmed';
+    if (siblingIds.length > 0) msg += ' (' + (siblingIds.length + 1) + ' crew assignments)';
+    showToast(msg, 'success');
     loadCalendar();
   } catch (e) {
     showToast('Error: ' + e.message, 'warning');
