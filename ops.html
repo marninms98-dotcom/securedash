@@ -4306,24 +4306,21 @@ function renderSwimlaneView(container, range) {
     return a.localeCompare(b);
   });
 
-  // ── Filter crew rows: always show field crew (capacity view), hide admin/sales unless assigned ──
-  var fieldCrewIds = new Set();
-  _crewList.forEach(function(u) {
-    if (['installer','trade','subcontractor','lead_installer'].includes(u.role)) fieldCrewIds.add(u.id);
+  // ── Filter crew rows: show field crew, hide office-only staff unless assigned ──
+  // Roles in DB are unreliable (most are 'estimator'), so use a known-office list instead.
+  // Everyone NOT in this list is treated as field crew and always shown.
+  var OFFICE_ONLY_NAMES = ['Marnin', 'Nithin', 'Khairo'];
+  var assignedNames = new Set();
+  _calEvents.forEach(function(ev) {
+    var cn = cleanCrewName(ev.crew_name || ev.assigned_to);
+    if (cn) assignedNames.add(cn);
   });
-  var assignedUserIds = new Set();
-  _calEvents.forEach(function(ev) { if (ev.user_id) assignedUserIds.add(ev.user_id); });
   crewNames = crewNames.filter(function(name) {
     if (name === 'Unassigned') return true;
-    var cd = crewMap[name];
-    if (!cd) return false;
-    var userId = cd.userId;
-    // Always show field crew — empty rows show available capacity
-    if (userId && fieldCrewIds.has(userId)) return true;
-    // Non-field roles: only show if they have assignments in this range
-    if (userId) return assignedUserIds.has(userId);
-    // No userId match: show if they have events
-    return Object.keys(cd.events).length > 0;
+    // Office-only staff: hide unless they have assignments in this range
+    if (OFFICE_ONLY_NAMES.indexOf(name) !== -1) return assignedNames.has(name);
+    // Everyone else (field crew): always show
+    return true;
   });
 
   if (crewNames.length === 0) crewNames = ['No assignments'];
