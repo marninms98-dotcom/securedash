@@ -5080,9 +5080,11 @@ function openCalJobPopup(event, assignmentId) {
   var isReady = readiness && readiness.status === 'ready';
   var isLocked = confStatus === 'confirmed';
 
-  // 1. Title + close
-  var html = '<div style="display:flex;justify-content:space-between;align-items:start;">';
-  html += '<div class="cal-job-popup-title">' + (ev.job_number || '') + ' ' + escapeHtml(ev.client_name || 'Unknown') + '</div>';
+  // 1. Title + Open Job + close
+  var html = '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">';
+  html += '<div class="cal-job-popup-title">' + (ev.job_number || '') + ' ' + escapeHtml(ev.client_name || 'Unknown');
+  html += ' <span onclick="event.stopPropagation();closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')" style="display:inline-block;font-size:10px;font-weight:600;color:var(--sw-mid);background:var(--sw-light);padding:1px 6px;border-radius:100px;cursor:pointer;vertical-align:middle;margin-left:4px;">Open Job</span>';
+  html += '</div>';
   html += '<button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button>';
   html += '</div>';
 
