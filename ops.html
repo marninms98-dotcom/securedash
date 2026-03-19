@@ -6522,7 +6522,7 @@ function renderJobPeek(data) {
   // ── Scope Summary ──
   if (j.scope_json) {
     html += '<div class="panel-title" style="margin-top:16px;">Scope Summary</div>';
-    html += renderScopeSummary(j.scope_json, j.type);
+    html += renderScopeSummary(j.scope_json, j.type, j.id);
   }
 
   // Assignments
@@ -6661,34 +6661,116 @@ function formatEventType(type, detail) {
   return labels[type] || type.replace(/_/g, ' ');
 }
 
-function renderScopeSummary(scope_json, jobType) {
+// ── Site Plan Image Overlay ──
+function showSitePlanOverlay(src) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(26,39,46,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:16px;';
+  overlay.onclick = function() { overlay.remove(); };
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+// ── Site Plan Panel ──
+function renderSitePlanPanel(scope_json, compact) {
+  var scope = typeof scope_json === 'string' ? JSON.parse(scope_json) : scope_json;
+  if (!scope) return '';
+  var imgSrc = null;
+  var label = 'Site Plan';
+
+  // Patio: scope_json.client._sitePlanImage
+  if (scope.client && scope.client._sitePlanImage) {
+    imgSrc = scope.client._sitePlanImage;
+    label = 'Site Plan (Patio Scope)';
+  }
+  // Fencing: scope_json.job.sitePlanImage
+  if (!imgSrc && scope.job && scope.job.sitePlanImage) {
+    imgSrc = scope.job.sitePlanImage;
+    label = 'Site Plan (Fencing Scope)';
+  }
+  // Fallback: Google Static Maps satellite if coordinates available
+  if (!imgSrc) {
+    var latlng = null;
+    if (scope.client && scope.client._latlng) latlng = scope.client._latlng;
+    else if (scope.job && scope.job._latlng) latlng = scope.job._latlng;
+    if (latlng && latlng.lat && latlng.lng) {
+      imgSrc = 'https://maps.googleapis.com/maps/api/staticmap?center=' + latlng.lat + ',' + latlng.lng + '&zoom=19&size=600x400&maptype=satellite&key=AIzaSyCVNUaGS6k6MBG6_-MbCyiIGUajnzHU7DM';
+      label = 'Satellite View';
+    }
+  }
+
+  if (!imgSrc) return '';
+  var maxW = compact ? '200px' : '100%';
+  var html = '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">&#128205; ' + label + '</div>';
+  html += '<img src="' + imgSrc + '" style="max-width:' + maxW + ';width:100%;cursor:pointer;display:block;" onclick="showSitePlanOverlay(this.src)" alt="Site plan">';
+  html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:4px;">Click to enlarge</div>';
+  html += '</div>';
+  return html;
+}
+
+// ── Document Links by Type ──
+function renderDocumentLinks(documents, types, heading) {
+  var docs = (documents || []).filter(function(d) { return types.indexOf(d.type) >= 0; });
+  if (docs.length === 0) return '';
+  var html = '<div style="margin-top:12px;">';
+  html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">' + heading + '</div>';
+  docs.forEach(function(doc) {
+    var url = doc.storage_url || doc.pdf_url;
+    var name = doc.file_name || doc.type || 'Document';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:13px;">';
+    html += '<span style="font-size:16px;">&#128196;</span>';
+    html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name) + '</span>';
+    if (doc.version > 1) html += '<span style="font-size:11px;color:var(--sw-text-sec);">v' + doc.version + '</span>';
+    if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;text-decoration:none;">View</a>';
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderScopeSummary(scope_json, jobType, jobId) {
   var scope = typeof scope_json === 'string' ? JSON.parse(scope_json) : scope_json;
   if (!scope) return '<div style="font-size:12px; color:var(--sw-text-sec); padding:4px 0;">No scope data</div>';
 
   var config = scope.config || scope;
+  var badgeStyle = 'display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;margin:2px 3px 2px 0;background:var(--sw-light);color:var(--sw-dark);border-left:3px solid var(--sw-mid);';
   var html = '<div style="font-size:12px; padding:6px 0; line-height:1.6;">';
 
   if (jobType === 'fencing') {
     // Fencing scope summary
-    var sections = scope.sections || [];
+    var fenceJob = scope.job || {};
+    var sections = fenceJob.runs || scope.sections || [];
     if (sections.length > 0) {
-      var totalMetres = sections.reduce(function(s, sec) { return s + (sec.length || 0); }, 0);
+      var totalMetres = sections.reduce(function(s, sec) { return s + (parseFloat(sec.length) || 0); }, 0);
       var totalPanels = sections.reduce(function(s, sec) { return s + (sec.panels || []).length; }, 0);
-      html += '<div><strong>Total:</strong> ' + totalMetres.toFixed(1) + 'm fence, ' + totalPanels + ' panels across ' + sections.length + ' section' + (sections.length === 1 ? '' : 's') + '</div>';
+      html += '<div><strong>Total:</strong> ' + totalMetres.toFixed(1) + 'm fence across ' + sections.length + ' run' + (sections.length === 1 ? '' : 's') + '</div>';
+      // Visual badges
+      html += '<div style="margin:6px 0;">';
+      html += '<span style="' + badgeStyle + '">' + totalMetres.toFixed(1) + 'm total</span>';
+      if (totalPanels > 0) html += '<span style="' + badgeStyle + '">' + totalPanels + ' panels</span>';
+      var fenceColor = fenceJob.sheetColour || fenceJob.colour || '';
+      if (fenceColor) html += '<span style="' + badgeStyle + 'border-color:var(--sw-orange);">&#127912; ' + escapeHtml(fenceColor) + '</span>';
+      var fenceProfile = fenceJob.profile || '';
+      if (fenceProfile) html += '<span style="' + badgeStyle + '">' + escapeHtml(fenceProfile) + '</span>';
+      html += '</div>';
       sections.forEach(function(sec, i) {
-        html += '<div style="margin-left:8px; color:var(--sw-text-sec);">Section ' + (i+1) + ': ' + (sec.length || 0) + 'm, ' + (sec.sheetHeight || 1800) + 'mm high';
+        html += '<div style="margin-left:8px; color:var(--sw-text-sec);">Run ' + (i+1) + ': ' + (sec.length || 0) + 'm, ' + (sec.sheetHeight || 1800) + 'mm high';
         if (sec.retaining) html += ', retaining';
         html += '</div>';
       });
     }
     // Gates
-    var gates = scope.gates || [];
+    var gates = fenceJob.gates || scope.gates || [];
     if (gates.length > 0) {
-      html += '<div><strong>Gates:</strong> ' + gates.map(function(g) { return (g.type || 'pedestrian') + ' (' + (g.width || 900) + 'mm)'; }).join(', ') + '</div>';
+      html += '<div style="margin:4px 0;"><strong>Gates (' + gates.length + '):</strong> ' + gates.map(function(g) { return (g.type || 'pedestrian') + ' (' + (g.width || 900) + 'mm)'; }).join(', ') + '</div>';
     }
     // Removal
-    if (scope.removal && (scope.removal.length > 0 || scope.removal.totalMetres > 0)) {
-      html += '<div><strong>Removal:</strong> ' + (scope.removal.totalMetres || scope.removal.length || 0) + 'm old fence</div>';
+    var removal = fenceJob.removal || scope.removal;
+    if (removal && (removal.length > 0 || removal.totalMetres > 0)) {
+      html += '<div><strong>Removal:</strong> ' + (removal.totalMetres || removal.length || 0) + 'm old fence</div>';
     }
   } else {
     // Patio scope summary
@@ -6697,15 +6779,26 @@ function renderScopeSummary(scope_json, jobType) {
       if (config.length && config.projection) html += ' (' + (config.length * config.projection).toFixed(1) + 'm²)';
       html += '</div>';
     }
-    if (config.roofStyle) html += '<div><strong>Style:</strong> ' + config.roofStyle + '</div>';
-    if (config.roofing || config.panel_type) html += '<div><strong>Roofing:</strong> ' + (config.roofing || config.panel_type) + '</div>';
-    if (config.connection) html += '<div><strong>Connection:</strong> ' + config.connection + '</div>';
-    if (config.steelColor) html += '<div><strong>Steel:</strong> ' + config.steelColor + (config.sheetColor ? ' | Sheet: ' + config.sheetColor : '') + '</div>';
+    // Visual badges for patio
+    html += '<div style="margin:6px 0;">';
+    if (config.roofStyle) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.roofStyle) + '</span>';
+    if (config.roofing || config.panel_type) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.roofing || config.panel_type) + '</span>';
+    if (config.connection) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.connection) + '</span>';
+    if (config.sheetColor) html += '<span style="' + badgeStyle + 'border-color:var(--sw-orange);">&#127912; ' + escapeHtml(config.sheetColor) + '</span>';
+    if (config.steelColor) html += '<span style="' + badgeStyle + '">Steel: ' + escapeHtml(config.steelColor) + '</span>';
+    html += '</div>';
     if (config.posts || config.post_count) html += '<div><strong>Posts:</strong> ' + (config.post_count || config.posts?.count || config.posts) + ' × ' + (config.post_size || config.posts?.size || '100x100 SHS') + '</div>';
   }
 
-  if (Object.keys(config).length === 0 && !scope.sections) {
-    html += '<div style="color:var(--sw-text-sec);">No scope data — <a href="' + (jobType === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/') + '?jobId=' + scope.jobId + '" target="_blank">open scope tool</a></div>';
+  if (Object.keys(config).length === 0 && !scope.sections && !(scope.job && scope.job.runs)) {
+    html += '<div style="color:var(--sw-text-sec);">No scope data</div>';
+  }
+
+  // Scope tool link
+  var scopeToolUrl = jobType === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
+  var linkId = jobId || scope.jobId || '';
+  if (linkId) {
+    html += '<div style="margin-top:6px;"><a href="' + scopeToolUrl + '?jobId=' + linkId + '" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">&#128279; Open in Scope Tool &#8599;</a></div>';
   }
 
   html += '</div>';
@@ -6972,6 +7065,11 @@ function renderOverviewView(data) {
   if (j.client_email) html += '<a href="mailto:' + j.client_email + '" class="btn btn-secondary btn-sm" style="text-decoration:none;">&#9993; Email</a>';
   if (j.site_address) html += '<a href="https://maps.google.com/?q=' + encodeURIComponent((j.site_address||'') + (j.site_suburb ? ', ' + j.site_suburb : '')) + '" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;">&#128205; Navigate</a>';
   html += '</div></div>';
+
+  // Site Plan Image (between client card and job summary)
+  if (j.scope_json && j.type !== 'miscellaneous') {
+    html += renderSitePlanPanel(j.scope_json, false);
+  }
 
   // Section 2: Job Summary
   html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
@@ -7317,8 +7415,24 @@ function renderMoneyView(data) {
   // Quote breakdown — show what was actually quoted
   if (j.scope_json) {
     html += '<div style="font-size:11px;padding:6px 0 2px;border-top:1px solid var(--sw-border);margin-top:6px;color:var(--sw-text-sec);">';
-    html += renderScopeSummary(j.scope_json, j.type);
+    html += renderScopeSummary(j.scope_json, j.type, j.id);
     html += '</div>';
+  }
+  // Quote PDF links
+  var quoteDocs = (data.documents || []).filter(function(d) { return d.type === 'quote' || d.type === 'permit_quote'; });
+  if (quoteDocs.length > 0) {
+    quoteDocs.forEach(function(doc) {
+      var url = doc.storage_url || doc.pdf_url;
+      var name = doc.file_name || 'Quote PDF';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;">';
+      html += '<span>&#128196;</span>';
+      html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name) + '</span>';
+      if (doc.version > 1) html += '<span style="color:var(--sw-text-sec);font-size:10px;">v' + doc.version + '</span>';
+      if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">View &#8599;</a>';
+      html += '</div>';
+    });
+  } else {
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);padding:4px 0;font-style:italic;">No quote PDF attached</div>';
   }
   html += '</div>';
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Invoiced</span><strong>' + fmt$(invoicedTotal) + '</strong></div>';
@@ -7433,8 +7547,19 @@ function renderBuildView(data) {
   // Scope summary
   if (j.scope_json) {
     html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Scope Summary</div>';
-    html += renderScopeSummary(j.scope_json, j.type);
+    html += renderScopeSummary(j.scope_json, j.type, j.id);
   }
+
+  // Site plan thumbnail (compact) in build view
+  if (j.scope_json && j.type !== 'miscellaneous') {
+    html += renderSitePlanPanel(j.scope_json, true);
+  }
+
+  // Work Order documents
+  html += renderDocumentLinks(data.documents, ['work_order'], '&#128203; Work Orders');
+
+  // Material Order documents
+  html += renderDocumentLinks(data.documents, ['material_order', 'supplier_quote'], '&#128230; Material Documents');
 
   // Materials readiness
   html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">Materials Readiness <button class="btn btn-secondary btn-sm" onclick="closeJobDetail();openPOModal(\'' + j.id + '\')" style="font-size:10px;">+ New PO</button></div>';
