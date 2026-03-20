@@ -2123,6 +2123,13 @@
   </div>
   <div class="container">
     <div class="job-search-bar" id="jobSearchBar" style="display:none">
+      <!-- Admin toggle: All Jobs / My Jobs -->
+      <div id="adminJobToggle" style="display:none;margin-bottom:10px">
+        <div style="display:flex;background:var(--sw-light);border-radius:8px;padding:2px;gap:2px">
+          <button id="adminToggleAll" onclick="setAdminView(true)" style="flex:1;padding:7px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:var(--sw-dark);color:#fff;transition:all 0.2s">All Jobs</button>
+          <button id="adminToggleMine" onclick="setAdminView(false)" style="flex:1;padding:7px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--sw-mid);transition:all 0.2s">My Assignments</button>
+        </div>
+      </div>
       <input type="text" id="jobSearchInput" placeholder="Search jobs — name, suburb, job number..." oninput="filterMyJobs()">
       <div class="job-filter-chips">
         <button class="filter-chip active" data-filter="all" onclick="setJobFilter('all')">All</button>
@@ -2344,6 +2351,8 @@
   var _reportDirty = false;       // unsaved changes in report form
   var _opsApiBase = '';
   var _cachedMyJobs = [];    // flat array of all assignments for Camera/Schedule views
+  var _isAdmin = false;       // set true when user role === 'admin'
+  var _adminViewAll = true;   // admin toggle: true = all jobs, false = my assignments only
 
   // ── Availability state ──
   var _weeklyPattern = [1, 1, 1, 1, 1, 0, 0]; // Mon=0..Sun=6, 1=available
@@ -2883,6 +2892,8 @@
     if (!_user) { console.error('[trade] onLogin: profile is null!'); return; }
     _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
     _userTier = determineTier(_user.email);
+    _isAdmin = (_user.role === 'admin');
+    _adminViewAll = _isAdmin; // default to all-jobs view for admins
     document.getElementById('headerUser').textContent = _user.name || _user.email;
     document.getElementById('bottomNav').style.display = 'flex';
     document.getElementById('viewLogin').classList.remove('active');
@@ -3020,10 +3031,32 @@
   // MY JOBS
   // ══════════════════════════════════════════════════
 
+  // Admin view toggle
+  window.setAdminView = function(showAll) {
+    _adminViewAll = showAll;
+    // Update toggle button styles
+    var btnAll = document.getElementById('adminToggleAll');
+    var btnMine = document.getElementById('adminToggleMine');
+    if (btnAll && btnMine) {
+      if (showAll) {
+        btnAll.style.background = 'var(--sw-dark)'; btnAll.style.color = '#fff';
+        btnMine.style.background = 'transparent'; btnMine.style.color = 'var(--sw-mid)';
+      } else {
+        btnMine.style.background = 'var(--sw-dark)'; btnMine.style.color = '#fff';
+        btnAll.style.background = 'transparent'; btnAll.style.color = 'var(--sw-mid)';
+      }
+    }
+    loadMyJobs();
+  };
+
   window.loadMyJobs = function loadMyJobs() {
     if (!_user) return;
     var container = document.getElementById('myJobsList');
     container.innerHTML = '<div class="loading-screen"><div class="spinner"></div><span id="myJobsLoadMsg">Loading your jobs...</span></div>';
+
+    // Show admin toggle if admin
+    var adminToggle = document.getElementById('adminJobToggle');
+    if (adminToggle) adminToggle.style.display = _isAdmin ? 'block' : 'none';
 
     // Slow connection hint after 8 seconds
     var slowTimer = setTimeout(function() {
@@ -3031,7 +3064,11 @@
       if (msg) msg.textContent = 'Still loading... check your connection';
     }, 8000);
 
-    api('my_jobs').then(function(data) {
+    // Pass mode param for admin users
+    var params = {};
+    if (_isAdmin) params.mode = _adminViewAll ? 'all' : 'mine';
+
+    api('my_jobs', params).then(function(data) {
       clearTimeout(slowTimer);
       renderMyJobs(data);
     }).catch(function(err) {
@@ -3207,6 +3244,10 @@
         html += '    </div>';
         html += '    <span class="job-card-badge badge-' + type + '">' + type + '</span>';
         html += '  </div>';
+        // Admin view: show assigned user name
+        if (data._adminView && a.user && a.user.name) {
+          html += '  <div style="font-size:11px;color:var(--sw-orange);font-weight:600;margin-top:2px">&#128100; ' + esc(a.user.name) + '</div>';
+        }
         // Pickup vs Delivery badge + Materials status
         var poInfo = job.po_info;
         if (poInfo) {
