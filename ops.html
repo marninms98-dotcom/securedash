@@ -839,6 +839,22 @@
     }
     .kanban-ghl-link:hover { background: var(--sw-light); color: var(--sw-primary); }
 
+    /* ── Kanban drag-and-drop ── */
+    .kanban-card.dragging { opacity: 0.4; transform: scale(0.95); }
+    .kanban-col.drag-over .kanban-body {
+      background: rgba(45, 120, 180, 0.08);
+      outline: 2px dashed var(--sw-blue);
+      outline-offset: -2px;
+      border-radius: 4px;
+    }
+    .kanban-col.drag-invalid .kanban-body {
+      background: rgba(200, 60, 60, 0.05);
+      outline: 2px dashed var(--sw-red);
+      outline-offset: -2px;
+      border-radius: 4px;
+      opacity: 0.5;
+    }
+
     /* ── Job List (table alternative to kanban) ── */
     .job-list-table {
       width: 100%;
@@ -5506,7 +5522,7 @@ function renderKanban(container, columns) {
 
   order.forEach(function(status) {
     var jobs = columns[status] || [];
-    html += '<div class="kanban-col" data-status="' + status + '">';
+    html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
     html += '<div class="kanban-col-header">' + STATUS_LABELS[status] + '<span class="count">' + jobs.length + '</span></div>';
     html += '<div class="kanban-body">';
 
@@ -5515,7 +5531,7 @@ function renderKanban(container, columns) {
     }
 
     jobs.forEach(function(j) {
-      html += '<div class="kanban-card" onclick="openJobQuickView(\'' + j.id + '\')">';
+      html += '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobQuickView(\'' + j.id + '\')" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
       html += '<div class="kanban-card-header">';
       html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
       if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
@@ -5538,6 +5554,77 @@ function renderKanban(container, columns) {
 
   html += '</div>';
   container.innerHTML = html;
+}
+
+/* ── Kanban drag-and-drop ── */
+var _kanbanDragJobId = null;
+var _kanbanDragFromStatus = null;
+
+function kanbanDragAllowed(fromStatus, toStatus) {
+  if (fromStatus === toStatus) return false;
+  var allowed = {
+    'draft': ['quoted'],
+    'quoted': ['accepted', 'cancelled'],
+    'accepted': ['scheduled'],
+    'scheduled': ['in_progress', 'cancelled'],
+    'in_progress': ['complete', 'cancelled'],
+    'complete': ['invoiced'],
+    'invoiced': []
+  };
+  return (allowed[fromStatus] || []).indexOf(toStatus) !== -1;
+}
+
+function kanbanDragStart(e) {
+  var card = e.target.closest('.kanban-card');
+  _kanbanDragJobId = card.dataset.jobId;
+  _kanbanDragFromStatus = card.dataset.status;
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', _kanbanDragJobId);
+  // Highlight valid/invalid columns after a tick so the dragging card renders first
+  setTimeout(function() {
+    document.querySelectorAll('.kanban-col').forEach(function(col) {
+      var targetStatus = col.dataset.status;
+      if (kanbanDragAllowed(_kanbanDragFromStatus, targetStatus)) {
+        col.classList.add('drag-over');
+      } else if (targetStatus !== _kanbanDragFromStatus) {
+        col.classList.add('drag-invalid');
+      }
+    });
+  }, 0);
+}
+
+function kanbanDragEnd(e) {
+  _kanbanDragJobId = null;
+  _kanbanDragFromStatus = null;
+  document.querySelectorAll('.kanban-card.dragging').forEach(function(c) { c.classList.remove('dragging'); });
+  document.querySelectorAll('.kanban-col').forEach(function(col) {
+    col.classList.remove('drag-over', 'drag-invalid');
+  });
+}
+
+function kanbanDragOver(e) {
+  var col = e.target.closest('.kanban-col');
+  if (!col || !_kanbanDragFromStatus) return;
+  if (kanbanDragAllowed(_kanbanDragFromStatus, col.dataset.status)) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }
+}
+
+function kanbanDragLeave(e) {
+  // No per-column highlight toggle needed — all valid targets stay highlighted during drag
+}
+
+function kanbanDrop(e) {
+  e.preventDefault();
+  var col = e.target.closest('.kanban-col');
+  if (!col || !_kanbanDragJobId) return;
+  var targetStatus = col.dataset.status;
+  if (!kanbanDragAllowed(_kanbanDragFromStatus, targetStatus)) return;
+  var jobId = _kanbanDragJobId;
+  kanbanDragEnd(e);
+  changeJobStatus(jobId, targetStatus);
 }
 
 function renderJobList(container, columns) {
