@@ -5086,8 +5086,8 @@ async function doMoveAssignment(assignmentId, newCrew, newDate) {
   }
 }
 
-// ── Job Block Popup (Triage Card) ──
-function openCalJobPopup(event, assignmentId) {
+// ── Job Block Popup (Triage Card) — merged job info + calendar actions ──
+async function openCalJobPopup(event, assignmentId) {
   event.stopPropagation();
   var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
   if (!ev) return;
@@ -5099,39 +5099,75 @@ function openCalJobPopup(event, assignmentId) {
 
   var readiness = _calReadiness[ev.job_id];
   var rdColors = { blocked: '#EF4444', at_risk: '#F59E0B', ready: '#22C55E' };
-  var isBlocked = readiness && readiness.status === 'blocked';
   var isReady = readiness && readiness.status === 'ready';
   var isLocked = confStatus === 'confirmed';
 
-  // 1. Title + Open Job + close
-  var html = '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">';
-  html += '<div class="cal-job-popup-title">' + (ev.job_number || '') + ' ' + escapeHtml(ev.client_name || 'Unknown');
-  html += ' <span onclick="event.stopPropagation();closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')" style="display:inline-block;font-size:10px;font-weight:600;color:var(--sw-mid);background:var(--sw-light);padding:1px 6px;border-radius:100px;cursor:pointer;vertical-align:middle;margin-left:4px;">Open Job</span>';
+  // Show overlay with loading state
+  popup.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:start;"><div class="cal-job-popup-title">Loading...</div><button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button></div>';
+  document.getElementById('calJobPopupOverlay').classList.add('open');
+
+  // Fetch full job detail
+  var j = null;
+  var jobDetail = null;
+  try {
+    jobDetail = await opsFetch('job_detail', { jobId: ev.job_id });
+    j = jobDetail.job;
+  } catch(e) {}
+
+  // ═══ TOP SECTION: Job Info ═══
+  var html = '';
+
+  // Title + close
+  html += '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">';
+  html += '<div><strong style="font-size:15px;">' + escapeHtml(j ? j.client_name : ev.client_name || 'Unknown') + '</strong>';
+  html += '<div style="font-size:12px;color:var(--sw-text-sec);">' + (ev.job_number || (j && j.job_number) || '') + ' &middot; ' + escapeHtml(j ? j.site_suburb || '' : ev.site_suburb || '') + '</div>';
   html += '</div>';
   html += '<button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button>';
   html += '</div>';
 
-  // 2. Suburb + quoted value
-  var metaParts = [];
-  if (ev.site_suburb) metaParts.push('&#128205; ' + escapeHtml(ev.site_suburb));
-  var quotedVal = 0;
-  if (ev.pricing_json) {
-    try {
-      var pj = typeof ev.pricing_json === 'string' ? JSON.parse(ev.pricing_json) : ev.pricing_json;
-      quotedVal = parseFloat(pj.totalIncGST || pj.total || 0) || 0;
-    } catch(e) {}
-  }
-  if (quotedVal > 0) metaParts.push('<strong>$' + Math.round(quotedVal).toLocaleString() + '</strong>');
-  if (metaParts.length) html += '<div class="cal-popup-meta">' + metaParts.join(' &middot; ') + '</div>';
+  if (j) {
+    // Type
+    html += '<div class="jd-qv-row"><span class="jd-qv-label">Type</span><span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span></div>';
+    // Status
+    html += '<div class="jd-qv-row"><span class="jd-qv-label">Status</span><span class="status-badge ' + j.status + '">' + (STATUS_LABELS[j.status] || j.status) + '</span></div>';
+    // Quote
+    var quoteVal = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0;
+    if (quoteVal) html += '<div class="jd-qv-row"><span class="jd-qv-label">Quote</span><strong style="color:var(--sw-green)">' + fmt$(quoteVal) + '</strong></div>';
+    // Address
+    if (j.site_address) html += '<div class="jd-qv-row"><span class="jd-qv-label">Address</span><span style="font-size:12px">' + escapeHtml(j.site_address) + '</span></div>';
+    // Phone
+    if (j.client_phone) html += '<div class="jd-qv-row"><span class="jd-qv-label">Phone</span><a href="tel:' + j.client_phone + '">' + j.client_phone + '</a></div>';
+    // Quick stats + Open Record
+    html += '<div style="display:flex;gap:12px;margin-top:8px;font-size:12px;color:var(--sw-text-sec);align-items:center;">';
+    html += '<span>' + (jobDetail.assignments || []).length + ' assignments</span>';
+    html += '<span>' + (jobDetail.purchase_orders || []).length + ' POs</span>';
+    html += '<span>' + (jobDetail.work_orders || []).length + ' WOs</span>';
+    html += '<button onclick="closeCalJobPopup();openJobDetail(\'' + ev.job_id + '\')" style="margin-left:auto;padding:7px 14px;font-size:12px;font-weight:600;border-radius:4px;cursor:pointer;background:var(--sw-orange);color:#fff;border:1px solid var(--sw-orange);">Open Record</button>';
+    html += '</div>';
 
-  // 3. Schedule dates + crew
+    // Alerts
+    var alerts = evaluateJobAlerts(jobDetail);
+    if (alerts.length > 0) {
+      html += '<div style="margin-top:6px;">';
+      alerts.slice(0, 3).forEach(function(a) {
+        html += '<div class="jd-alert ' + a.level + '" style="margin-bottom:4px;">' + a.icon + ' ' + a.message + '</div>';
+      });
+      html += '</div>';
+    }
+  }
+
+  // ═══ DIVIDER ═══
+  html += '<hr style="border:none;border-top:1px solid var(--sw-border);margin:12px 0;">';
+
+  // ═══ BOTTOM SECTION: Calendar-specific ═══
+
+  // Schedule dates + crew
   var schedParts = [];
   if (ev.scheduled_date) {
     var schedStr = fmtDate(ev.scheduled_date);
     if (ev.scheduled_end && ev.scheduled_end !== ev.scheduled_date) schedStr += ' → ' + fmtDate(ev.scheduled_end);
     schedParts.push(schedStr);
   }
-  // Find all crew assigned to this job
   var crewForJob = [];
   _calEvents.forEach(function(e) {
     if (e.job_id === ev.job_id) {
@@ -5142,7 +5178,7 @@ function openCalJobPopup(event, assignmentId) {
   if (crewForJob.length) schedParts.push(crewForJob.join(', '));
   if (schedParts.length) html += '<div class="cal-popup-meta">' + schedParts.join(' &middot; ') + '</div>';
 
-  // 4. Certainty + Readiness row
+  // Certainty + Readiness
   html += '<div class="cal-job-popup-row" style="display:flex;gap:8px;align-items:center;margin:8px 0;">';
   html += '<select id="popupCertainty" onchange="updateCertainty(\'' + assignmentId + '\',this.value)" style="font-size:12px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;font-weight:600">';
   ['placeholder','tentative','confirmed'].forEach(function(s) {
@@ -5159,7 +5195,7 @@ function openCalJobPopup(event, assignmentId) {
   }
   html += '</div>';
 
-  // 5. Blockers (prominent, boxed, with fix actions inline)
+  // Blockers
   var unmetBlockers = readiness ? (readiness.blockers || []).filter(function(b) { return !b.met; }) : [];
   var unmetWarnings = readiness ? (readiness.warnings || []).filter(function(w) { return !w.met; }) : [];
 
@@ -5174,7 +5210,7 @@ function openCalJobPopup(event, assignmentId) {
     html += '</div>';
   }
 
-  // 6. Warnings (collapsed)
+  // Warnings
   if (unmetWarnings.length > 0) {
     html += '<details style="font-size:11px;margin-top:4px;"><summary style="cursor:pointer;color:#D97706;font-weight:600;">' + unmetWarnings.length + ' warning' + (unmetWarnings.length > 1 ? 's' : '') + '</summary>';
     unmetWarnings.forEach(function(w) {
@@ -5183,29 +5219,19 @@ function openCalJobPopup(event, assignmentId) {
     html += '</details>';
   }
 
-  // 7. Context-dependent actions
+  // Calendar action buttons
   html += '<div class="cal-job-popup-actions" style="margin-top:10px;">';
-
   if (!isLocked) {
-    // Not confirmed (placeholder or planned): show both confirm options
     html += '<button class="btn-primary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Confirm &amp; Notify Client</button>';
     html += '<button class="btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Confirm Date</button>';
     html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openEditAssignmentModal(\'' + assignmentId + '\')">Edit Dates</button>';
     html += popupOverflow(assignmentId, ev.job_id, confStatus);
-  } else if (isLocked && isReady) {
-    // Confirmed + ready: clean, two buttons
-    html += '<button class="btn-secondary-action" style="color:#D97706;" onclick="rescheduleLockedJob(\'' + assignmentId + '\')">Reschedule</button>';
-    html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Full Record</button>';
   } else {
-    // Confirmed + not ready: reschedule + full record (blocker fix buttons are in the blocker box above)
     html += '<button class="btn-secondary-action" style="color:#D97706;" onclick="rescheduleLockedJob(\'' + assignmentId + '\')">Reschedule</button>';
-    html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openJobQuickView(\'' + ev.job_id + '\')">Full Record</button>';
   }
-
   html += '</div>';
 
   popup.innerHTML = html;
-  document.getElementById('calJobPopupOverlay').classList.add('open');
 }
 
 // Helper: blocker fix button
@@ -5225,7 +5251,6 @@ function popupOverflow(assignmentId, jobId, confStatus) {
   if (confStatus !== 'confirmed') {
     html += '<button onclick="closeCalJobPopup();openEditAssignmentModal(\'' + assignmentId + '\')">Edit Dates</button>';
   }
-  html += '<button onclick="closeCalJobPopup();openJobQuickView(\'' + jobId + '\')">Full Record</button>';
   html += '<button class="btn-danger" onclick="removeAssignment(\'' + assignmentId + '\')">Remove</button>';
   html += '</div></div>';
   return html;
