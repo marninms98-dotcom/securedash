@@ -5565,11 +5565,11 @@ function kanbanDragAllowed(fromStatus, toStatus) {
   var allowed = {
     'draft': ['quoted'],
     'quoted': ['accepted', 'cancelled'],
-    'accepted': ['scheduled'],
-    'scheduled': ['in_progress', 'cancelled'],
-    'in_progress': ['complete', 'cancelled'],
-    'complete': ['invoiced'],
-    'invoiced': []
+    'accepted': ['quoted', 'scheduled'],
+    'scheduled': ['accepted', 'in_progress', 'cancelled'],
+    'in_progress': ['scheduled', 'complete', 'cancelled'],
+    'complete': ['in_progress', 'invoiced'],
+    'invoiced': ['complete']
   };
   return (allowed[fromStatus] || []).indexOf(toStatus) !== -1;
 }
