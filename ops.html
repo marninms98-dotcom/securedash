@@ -2582,7 +2582,7 @@
 <!-- Invoice Creation Modal -->
 <!-- Unified Invoice Modal (replaces separate invoice + deposit modals) -->
 <div class="modal-overlay" id="unifiedInvoiceModal">
-  <div class="modal" style="max-width:720px;">
+  <div class="modal" style="max-width:840px;">
     <div class="modal-title">Create Invoice</div>
 
     <!-- Job selector (when opened standalone) -->
@@ -2621,11 +2621,15 @@
     <!-- Quick presets -->
     <div id="uniInvPresets" style="display:none; margin-bottom:10px;">
       <div style="font-size:11px; font-weight:600; color:var(--sw-text-sec); margin-bottom:4px;">QUICK ADD</div>
-      <div style="display:flex; gap:6px; flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(20)" style="font-size:11px;">20% Deposit</button>
-        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(25)" style="font-size:11px;">25% Deposit</button>
-        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(50)" style="font-size:11px;">50% Deposit</button>
-        <button class="btn btn-secondary btn-sm" onclick="addCouncilFeePreset()" style="font-size:11px;">Council/Permit Fee</button>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(20)" style="font-size:11px;">20%</button>
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(25)" style="font-size:11px;">25%</button>
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(50)" style="font-size:11px;">50%</button>
+        <div style="display:inline-flex; align-items:center; gap:3px;">
+          <input type="number" id="invCustomDepositPct" min="1" max="100" placeholder="%" style="width:48px; font-size:11px; padding:4px 5px; text-align:center; border:1px solid var(--sw-border); background:var(--sw-light);">
+          <button class="btn btn-secondary btn-sm" onclick="var v=parseInt(document.getElementById('invCustomDepositPct').value);if(v>0&&v<=100)addDepositPreset(v);else alert('Enter 1-100');" style="font-size:11px;">Deposit</button>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="addCouncilFeePreset()" style="font-size:11px;">Council Fee</button>
         <button class="btn btn-secondary btn-sm" onclick="addBalancePreset()" style="font-size:11px;">Balance Due</button>
       </div>
     </div>
@@ -8825,6 +8829,79 @@ function updatePOLineTotals() {
   if (totalEl) totalEl.textContent = fmt$(total);
 }
 
+function formatScopeSummary(scope, jobType) {
+  if (!scope) return '';
+  if (typeof scope === 'string') return escapeHtml(scope);
+  var parts = [];
+  var s = scope.config || scope;
+  var type = (jobType || '').toLowerCase();
+
+  // Fencing: runs[] with name + length
+  if (s.runs && Array.isArray(s.runs)) {
+    var totalLen = 0;
+    var runDescs = [];
+    s.runs.forEach(function(r) {
+      var len = parseFloat(r.length) || 0;
+      if (len > 100) len = len / 1000; // mm to m
+      totalLen += len;
+      var name = r.name || 'Run';
+      runDescs.push(name + ': ' + len.toFixed(1) + 'm');
+    });
+    if (runDescs.length > 0) parts.push('<strong>' + s.runs.length + ' run' + (s.runs.length > 1 ? 's' : '') + '</strong> — ' + totalLen.toFixed(1) + 'm total');
+    runDescs.forEach(function(rd) { parts.push('&nbsp;&nbsp;' + escapeHtml(rd)); });
+    // Fence height/type
+    if (s.height || s.fenceHeight) parts.push('Height: ' + ((s.height || s.fenceHeight) / 1000 || s.height || s.fenceHeight) + 'm');
+    if (s.style || s.fenceType) parts.push('Style: ' + escapeHtml(s.style || s.fenceType));
+  }
+
+  // Patio/decking: length, projection, roofing
+  if (s.length && s.projection && !s.runs) {
+    var len = typeof s.length === 'string' ? parseFloat(s.length) : s.length;
+    var proj = typeof s.projection === 'string' ? parseFloat(s.projection) : s.projection;
+    if (len > 100) len = len / 1000;
+    if (proj > 100) proj = proj / 1000;
+    var area = len * proj;
+    parts.push('<strong>' + len.toFixed(1) + 'm × ' + proj.toFixed(1) + 'm</strong> (' + area.toFixed(1) + 'm²)');
+  }
+
+  // Roofing type
+  if (s.roofing) {
+    var roofMap = { solarspan75: 'SolarSpan 75mm', solarspan100: 'SolarSpan 100mm', trimdek: 'Trimdek', corrugated: 'Corrugated', spandek: 'Spandek', spanplus330: 'SpanPlus 330' };
+    var roofLabel = typeof s.roofing === 'string' ? (roofMap[s.roofing] || s.roofing) : (s.roofing.type || '');
+    if (roofLabel) parts.push('Roof: ' + escapeHtml(roofLabel));
+  }
+
+  // Roof style
+  if (s.roofStyle || s.roof_style) parts.push('Style: ' + escapeHtml(s.roofStyle || s.roof_style));
+
+  // Posts
+  var postCount = s.post_count || s.postQtyOverride || 0;
+  if (postCount > 0) parts.push('Posts: ' + postCount + (s.post_size || s.postSize ? ' × ' + escapeHtml(s.post_size || s.postSize) : ''));
+
+  // Colour
+  if (s.colour || s.color) parts.push('Colour: ' + escapeHtml(s.colour || s.color));
+
+  // Gate info (fencing)
+  if (s.gates && Array.isArray(s.gates) && s.gates.length > 0) {
+    parts.push('Gates: ' + s.gates.length + ' (' + s.gates.map(function(g) { return escapeHtml(g.type || g.name || 'gate'); }).join(', ') + ')');
+  }
+
+  // Fallback — if nothing parsed, show summary/description if available, otherwise skip (don't dump JSON)
+  if (parts.length === 0) {
+    if (scope.summary) return escapeHtml(scope.summary);
+    if (scope.description) return escapeHtml(scope.description);
+    return '';
+  }
+  return parts.join('<br>');
+}
+
+function trackingCategoryLabel(jobNumber) {
+  if (!jobNumber) return '';
+  var prefix = jobNumber.slice(0, 3).toUpperCase();
+  var map = { SWP: 'SW - PATIOS', SWF: 'SW - FENCING', SWD: 'SW - DECKING', SWR: 'SW - PRIVATE ROOFING', SWI: 'SW - INSURANCE WORK' };
+  return map[prefix] || '';
+}
+
 function accountCodeLabel(jobType) {
   var map = { patio: '208 — Patios', fencing: '207 — Fencing', decking: '205 — Decking', roofing: '209 — Roofing', insurance: '210 — Insurance', renovation: '201 — Renovation' };
   return map[(jobType || '').toLowerCase()] || '200 — General';
@@ -9281,12 +9358,34 @@ async function onInvJobSelect(jobId) {
           });
           dhtml += '</table>';
         }
-        // Scope summary
-        var scope = pricing.scope || pricing.scopeSummary || (j.scope_json ? (typeof j.scope_json === 'string' ? JSON.parse(j.scope_json) : j.scope_json) : null);
-        if (scope) {
-          var scopeText = typeof scope === 'string' ? scope : (scope.summary || scope.description || JSON.stringify(scope));
+        // Scope summary — reuse the existing rich renderer
+        if (j.scope_json) {
           dhtml += '<div style="font-size:10px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; margin-bottom:3px;">Scope Summary</div>';
-          dhtml += '<div style="font-size:11px; color:var(--sw-text); line-height:1.4;">' + escapeHtml(scopeText).substring(0, 300) + '</div>';
+          dhtml += renderScopeSummary(j.scope_json, j.type, j.id);
+        }
+        // Xero mapping table — account + tracking category
+        var acLabel = accountCodeLabel(j.type);
+        var trackLabel = trackingCategoryLabel(j.job_number);
+        dhtml += '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;">';
+        dhtml += '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:4px 6px; color:var(--sw-text-sec); font-weight:600; width:120px;">Sales Account</td>';
+        dhtml += '<td style="padding:4px 6px;"><span style="display:inline-block;padding:2px 6px;background:var(--sw-border);font-size:10px;font-weight:700;letter-spacing:0.2px;">' + escapeHtml(acLabel) + '</span></td></tr>';
+        if (trackLabel) {
+          dhtml += '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:4px 6px; color:var(--sw-text-sec); font-weight:600;">Tracking Category</td>';
+          dhtml += '<td style="padding:4px 6px;"><span style="display:inline-block;padding:2px 6px;background:var(--sw-border);font-size:10px;font-weight:700;letter-spacing:0.2px;">' + escapeHtml(trackLabel) + '</span></td></tr>';
+        }
+        dhtml += '</table>';
+        // View Quote PDF buttons
+        var qdocs = (data.documents || []).filter(function(d) { return d.type === 'quote'; });
+        if (qdocs.length > 0) {
+          dhtml += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">';
+          qdocs.forEach(function(doc) {
+            var url = doc.share_token ? 'https://kevgrhcjxspbxgovpmfl.supabase.co/functions/v1/send-quote/view?token=' + encodeURIComponent(doc.share_token) : (doc.storage_url || doc.pdf_url);
+            var label = doc.quote_number || doc.file_name || 'Quote PDF';
+            if (url) {
+              dhtml += '<a href="' + escapeHtml(url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">&#128196; View ' + escapeHtml(label) + '</a>';
+            }
+          });
+          dhtml += '</div>';
         }
         dhtml += '</div>';
         detailEl.innerHTML = dhtml;
@@ -9435,8 +9534,10 @@ function confirmUnifiedInvoiceSend() {
   bodyHtml += '<div><span style="color:var(--sw-text-sec);">Due Date:</span> <strong>' + escapeHtml(dueDate) + '</strong></div>';
   bodyHtml += '</div>';
   bodyHtml += linesHtml;
-  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); margin:6px 0 10px; padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border);">';
-  bodyHtml += 'All lines &rarr; Account ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ' Revenue)';
+  var trackLabel = _invJobCache ? trackingCategoryLabel(_invJobCache.job_number) : '';
+  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); margin:6px 0 10px; padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border); line-height:1.6;">';
+  bodyHtml += '<strong>Sales Account:</strong> ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ' Revenue)';
+  if (trackLabel) bodyHtml += '<br><strong>Tracking:</strong> ' + escapeHtml(trackLabel);
   bodyHtml += '</div>';
   bodyHtml += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">';
   bodyHtml += '<input type="checkbox" id="sendConfirmBranded" checked>';
