@@ -2557,7 +2557,7 @@
 
 <!-- Send Confirmation Modal -->
 <div class="modal-overlay" id="sendConfirmModal">
-  <div class="modal" style="max-width:420px;">
+  <div class="modal" style="max-width:600px;">
     <div class="modal-title" id="sendConfirmTitle">Confirm Send</div>
     <div id="sendConfirmBody" style="font-size:13px; line-height:1.6; margin-bottom:16px;"></div>
     <div class="modal-actions">
@@ -2603,6 +2603,7 @@
     <div id="uniInvQuotesSection" style="display:none; margin-bottom:12px;">
       <div style="font-size:12px; font-weight:700; color:var(--sw-mid); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Accepted Quotes</div>
       <div id="uniInvQuotesList"></div>
+      <div id="uniInvQuoteDetail" style="display:none; margin-top:8px; padding:10px 12px; background:var(--sw-light); border:1px solid var(--sw-border); font-size:12px; line-height:1.5;"></div>
     </div>
 
     <!-- Invoice progress bar -->
@@ -2622,6 +2623,7 @@
       <div style="font-size:11px; font-weight:600; color:var(--sw-text-sec); margin-bottom:4px;">QUICK ADD</div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">
         <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(20)" style="font-size:11px;">20% Deposit</button>
+        <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(25)" style="font-size:11px;">25% Deposit</button>
         <button class="btn btn-secondary btn-sm" onclick="addDepositPreset(50)" style="font-size:11px;">50% Deposit</button>
         <button class="btn btn-secondary btn-sm" onclick="addCouncilFeePreset()" style="font-size:11px;">Council/Permit Fee</button>
         <button class="btn btn-secondary btn-sm" onclick="addBalancePreset()" style="font-size:11px;">Balance Due</button>
@@ -2642,8 +2644,8 @@
     <!-- Line items -->
     <div class="form-group">
       <label class="form-label">Line Items (ex GST)</label>
-      <div style="display:grid; grid-template-columns:3fr 60px 80px 80px auto; gap:6px; margin-bottom:4px; font-size:10px; color:var(--sw-text-sec); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
-        <span>Description</span><span>Qty</span><span>Unit Price</span><span>Total</span><span></span>
+      <div style="display:grid; grid-template-columns:3fr 60px 80px 80px 72px auto; gap:6px; margin-bottom:4px; font-size:10px; color:var(--sw-text-sec); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; padding:0 2px;">
+        <span>Description</span><span>Qty</span><span>Unit Price</span><span>Total</span><span>Account</span><span></span>
       </div>
       <div id="invLineItems"></div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
@@ -8823,16 +8825,28 @@ function updatePOLineTotals() {
   if (totalEl) totalEl.textContent = fmt$(total);
 }
 
-function addInvLine(desc, qty, unitPrice) {
+function accountCodeLabel(jobType) {
+  var map = { patio: '208 — Patios', fencing: '207 — Fencing', decking: '205 — Decking', roofing: '209 — Roofing', insurance: '210 — Insurance', renovation: '201 — Renovation' };
+  return map[(jobType || '').toLowerCase()] || '200 — General';
+}
+
+function accountCodeForJobFE(jobType) {
+  var map = { patio: '208', fencing: '207', decking: '205', roofing: '209', insurance: '210', renovation: '201' };
+  return map[(jobType || '').toLowerCase()] || '200';
+}
+
+function addInvLine(desc, qty, unitPrice, acLabel) {
   var container = document.getElementById('invLineItems');
   var row = document.createElement('div');
   row.className = 'inv-line-row';
-  row.style.cssText = 'display:grid; grid-template-columns:3fr 60px 80px 80px auto; gap:6px; margin-bottom:4px; align-items:center;';
+  row.style.cssText = 'display:grid; grid-template-columns:3fr 60px 80px 80px 72px auto; gap:6px; margin-bottom:4px; align-items:center;';
+  var badgeLabel = acLabel || (_invJobCache ? accountCodeLabel(_invJobCache.type) : '200 — General');
   row.innerHTML =
     '<input type="text" class="form-input" placeholder="Description" data-field="description" value="' + (desc || '').replace(/"/g, '&quot;') + '" style="font-size:12px; padding:6px 8px;">' +
     '<input type="number" class="form-input" placeholder="Qty" data-field="quantity" value="' + (qty || 1) + '" style="font-size:12px; padding:6px 4px; text-align:center;" oninput="updateInvLineTotals()">' +
     '<input type="number" class="form-input" placeholder="0.00" data-field="unit_price" step="0.01"' + (unitPrice ? ' value="' + unitPrice + '"' : '') + ' style="font-size:12px; padding:6px 4px; text-align:right;" oninput="updateInvLineTotals()">' +
     '<div class="line-total" style="font-size:12px; font-family:var(--sw-font-num); text-align:right; color:var(--sw-text-sec);">$0</div>' +
+    '<span style="font-size:9px; background:var(--sw-border); color:var(--sw-text-sec); padding:2px 5px; white-space:nowrap; text-align:center; font-weight:600; letter-spacing:0.2px;">' + escapeHtml(badgeLabel) + '</span>' +
     '<button class="btn btn-secondary btn-sm" onclick="this.parentElement.remove(); updateInvLineTotals();" style="padding:3px 6px; font-size:11px;">&times;</button>';
   container.appendChild(row);
   updateInvLineTotals();
@@ -9233,6 +9247,53 @@ async function onInvJobSelect(jobId) {
       });
       document.getElementById('uniInvQuotesList').innerHTML = qhtml;
       updateSelectedQuoteDocs();
+
+      // Render quote detail panel from pricing_json
+      var detailEl = document.getElementById('uniInvQuoteDetail');
+      var pricing = j.pricing_json;
+      if (typeof pricing === 'string') try { pricing = JSON.parse(pricing); } catch(e) { pricing = null; }
+      if (pricing) {
+        var dhtml = '<div style="font-size:11px; font-weight:700; color:var(--sw-mid); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; cursor:pointer;" onclick="var p=this.parentElement;var c=p.querySelector(\'.qd-body\');c.style.display=c.style.display===\'none\'?\'\':\'none\';">Quote Details &#9662;</div>';
+        dhtml += '<div class="qd-body">';
+        // Totals
+        var totalInc = pricing.totalIncGST || pricing.total || 0;
+        var totalEx = Math.round((totalInc / 1.1) * 100) / 100;
+        dhtml += '<div style="display:flex; gap:16px; margin-bottom:8px; font-size:12px;">';
+        dhtml += '<div><span style="color:var(--sw-text-sec);">Total (inc GST):</span> <strong style="font-family:var(--sw-font-num);">' + fmt$(totalInc) + '</strong></div>';
+        dhtml += '<div><span style="color:var(--sw-text-sec);">Total (ex GST):</span> <strong style="font-family:var(--sw-font-num);">' + fmt$(totalEx) + '</strong></div>';
+        dhtml += '</div>';
+        // Line item breakdown
+        var items = pricing.items || pricing.lineItems || [];
+        if (items.length > 0) {
+          dhtml += '<div style="font-size:10px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; margin-bottom:3px;">Line Items</div>';
+          dhtml += '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:8px;">';
+          items.forEach(function(item) {
+            var iDesc = item.description || item.name || '';
+            var iQty = item.quantity || item.qty || 1;
+            var iPrice = item.unit_price || item.unitPrice || item.price || 0;
+            var iTotal = iQty * iPrice;
+            dhtml += '<tr style="border-bottom:1px solid var(--sw-border);">';
+            dhtml += '<td style="padding:2px 4px;">' + escapeHtml(iDesc) + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:center; width:40px;">' + iQty + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:right; width:70px; font-family:var(--sw-font-num);">' + fmt$(iPrice) + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:right; width:70px; font-family:var(--sw-font-num);">' + fmt$(iTotal) + '</td>';
+            dhtml += '</tr>';
+          });
+          dhtml += '</table>';
+        }
+        // Scope summary
+        var scope = pricing.scope || pricing.scopeSummary || (j.scope_json ? (typeof j.scope_json === 'string' ? JSON.parse(j.scope_json) : j.scope_json) : null);
+        if (scope) {
+          var scopeText = typeof scope === 'string' ? scope : (scope.summary || scope.description || JSON.stringify(scope));
+          dhtml += '<div style="font-size:10px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; margin-bottom:3px;">Scope Summary</div>';
+          dhtml += '<div style="font-size:11px; color:var(--sw-text); line-height:1.4;">' + escapeHtml(scopeText).substring(0, 300) + '</div>';
+        }
+        dhtml += '</div>';
+        detailEl.innerHTML = dhtml;
+        detailEl.style.display = '';
+      } else {
+        detailEl.style.display = 'none';
+      }
     }
 
     // Show invoice progress bar
@@ -9310,7 +9371,8 @@ function gatherInvoiceData() {
     var desc = row.querySelector('[data-field="description"]').value;
     var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 1;
     var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
-    if (desc || price > 0) lineItems.push({ description: desc, quantity: qty, unit_price: price, account_code: '200' });
+    var acCode = _invJobCache ? accountCodeForJobFE(_invJobCache.type) : '200';
+    if (desc || price > 0) lineItems.push({ description: desc, quantity: qty, unit_price: price, account_code: acCode });
   });
 
   if (lineItems.length === 0) { alert('Please add at least one line item.'); return null; }
@@ -9327,17 +9389,68 @@ function confirmUnifiedInvoiceSend() {
   if (!data) return;
 
   var clientName = _invJobCache ? _invJobCache.client_name : 'the client';
-  var clientEmail = _invJobCache ? (_invJobCache.client_email || 'no email on file') : 'no email on file';
+  var clientEmail = _invJobCache ? (_invJobCache.client_email || '') : '';
+  var jobNumber = _invJobCache ? (_invJobCache.job_number || '') : '';
+  var dueDate = document.getElementById('invDueDate').value || 'Not set';
+  var acCode = _invJobCache ? accountCodeForJobFE(_invJobCache.type) : '200';
+  var acLabel = _invJobCache ? accountCodeLabel(_invJobCache.type) : '200 — General';
+
+  // Build line items preview table
+  var subtotal = 0;
+  var linesHtml = '<table style="width:100%; border-collapse:collapse; font-size:12px; margin:8px 0;">';
+  linesHtml += '<thead><tr style="border-bottom:2px solid var(--sw-border); text-align:left;">';
+  linesHtml += '<th style="padding:4px 6px;">Description</th><th style="padding:4px 6px; text-align:center;">Qty</th>';
+  linesHtml += '<th style="padding:4px 6px; text-align:right;">Unit Price</th><th style="padding:4px 6px; text-align:right;">Total</th>';
+  linesHtml += '<th style="padding:4px 6px; text-align:center;">Account</th></tr></thead><tbody>';
+  data.line_items_override.forEach(function(li) {
+    var lineTotal = li.quantity * li.unit_price;
+    subtotal += lineTotal;
+    linesHtml += '<tr style="border-bottom:1px solid var(--sw-border);">';
+    linesHtml += '<td style="padding:4px 6px;">' + escapeHtml(li.description) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:center;">' + li.quantity + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(li.unit_price) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(lineTotal) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:center; font-size:10px;">' + li.account_code + '</td>';
+    linesHtml += '</tr>';
+  });
+  var gst = Math.round(subtotal * 0.1 * 100) / 100;
+  var totalIncGst = Math.round((subtotal + gst) * 100) / 100;
+  linesHtml += '</tbody>';
+  linesHtml += '<tfoot><tr style="border-top:2px solid var(--sw-border); font-weight:600;">';
+  linesHtml += '<td colspan="3" style="padding:4px 6px; text-align:right;">Subtotal (ex GST):</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(subtotal) + '</td><td></td></tr>';
+  linesHtml += '<tr><td colspan="3" style="padding:4px 6px; text-align:right;">GST:</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(gst) + '</td><td></td></tr>';
+  linesHtml += '<tr style="font-size:14px;"><td colspan="3" style="padding:4px 6px; text-align:right; font-weight:700;">Total (inc GST):</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num); font-weight:700;">' + fmt$(totalIncGst) + '</td><td></td></tr>';
+  linesHtml += '</tfoot></table>';
+
+  var bodyHtml = '';
+  bodyHtml += '<div style="margin-bottom:10px;">';
+  bodyHtml += '<label style="font-size:11px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; letter-spacing:0.3px;">Send To Email</label>';
+  bodyHtml += '<input type="email" id="sendConfirmEmail" class="form-input" value="' + (clientEmail || '').replace(/"/g, '&quot;') + '" style="font-size:13px; padding:6px 8px; margin-top:2px;">';
+  bodyHtml += '</div>';
+  bodyHtml += '<div style="display:flex; gap:16px; margin-bottom:10px; font-size:12px;">';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Xero Reference:</span> <strong>' + escapeHtml(jobNumber) + '</strong></div>';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Due Date:</span> <strong>' + escapeHtml(dueDate) + '</strong></div>';
+  bodyHtml += '</div>';
+  bodyHtml += linesHtml;
+  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); margin:6px 0 10px; padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border);">';
+  bodyHtml += 'All lines &rarr; Account ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ' Revenue)';
+  bodyHtml += '</div>';
+  bodyHtml += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">';
+  bodyHtml += '<input type="checkbox" id="sendConfirmBranded" checked>';
+  bodyHtml += '<span><strong>Send branded email</strong> (recommended)</span>';
+  bodyHtml += '</label>';
+  bodyHtml += '<div style="font-size:10px; color:var(--sw-text-sec); margin-left:24px;">Unchecked uses Xero\'s plain email template</div>';
 
   document.getElementById('sendConfirmTitle').textContent = 'Approve & Send Invoice';
-  document.getElementById('sendConfirmBody').innerHTML =
-    'This will create the invoice and send it to:<br><br>' +
-    '<strong>' + clientName + '</strong><br>' +
-    '<span style="color:var(--sw-text-sec);">' + clientEmail + '</span><br><br>' +
-    'The invoice will be marked as <strong>AUTHORISED</strong> in Xero and emailed to the client.';
+  document.getElementById('sendConfirmBody').innerHTML = bodyHtml;
   document.getElementById('sendConfirmBtn').onclick = function() {
     closeModal('sendConfirmModal');
-    submitUnifiedInvoice('send');
+    var emailOverride = document.getElementById('sendConfirmEmail').value.trim();
+    var useBranded = document.getElementById('sendConfirmBranded').checked;
+    submitUnifiedInvoice('send', emailOverride, useBranded);
   };
   document.getElementById('sendConfirmModal').classList.add('active');
 }
@@ -9345,13 +9458,16 @@ function confirmUnifiedInvoiceSend() {
 // Backward compat
 function confirmInvoiceSend() { confirmUnifiedInvoiceSend(); }
 
-async function submitUnifiedInvoice(mode) {
+async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail) {
   var invData = gatherInvoiceData();
   if (!invData) return;
 
   invData.xero_status = mode === 'send' ? 'AUTHORISED' : 'DRAFT';
   invData.send_email = mode === 'send';
   invData.quote_document_ids = _uniInvSelectedQuoteDocs.length > 0 ? _uniInvSelectedQuoteDocs : undefined;
+
+  if (emailOverride) invData.email_override = emailOverride;
+  if (typeof useBrandedEmail !== 'undefined') invData.use_branded_email = useBrandedEmail;
 
   // Use unified invoice endpoint when we have a job, else fallback
   var action = 'create_unified_invoice';
