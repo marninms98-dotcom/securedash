@@ -989,6 +989,8 @@
     .btn-primary:hover { background: var(--sw-dark-deep); }
     .btn-secondary { background: transparent; color: var(--sw-mid); border: 1px solid var(--sw-border); }
     .btn-secondary:hover { background: var(--sw-light); border-color: var(--sw-mid-light); }
+    .btn-outline { background: transparent; color: var(--sw-dark); border: 1px solid var(--sw-dark); }
+    .btn-outline:hover { background: var(--sw-light); }
     .btn-sm { padding: 5px 10px; font-size: 11px; }
     .btn-sm.btn-green { background: #27ae60; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; }
     .btn-sm.btn-green:hover { background: #219a52; }
@@ -2579,6 +2581,18 @@
   </div>
 </div>
 
+<!-- Invoice Success Modal -->
+<div class="modal-overlay" id="invoiceSuccessModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title" style="color:#27ae60;">Invoice Sent</div>
+    <div id="invoiceSuccessBody" style="font-size:13px; line-height:1.6; margin-bottom:16px;"></div>
+    <div class="modal-actions">
+      <a id="invoiceSuccessXeroLink" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;">Open in Xero &#8599;</a>
+      <button class="btn btn-primary" onclick="closeModal('invoiceSuccessModal')">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- Invoice Creation Modal -->
 <!-- Unified Invoice Modal (replaces separate invoice + deposit modals) -->
 <div class="modal-overlay" id="unifiedInvoiceModal">
@@ -2664,7 +2678,7 @@
 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('unifiedInvoiceModal')">Cancel</button>
-      <button class="btn btn-secondary" onclick="submitUnifiedInvoice('draft')">Save as Draft</button>
+      <button class="btn btn-secondary" onclick="submitUnifiedInvoice('draft', null, null, true)">Save Draft &amp; Preview in Xero</button>
       <button class="btn btn-primary" onclick="confirmUnifiedInvoiceSend()">Approve &amp; Send</button>
     </div>
   </div>
@@ -5794,21 +5808,28 @@ function sortTable(tableId, colIdx, type) {
   rows.forEach(function(r) { tbody.appendChild(r); });
 }
 
+function invoiceXeroLink(inv) {
+  if (!inv.xero_invoice_id) return '';
+  return '<a href="https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + inv.xero_invoice_id + '" target="_blank" ' +
+         'style="color:var(--sw-blue);text-decoration:none;font-size:11px;" title="Open in Xero">Xero&nbsp;&#8599;</a>';
+}
+
 function invoiceActions(inv) {
   var status = (inv.status || '').toUpperCase();
   var hasPaid = (inv.amount_paid || 0) > 0;
+  var xLink = invoiceXeroLink(inv);
 
   if (status === 'DRAFT') {
-    return '<button class="btn btn-sm btn-green" onclick="approveInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\')">Approve</button> ' +
-           '<button class="btn btn-sm btn-red" onclick="deleteInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Delete</button>';
+    return '<button class="btn btn-sm btn-green" onclick="approveInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',\'' + (inv.reference || '').replace(/'/g, "\\'") + '\',' + (inv.total || 0) + ')">Approve</button> ' +
+           '<button class="btn btn-sm btn-red" onclick="deleteInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Delete</button> ' + xLink;
   }
   if (status === 'AUTHORISED' || status === 'SUBMITTED') {
-    if (hasPaid) return '<span style="color:var(--sw-text-sec);font-size:12px;">Has payment</span>';
+    if (hasPaid) return '<span style="color:var(--sw-text-sec);font-size:12px;">Has payment</span> ' + xLink;
     return '<button class="btn btn-sm btn-blue" onclick="sendInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\')">Send</button> ' +
-           '<button class="btn btn-sm btn-red" onclick="voidInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Void</button>';
+           '<button class="btn btn-sm btn-red" onclick="voidInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',' + (inv.total || 0) + ')">Void</button> ' + xLink;
   }
-  if (status === 'PAID') return '<span style="color:var(--sw-text-sec);font-size:12px;">Paid</span>';
-  if (status === 'VOIDED' || status === 'DELETED') return '<span style="color:var(--sw-text-sec);font-size:12px;">&mdash;</span>';
+  if (status === 'PAID') return '<span style="color:var(--sw-text-sec);font-size:12px;">Paid</span> ' + xLink;
+  if (status === 'VOIDED' || status === 'DELETED') return '<span style="color:var(--sw-text-sec);font-size:12px;">&mdash;</span> ' + xLink;
   return '';
 }
 
@@ -5912,16 +5933,104 @@ async function voidInvoice(xeroId, invNumber, total) {
     });
 }
 
-async function approveInvoice(xeroId, invNumber) {
-  _openInvAction('Approve Invoice',
-    'This will approve <b>' + invNumber + '</b> and mark it as AUTHORISED in Xero.<br><br>Once approved, it will appear in your receivables.',
-    'btn-primary', 'Approve',
-    async function() {
+async function approveInvoice(xeroId, invNumber, jobRef, total) {
+  // Look up client email from the job if we have a reference (job number)
+  var clientEmail = '';
+  var jobId = null;
+  if (jobRef && _pipelineData && _pipelineData.columns) {
+    var allJobs = [];
+    Object.values(_pipelineData.columns).forEach(function(arr) {
+      if (Array.isArray(arr)) arr.forEach(function(j) { allJobs.push(j); });
+    });
+    var job = allJobs.find(function(j) { return j.job_number && jobRef.indexOf(j.job_number) !== -1; });
+    if (job) {
+      clientEmail = job.client_email || '';
+      jobId = job.id;
+    }
+  }
+
+  var bodyHtml = '';
+  bodyHtml += '<div style="margin-bottom:12px;">Approve <b>' + invNumber + '</b>';
+  if (total) bodyHtml += ' — <b>' + fmt$(total) + '</b>';
+  bodyHtml += '</div>';
+  bodyHtml += '<div style="margin-bottom:10px;">';
+  bodyHtml += '<label style="font-size:11px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; letter-spacing:0.3px;">Send To Email</label>';
+  bodyHtml += '<input type="email" id="approveInvEmail" class="form-input" value="' + (clientEmail || '').replace(/"/g, '&quot;') + '" style="font-size:13px; padding:6px 8px; margin-top:2px;" placeholder="Client email address">';
+  bodyHtml += '</div>';
+  bodyHtml += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer; margin-bottom:6px;">';
+  bodyHtml += '<input type="checkbox" id="approveInvBranded" checked>';
+  bodyHtml += '<span><strong>Send branded email</strong> (recommended)</span>';
+  bodyHtml += '</label>';
+  bodyHtml += '<div style="font-size:10px; color:var(--sw-text-sec); margin-left:24px; margin-bottom:12px;">Unchecked uses Xero\'s plain email template</div>';
+  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border); line-height:1.6;">';
+  bodyHtml += '<strong>Approve Only</strong> marks it AUTHORISED in Xero without sending.<br>';
+  bodyHtml += '<strong>Approve &amp; Send</strong> approves + emails the client.';
+  bodyHtml += '</div>';
+
+  document.getElementById('invActionTitle').textContent = 'Approve Invoice';
+  document.getElementById('invActionBody').innerHTML = bodyHtml;
+
+  // Replace the single confirm button with two buttons
+  var actionsDiv = document.getElementById('invActionBtn').parentNode;
+  actionsDiv.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'invActionModal\')">Cancel</button> ' +
+    '<button class="btn btn-outline" id="approveOnlyBtn">Approve Only</button> ' +
+    '<button class="btn btn-primary" id="approveSendBtn">Approve &amp; Send</button>';
+
+  document.getElementById('approveOnlyBtn').onclick = async function() {
+    closeModal('invActionModal');
+    try {
       var result = await opsPost('approve_invoice', { xero_invoice_id: xeroId });
       if (result.error) { alert('Error: ' + result.error); return; }
-      showToast(invNumber + ' approved', 'success');
+      showInvoiceSuccessModal(invNumber, null, xeroId, 'approved');
       loadInvoices();
-    });
+    } catch(e) { alert('Failed: ' + e.message); }
+  };
+
+  document.getElementById('approveSendBtn').onclick = async function() {
+    var email = document.getElementById('approveInvEmail').value.trim();
+    var branded = document.getElementById('approveInvBranded').checked;
+    if (!email) { alert('Please enter an email address to send to.'); return; }
+    closeModal('invActionModal');
+    try {
+      var result = await opsPost('approve_and_send_invoice', {
+        xero_invoice_id: xeroId,
+        email_override: email,
+        use_branded_email: branded
+      });
+      if (result.error) { alert('Error: ' + result.error); return; }
+      showInvoiceSuccessModal(invNumber, email, xeroId, 'sent');
+      loadInvoices();
+    } catch(e) { alert('Failed: ' + e.message); }
+  };
+
+  document.getElementById('invActionModal').classList.add('active');
+}
+
+// Restore invActionModal buttons to default single-button layout after close
+var _origInvActionClose = closeModal;
+closeModal = function(id) {
+  _origInvActionClose(id);
+  if (id === 'invActionModal') {
+    var actionsDiv = document.getElementById('invActionModal').querySelector('.modal-actions');
+    if (actionsDiv && !document.getElementById('invActionBtn')) {
+      actionsDiv.innerHTML = '<button class="btn btn-secondary" onclick="closeModal(\'invActionModal\')">Cancel</button> ' +
+        '<button class="btn btn-primary" id="invActionBtn">Confirm</button>';
+    }
+  }
+};
+
+function showInvoiceSuccessModal(invNumber, email, xeroId, action) {
+  var title = action === 'sent' ? 'Invoice Sent' : 'Invoice Approved';
+  var titleEl = document.getElementById('invoiceSuccessModal').querySelector('.modal-title');
+  titleEl.textContent = title;
+  titleEl.style.color = '#27ae60';
+
+  var body = '<div style="margin-bottom:8px;"><strong>' + invNumber + '</strong> has been ' + action + '.</div>';
+  if (email) body += '<div style="font-size:12px; color:var(--sw-text-sec);">Sent to <strong>' + escapeHtml(email) + '</strong></div>';
+
+  document.getElementById('invoiceSuccessBody').innerHTML = body;
+  document.getElementById('invoiceSuccessXeroLink').href = 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroId;
+  document.getElementById('invoiceSuccessModal').classList.add('active');
 }
 
 async function sendInvoice(xeroId, invNumber) {
@@ -9559,7 +9668,7 @@ function confirmUnifiedInvoiceSend() {
 // Backward compat
 function confirmInvoiceSend() { confirmUnifiedInvoiceSend(); }
 
-async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail) {
+async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail, openInXero) {
   var invData = gatherInvoiceData();
   if (!invData) return;
 
@@ -9587,12 +9696,23 @@ async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail) {
     }
 
     var invTotal = result.total || 0;
-    var msg = 'Invoice ' + (result.invoice_number || '') + (mode === 'send' ? ' sent' : ' saved as draft') + ' — ' + fmt$(invTotal);
+    var invNum = result.invoice_number || '';
+    var xeroInvId = result.xero_invoice_id || '';
+    var msg = 'Invoice ' + invNum + (mode === 'send' ? ' sent' : ' saved as draft') + ' — ' + fmt$(invTotal);
     if (result.warning) msg += '\n' + result.warning;
-    showToast(msg, 'success');
     closeModal('unifiedInvoiceModal');
     loadInvoices();
     refreshActiveView();
+
+    if (mode === 'send' && xeroInvId) {
+      showInvoiceSuccessModal(invNum, emailOverride || '', xeroInvId, 'sent');
+    } else if (openInXero && xeroInvId) {
+      // Open the draft in Xero for preview
+      showToast(msg, 'success');
+      window.open('https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroInvId, '_blank');
+    } else {
+      showToast(msg, 'success');
+    }
   } catch (e) {
     alert('Failed to create invoice: ' + e.message);
   }
