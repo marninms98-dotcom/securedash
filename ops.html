@@ -9548,7 +9548,11 @@ function addDepositPreset(pct) {
   if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
   var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
   var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
-  var desc = pct + '% Deposit — ' + (_invJobCache.job_number || '') + ' (' + fmt$(totalIncGst) + ' inc GST)';
+  var desc = pct + '% Deposit — ' + (_invJobCache.job_number || '') + ' (' + fmt$(totalIncGst) + ' inc GST)' +
+    '\n' + (_invJobCache.client_name || '') +
+    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
+    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
+    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
   addInvLine(desc, 1, depositExGst);
 }
 
@@ -9566,7 +9570,12 @@ function addBalancePreset() {
   var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
   if (remaining <= 0) { alert('No remaining balance to invoice.'); return; }
   var exGst = Math.round((remaining / 1.1) * 100) / 100;
-  addInvLine('Balance Due — ' + (_invJobCache.job_number || ''), 1, exGst);
+  var balDesc = 'Balance Due — ' + (_invJobCache.job_number || '') +
+    '\n' + (_invJobCache.client_name || '') +
+    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
+    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
+    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
+  addInvLine(balDesc, 1, exGst);
 }
 
 function gatherInvoiceData() {
