@@ -685,13 +685,18 @@
     .cal-schedule-backdrop { position: fixed; inset: 0; z-index: 519; background: rgba(0,0,0,0.3); display: none; }
     .cal-schedule-backdrop.open { display: block; }
 
-    /* Job popup (click on block) */
-    .cal-job-popup {
-      position: fixed; z-index: 530; background: var(--sw-card);
-      border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-      padding: 16px; width: 340px; display: none;
+    /* Job popup (click on block) — centered overlay */
+    .cal-job-popup-overlay {
+      position: fixed; inset: 0; z-index: 529; background: rgba(0,0,0,0.3);
+      display: none; justify-content: center; align-items: center;
     }
-    .cal-job-popup.open { display: block; }
+    .cal-job-popup-overlay.open { display: flex; }
+    .cal-job-popup {
+      position: relative; z-index: 530; background: var(--sw-card);
+      border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      padding: 16px; width: 380px; max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 64px); overflow-y: auto;
+    }
     .cal-job-popup-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
     .cal-job-popup-row { font-size: 12px; margin-bottom: 4px; color: var(--sw-text-sec); }
     .cal-job-popup-row strong { color: var(--sw-text); }
@@ -759,7 +764,7 @@
     @media (max-width: 600px) {
       .cal-controls { gap: 4px; }
       .cal-controls button { padding: 4px 8px; font-size: 11px; }
-      .cal-job-popup { width: calc(100vw - 32px); left: 16px; transform: translateY(-50%); }
+      .cal-job-popup { width: calc(100vw - 32px); }
     }
 
     /* Legacy compat (crew-util for non-crew views still used) */
@@ -2003,7 +2008,9 @@
       </div>
 
       <!-- Job popup (appears on block click) -->
-      <div class="cal-job-popup" id="calJobPopup"></div>
+      <div class="cal-job-popup-overlay" id="calJobPopupOverlay" onclick="if(event.target===this)closeCalJobPopup()">
+        <div class="cal-job-popup" id="calJobPopup"></div>
+      </div>
 
       <!-- Confirm modal (replaces browser confirm()) -->
       <div class="cal-confirm-backdrop" id="calConfirmBackdrop">
@@ -5198,12 +5205,7 @@ function openCalJobPopup(event, assignmentId) {
   html += '</div>';
 
   popup.innerHTML = html;
-  popup.classList.add('open');
-
-  // Position near click
-  var rect = event.target.getBoundingClientRect();
-  popup.style.top = Math.min(rect.bottom + 8, window.innerHeight - 350) + 'px';
-  popup.style.left = Math.min(rect.left, window.innerWidth - 360) + 'px';
+  document.getElementById('calJobPopupOverlay').classList.add('open');
 }
 
 // Helper: blocker fix button
@@ -5230,17 +5232,11 @@ function popupOverflow(assignmentId, jobId, confStatus) {
 }
 
 function closeCalJobPopup() {
-  document.getElementById('calJobPopup').classList.remove('open');
+  document.getElementById('calJobPopupOverlay').classList.remove('open');
   _calPopupAssignment = null;
 }
 
-// Close popup when clicking outside
-document.addEventListener('click', function(e) {
-  var popup = document.getElementById('calJobPopup');
-  if (popup && popup.classList.contains('open') && !popup.contains(e.target)) {
-    closeCalJobPopup();
-  }
-});
+// Close popup when clicking outside (handled by overlay onclick now)
 
 // ── Confirm Modal (replaces browser confirm()) ──
 function showConfirmModal(title, message, confirmText, onConfirm, opts) {
