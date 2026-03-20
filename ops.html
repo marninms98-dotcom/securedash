@@ -6923,6 +6923,7 @@ var _currentJobId = null;
 // Open full-page job detail by UUID
 async function openJobDetail(jobId) {
   _currentJobId = jobId;
+  _emailLogLoaded = false; // reset email log when switching jobs
   // Save scroll position for kanban return
   var jobsBody = document.getElementById('jobsBody');
   if (jobsBody) sessionStorage.setItem('sw_kanban_scroll', jobsBody.scrollTop || window.scrollY);
@@ -10567,10 +10568,11 @@ function renderCommsView(data) {
 
   var html = '';
 
-  // Channel tabs: Client | Suppliers
+  // Channel tabs: Client | Suppliers | Email Log
   html += '<div class="comms-channel-tabs">';
   html += '<button class="comms-channel-tab active" id="commsTabClient" onclick="setCommsChannel(\'client\')">Client</button>';
   html += '<button class="comms-channel-tab" id="commsTabSuppliers" onclick="setCommsChannel(\'suppliers\')">Suppliers' + (pos.length ? ' (' + pos.length + ')' : '') + '</button>';
+  html += '<button class="comms-channel-tab" id="commsTabEmail" onclick="setCommsChannel(\'email\')">Email Log</button>';
   html += '</div>';
 
   // ── Client View ──
@@ -10691,6 +10693,11 @@ function renderCommsView(data) {
   }
   html += '</div>'; // end commsSupplierView
 
+  // ── Email Log View ──
+  html += '<div id="commsEmailView" style="display:none;">';
+  html += '<div id="emailLogContent"><div class="loading" style="text-align:center;padding:20px;">Loading email log...</div></div>';
+  html += '</div>';
+
   container.innerHTML = html;
 
   // Load client conversation async
@@ -10715,20 +10722,121 @@ function renderCommsView(data) {
 function setCommsChannel(channel) {
   var clientView = document.getElementById('commsClientView');
   var supplierView = document.getElementById('commsSupplierView');
+  var emailView = document.getElementById('commsEmailView');
   var clientTab = document.getElementById('commsTabClient');
   var supplierTab = document.getElementById('commsTabSuppliers');
+  var emailTab = document.getElementById('commsTabEmail');
   if (!clientView || !supplierView) return;
+
+  // Hide all
+  clientView.style.display = 'none';
+  supplierView.style.display = 'none';
+  if (emailView) emailView.style.display = 'none';
+  clientTab.classList.remove('active');
+  supplierTab.classList.remove('active');
+  if (emailTab) emailTab.classList.remove('active');
+
   if (channel === 'suppliers') {
-    clientView.style.display = 'none';
     supplierView.style.display = 'block';
-    clientTab.classList.remove('active');
     supplierTab.classList.add('active');
+  } else if (channel === 'email') {
+    if (emailView) emailView.style.display = 'block';
+    if (emailTab) emailTab.classList.add('active');
+    loadEmailLog();
   } else {
     clientView.style.display = 'block';
-    supplierView.style.display = 'none';
     clientTab.classList.add('active');
-    supplierTab.classList.remove('active');
   }
+}
+
+// ── Email Log: fetch + render ──
+var _emailLogLoaded = false;
+async function loadEmailLog() {
+  if (_emailLogLoaded) return;
+  var container = document.getElementById('emailLogContent');
+  if (!container || !_currentJobId) return;
+
+  try {
+    var res = await fetch(OPS_API + '?action=get_email_events&job_id=' + _currentJobId);
+    var events = await res.json();
+    _emailLogLoaded = false; // allow refresh on next open
+    if (!events || events.length === 0) {
+      container.innerHTML = '<div class="comms-empty">No emails logged for this job yet.</div>';
+      return;
+    }
+    _emailLogLoaded = true;
+    container.innerHTML = renderEmailLog(events);
+  } catch (e) {
+    container.innerHTML = '<div class="comms-empty">Failed to load email log.</div>';
+  }
+}
+
+function renderEmailLog(events) {
+  var html = '';
+
+  // Group by type
+  var groups = { quote: [], invoice: [], reminder: [], other: [] };
+  events.forEach(function(ev) {
+    var t = ev.email_type || 'other';
+    if (groups[t]) groups[t].push(ev);
+    else groups.other.push(ev);
+  });
+
+  var groupOrder = [
+    { key: 'invoice', icon: '\uD83C\uDFE2', label: 'Invoice Emails' },
+    { key: 'quote', icon: '\uD83D\uDC64', label: 'Quote Emails' },
+    { key: 'reminder', icon: '\u23F0', label: 'Reminders' },
+    { key: 'other', icon: '\uD83D\uDCE7', label: 'Other' }
+  ];
+
+  groupOrder.forEach(function(g) {
+    var items = groups[g.key];
+    if (!items || items.length === 0) return;
+
+    html += '<div style="margin-bottom:16px;">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">' + g.icon + ' ' + g.label + ' (' + items.length + ')</div>';
+
+    items.forEach(function(ev) {
+      var statusColor = ev.status === 'sent' ? 'var(--sw-orange)' : ev.status === 'delivered' ? '#34C759' : ev.status === 'opened' ? '#007AFF' : ev.status === 'failed' ? '#FF3B30' : ev.status === 'bounced' ? '#FF3B30' : 'var(--sw-text-sec)';
+      var statusLabel = (ev.status || 'unknown').charAt(0).toUpperCase() + (ev.status || 'unknown').slice(1);
+
+      // Buying signal: opened multiple times
+      var openBadge = '';
+      var meta = ev.metadata || {};
+      if (ev.status === 'opened' && meta.open_count && meta.open_count > 2) {
+        openBadge = ' <span style="background:var(--sw-orange);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;">Opened ' + meta.open_count + 'x</span>';
+      }
+
+      // Bounce warning
+      var bounceBadge = '';
+      if (ev.status === 'bounced') {
+        bounceBadge = ' <span style="background:#FF3B30;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;">Bounced</span>';
+      }
+
+      var dateStr = ev.sent_at ? new Date(ev.sent_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : (ev.created_at ? new Date(ev.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+      html += '<div style="padding:8px 10px;margin-bottom:4px;background:var(--sw-light);border-radius:6px;font-size:12px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+      html += '<div style="font-weight:600;color:var(--sw-dark);">' + escapeHtml(ev.subject || 'No subject') + '</div>';
+      html += '<span style="color:' + statusColor + ';font-size:11px;font-weight:600;">' + statusLabel + '</span>';
+      html += '</div>';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;color:var(--sw-text-sec);font-size:11px;">';
+      html += '<span>To: ' + escapeHtml(ev.recipient || '') + '</span>';
+      html += '<span>' + dateStr + '</span>';
+      html += '</div>';
+      if (openBadge || bounceBadge) {
+        html += '<div style="margin-top:4px;">' + openBadge + bounceBadge + '</div>';
+      }
+      if (ev.failure_reason) {
+        html += '<div style="margin-top:4px;color:#FF3B30;font-size:11px;">Error: ' + escapeHtml(ev.failure_reason) + '</div>';
+      }
+      html += '</div>';
+    });
+
+    html += '</div>';
+  });
+
+  return html;
 }
 
 async function loadConversation(contactId) {
@@ -11101,7 +11209,7 @@ var _poEmailCache = {};
 var _poComposeData = null; // temp PO data for template replacements
 
 var _poEmailTemplates = {
-  new_order: 'Hi {supplier_name},\n\nPlease find attached our purchase order {po_number} for job {job_number}.\n\nDelivery address: {site_address}\nRequired by: {delivery_date}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
+  new_order: 'Hi {supplier_name},\n\nPlease find attached PO {po_number} for job {site_address}.\n\nDelivery required by: {delivery_date}\n\n{line_items_summary}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
   delivery_change: 'Hi {supplier_name},\n\nRegarding PO {po_number} for job {job_number} — we need to change the delivery details.\n\nNew delivery date: {delivery_date}\nDelivery address: {site_address}\n\nPlease confirm this change.\n\nThanks,\nSecureWorks WA',
   order_query: 'Hi {supplier_name},\n\nJust following up on PO {po_number} for job {job_number}.\n\nCould you please provide an update on the order status and expected delivery?\n\nThanks,\nSecureWorks WA',
   cancellation: 'Hi {supplier_name},\n\nPlease cancel PO {po_number} for job {job_number}.\n\nPlease confirm cancellation at your earliest convenience.\n\nThanks,\nSecureWorks WA',
@@ -11121,20 +11229,38 @@ function openPOEmailCompose(poId) {
     if (sup && sup.email) supplierEmail = sup.email;
   }
 
+  // Build line items summary for email template
+  var lineItemsSummary = '';
+  var lineItems = po.line_items || po.items || [];
+  if (Array.isArray(lineItems) && lineItems.length > 0) {
+    lineItemsSummary = lineItems.map(function(li) {
+      var desc = li.description || li.item || '';
+      var qty = li.quantity || li.qty || '';
+      return qty ? '- ' + desc + ' (x' + qty + ')' : '- ' + desc;
+    }).join('\n');
+  }
+
+  // Resolve job address from current job data or PO
+  var jobAddress = po.delivery_address || '';
+  if (!jobAddress && _currentJobData && _currentJobData.job) {
+    jobAddress = [_currentJobData.job.site_address, _currentJobData.job.site_suburb].filter(Boolean).join(', ');
+  }
+
   // Store PO data for template replacements
   _poComposeData = {
     po_number: po.po_number || '',
     job_number: po.job_number || '',
-    site_address: po.delivery_address || '',
+    site_address: jobAddress,
     delivery_date: po.delivery_date ? new Date(po.delivery_date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'TBC',
     supplier_name: po.supplier_name || '',
     job_id: po.job_id || '',
-    po_id: po.id
+    po_id: po.id,
+    line_items_summary: lineItemsSummary
   };
 
   document.getElementById('poComposeTitle').textContent = 'Email Supplier \u2014 ' + (po.po_number || 'PO');
   document.getElementById('poComposeTo').value = supplierEmail;
-  document.getElementById('poComposeSubject').value = (po.po_number || 'PO') + ' | ' + (po.job_number || '') + ' \u2014 ' + (po.supplier_name || '') + ' Order';
+  document.getElementById('poComposeSubject').value = 'PO ' + (po.po_number || '') + ' \u2014 ' + (jobAddress || po.job_number || '') + ' \u2014 SecureWorks WA';
   document.getElementById('poComposePoId').value = po.id;
   document.getElementById('poComposeJobId').value = po.job_id || '';
   document.getElementById('poComposeTemplate').value = 'new_order';
