@@ -6614,6 +6614,11 @@ function renderMaterialsKanban() {
       if (stage.key === 'draft') {
         html += '<button onclick="event.stopPropagation();approveAndSendPO(\'' + po.id + '\',this)" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);cursor:pointer;color:#fff;font-weight:600;">Approve &amp; Send</button>';
       }
+      // Mark Delivered for confirmed POs
+      // Future: Trade app materials_check can trigger this
+      if (stage.key === 'authorised') {
+        html += '<button onclick="event.stopPropagation();markPODelivered(\'' + po.id + '\',this)" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);cursor:pointer;color:#fff;font-weight:600;">Mark Delivered</button>';
+      }
       // FEATURE 7: Lifecycle buttons
       if (!po.invoice_received_at && (stage.key === 'authorised' || stage.key === 'billed')) {
         html += '<button onclick="event.stopPropagation();markPOInvoiceReceived(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-green);">Invoice Rcvd</button>';
@@ -7714,16 +7719,37 @@ function renderMoneyView(data) {
   }
   html += '</div>';
 
-  // PO list
+  // PO list with readiness summary
   var pos = data.purchase_orders || [];
   if (pos.length > 0) {
+    // Per-job PO readiness summary
+    var poByStatus = { draft: 0, approved: 0, sent: 0, confirmed: 0, delivered: 0, other: 0 };
+    var awaitingReply = 0;
+    var now = Date.now();
+    pos.forEach(function(po) {
+      if (po.status === 'draft') poByStatus.draft++;
+      else if (po.status === 'approved') poByStatus.draft++;
+      else if (po.status === 'submitted' || po.status === 'sent') { poByStatus.sent++; if (po.sent_at && (now - new Date(po.sent_at).getTime()) > 48*3600*1000) awaitingReply++; }
+      else if (po.status === 'authorised' || po.status === 'confirmed') poByStatus.confirmed++;
+      else if (po.status === 'billed' || po.status === 'delivered') poByStatus.delivered++;
+      else poByStatus.other++;
+    });
+    var readyCount = poByStatus.confirmed + poByStatus.delivered;
+    var readyColor = readyCount === pos.length ? 'var(--sw-green)' : poByStatus.draft > 0 ? 'var(--sw-red)' : 'var(--sw-orange)';
     html += '<div style="margin-top:8px;font-size:12px;font-weight:600;color:var(--sw-text-sec);">Purchase Orders</div>';
+    html += '<div style="font-size:11px;color:' + readyColor + ';margin-bottom:4px;">';
+    html += readyCount + '/' + pos.length + ' confirmed/delivered';
+    if (poByStatus.draft > 0) html += ', ' + poByStatus.draft + ' draft';
+    if (poByStatus.sent > 0) html += ', ' + poByStatus.sent + ' sent';
+    if (awaitingReply > 0) html += ' (' + awaitingReply + ' awaiting reply 48h+)';
+    html += '</div>';
     pos.forEach(function(po) {
       html += '<div class="jd-money-card"><div class="jd-money-card-head">';
       html += '<span>' + (po.po_number || '') + ' — ' + escapeHtml(po.supplier_name || '') + '</span>';
       html += '<strong>' + fmt$(po.total) + '</strong></div>';
       html += '<div class="jd-money-card-sub"><span class="status-badge ' + po.status + '">' + (po.status || '') + '</span>';
-      if (po.delivery_date) html += ' &middot; Delivery ' + fmtDate(po.delivery_date);
+      if (po.confirmed_delivery_date) html += ' &middot; Delivery ' + fmtDate(po.confirmed_delivery_date);
+      else if (po.delivery_date) html += ' &middot; Req. ' + fmtDate(po.delivery_date);
       html += '</div></div>';
     });
   }
@@ -7876,7 +7902,7 @@ function renderBuildView(data) {
         html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">';
         if (!isCommission) {
           html += '<button class="btn btn-sm btn-primary" onclick="quickApprovePO(\'' + po.id + '\', false)">Approve as Draft in Xero</button>';
-          html += '<button class="btn btn-sm btn-success" onclick="quickApprovePO(\'' + po.id + '\', true)">Approve &amp; Send to Supplier</button>';
+          html += '<button class="btn btn-sm btn-success" onclick="approveAndComposePO(\'' + po.id + '\')">Approve &amp; Send to Supplier</button>';
         }
         html += '<button class="btn btn-sm btn-outline" onclick="openPOEdit(\'' + po.id + '\')">Edit Full PO</button>';
         html += '</div>';
@@ -11034,6 +11060,59 @@ async function quickApprovePO(poId, sendToSupplier) {
   }
 }
 
+// Approve PO + open compose modal (for "Approve & Send to Supplier" on draft review cards)
+async function approveAndComposePO(poId) {
+  var supplierEl = document.getElementById('poSupplierPick' + poId);
+  var supplier = supplierEl ? supplierEl.value : '';
+  var dateEl = document.getElementById('poDeliveryPick' + poId);
+  var deliveryDate = dateEl ? dateEl.value : '';
+
+  if (!supplier) {
+    showToast('Please select a supplier first', 'warning');
+    return;
+  }
+
+  try {
+    // Save supplier + delivery date on the PO
+    await opsPost('update_po', {
+      id: poId,
+      supplier_name: supplier,
+      delivery_date: deliveryDate || null,
+      status: 'approved'
+    });
+
+    // Sync to Xero as draft (actual send happens via compose modal email)
+    try {
+      await opsPost('push_po_to_xero', { id: poId, status: 'draft' });
+    } catch (e) { /* Xero sync non-critical */ }
+
+    // Refresh POs so compose modal sees updated data
+    var data = await opsFetch('list_pos');
+    _allPOs = data.purchase_orders || [];
+
+    // Open the compose modal pre-filled
+    openPOEmailCompose(poId);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+// Mark PO as delivered (manual — Shaun clicks on Confirmed cards)
+// Future: Trade app materials_check can trigger this
+async function markPODelivered(poId, btnEl) {
+  if (!confirm('Mark this PO as delivered?')) return;
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Updating...'; }
+  try {
+    await opsPost('update_po', { id: poId, status: 'billed' });
+    showToast('PO marked as delivered', 'success');
+    loadMaterials();
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'warning');
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Mark Delivered'; }
+  }
+}
+
 // FEATURE 9: Attachment support (TODOs)
 // TODO: Create po_attachments table: id (uuid), po_id (uuid FK), filename (text), storage_url (text),
 //       file_type (text), attachment_type (text — Quote/Invoice/Delivery Docket/Credit Note/Other),
@@ -11733,11 +11812,24 @@ function openPOEmailCompose(poId) {
   var po = _allPOs.find(function(p) { return p.id === poId; });
   if (!po) { showToast('PO not found', 'warning'); return; }
 
-  // Find supplier email
+  // Find supplier email — prompt to add one if missing
   var supplierEmail = '';
   if (_suppliers && _suppliers.length > 0) {
     var sup = _suppliers.find(function(s) { return s.name === po.supplier_name; });
-    if (sup && sup.email) supplierEmail = sup.email;
+    if (sup && sup.email) {
+      supplierEmail = sup.email;
+    } else if (po.supplier_name) {
+      var entered = prompt('No email on file for ' + po.supplier_name + '. Enter their email:');
+      if (entered && entered.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        supplierEmail = entered;
+        // Save it for next time
+        opsPost('update_supplier_email', { supplier_name: po.supplier_name, email: entered }).then(function() {
+          if (sup) sup.email = entered;
+        }).catch(function() {});
+      } else if (entered) {
+        showToast('Invalid email address', 'warning');
+      }
+    }
   }
 
   // Build line items summary for email template
@@ -11843,10 +11935,11 @@ async function sendPOEmail() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         po_id: poId,
-        to: to,
+        to_email: to,
         subject: subject,
-        body: body,
-        attach_pdf: attachPDF
+        body_text: body,
+        body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
+        attach_po_pdf: attachPDF
       })
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -11855,6 +11948,11 @@ async function sendPOEmail() {
 
     showToast('Email sent to ' + (supplierName || to), 'success');
     closeModal('poEmailComposeModal');
+
+    // Update PO status to 'submitted' (sent)
+    try {
+      await opsPost('update_po', { id: poId, status: 'submitted' });
+    } catch (e3) { /* status update non-critical */ }
 
     // Log the sent email as an event too
     try {
