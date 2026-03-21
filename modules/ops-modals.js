@@ -1,0 +1,1312 @@
+// ════════════════════════════════════════════════════════════
+// MODALS
+// ════════════════════════════════════════════════════════════
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
+  _editAssignmentId = null; // Reset — this is a new assignment
+  document.getElementById('assignmentModal').classList.add('active');
+  document.getElementById('assignModalTitle').textContent = 'Schedule Assignment';
+  document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
+  document.getElementById('assignJobSearch').value = '';
+  document.getElementById('assignJobSelect').value = '';
+  await loadPOJobList();
+  await loadCrewList();
+  // Render crew dropdown — preCrew can be a user ID or a name
+  var preCrewId = preCrew || '';
+  if (preCrewId && !_crewList.some(function(u) { return u.id === preCrewId; })) {
+    // It's a name, not an ID — find the matching user (exact, then case-insensitive, then partial)
+    var preCrewLower = preCrewId.toLowerCase();
+    var match = _crewList.find(function(u) { return u.name === preCrewId; }) ||
+      _crewList.find(function(u) { return u.name.toLowerCase() === preCrewLower; }) ||
+      _crewList.find(function(u) { return u.name.toLowerCase().indexOf(preCrewLower) !== -1 || preCrewLower.indexOf(u.name.toLowerCase()) !== -1; });
+    preCrewId = match ? match.id : '';
+  }
+  document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', preCrewId);
+  document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(preCrewId);
+  // Update member checkboxes when lead changes (hide lead from members list)
+  document.getElementById('assignCrew').onchange = function() {
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
+  };
+  if (preSelectJobId) {
+    selectJobPicker('assign', preSelectJobId);
+  }
+}
+
+// ── Edit existing assignment ──
+var _editAssignmentId = null;
+
+async function openEditAssignmentModal(assignmentId) {
+  var ev = _calEvents.find(function(e) { return e.assignment_id === assignmentId; });
+  if (!ev) { alert('Assignment not found'); return; }
+
+  _editAssignmentId = assignmentId;
+  document.getElementById('assignModalTitle').textContent = 'Edit Assignment — ' + (ev.client_name || '');
+
+  document.getElementById('assignmentModal').classList.add('active');
+  document.getElementById('assignDate').value = ev.scheduled_date || '';
+  document.getElementById('assignEndDate').value = ev.scheduled_end || '';
+  document.getElementById('assignStartTime').value = ev.start_time || '07:00';
+  document.getElementById('assignEndTime').value = ev.end_time || '15:00';
+  document.getElementById('assignJobSearch').value = '';
+  document.getElementById('assignJobSelect').value = '';
+  document.getElementById('assignNotes').value = ev.notes || '';
+
+  await loadPOJobList();
+  await loadCrewList();
+
+  // Pre-select crew
+  var crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || '';
+  var crewMatch = _crewList.find(function(u) { return u.name === crewName; }) ||
+    _crewList.find(function(u) { return u.id === ev.user_id; });
+  var crewId = crewMatch ? crewMatch.id : '';
+
+  document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', crewId);
+  document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(crewId);
+  document.getElementById('assignCrew').onchange = function() {
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
+  };
+
+  // Pre-select job
+  if (ev.job_id) {
+    selectJobPicker('assign', ev.job_id);
+  }
+}
+
+var _poJobList = [];
+
+async function openPOModal(preSelectJobId) {
+  resetPOModal();
+  document.getElementById('poModal').classList.add('active');
+  await loadPOJobList();
+  await loadSupplierList();
+  if (preSelectJobId) {
+    selectJobPicker('po', preSelectJobId);
+  }
+}
+
+async function loadPOJobList() {
+  if (_poJobList.length > 0) return;
+  try {
+    var data = await opsFetch('pipeline');
+    _poJobList = [];
+    Object.values(data.columns).forEach(function(arr) { _poJobList = _poJobList.concat(arr); });
+  } catch (e) {
+    console.error('loadPOJobList error:', e);
+  }
+}
+
+// ── Unified searchable job picker ──
+// Prefixes: 'po', 'assign', 'wo', 'inv'
+// Each has: {prefix}JobSearch (input), {prefix}JobSelect (hidden), {prefix}JobDropdown (div)
+// Status filters per picker context
+var _jobPickerStatuses = {
+  assign: ['accepted', 'scheduled', 'in_progress'],
+  wo: ['accepted', 'scheduled', 'in_progress'],
+  inv: ['accepted', 'scheduled', 'in_progress', 'complete'],
+  po: null  // PO shows all statuses
+};
+
+function filterJobPicker(prefix, val) {
+  var dd = document.getElementById(prefix + 'JobDropdown');
+  if (!dd) return;
+  var q = (val || '').toLowerCase().trim();
+  var statusFilter = _jobPickerStatuses[prefix];
+
+  // Filter by status first
+  var jobs = _poJobList;
+  if (statusFilter) {
+    jobs = jobs.filter(function(j) { return statusFilter.indexOf(j.status) >= 0; });
+  }
+
+  // Then filter by search query
+  var totalMatched = jobs.length;
+  if (q) {
+    jobs = jobs.filter(function(j) {
+      return (j.client_name || '').toLowerCase().indexOf(q) !== -1 ||
+        (j.job_number || '').toLowerCase().indexOf(q) !== -1 ||
+        (j.site_suburb || '').toLowerCase().indexOf(q) !== -1;
+    });
+    totalMatched = jobs.length;
+  }
+
+  // Limit to 20 results
+  var limited = jobs.length > 20;
+  var shown = jobs.slice(0, 20);
+
+  // Group by type
+  var patioJobs = shown.filter(function(j) { return j.type === 'patio'; });
+  var fencingJobs = shown.filter(function(j) { return j.type === 'fencing'; });
+  var otherJobs = shown.filter(function(j) { return j.type !== 'patio' && j.type !== 'fencing'; });
+
+  var html = '';
+
+  function renderGroup(label, color, list) {
+    if (list.length === 0) return '';
+    var h = '<div class="jp-group-header" style="color:' + color + ';">' + label + '</div>';
+    list.forEach(function(j) {
+      h += '<div class="jp-option" onmousedown="selectJobPicker(\'' + prefix + '\',\'' + j.id + '\')">';
+      h += '<div style="flex:1;">';
+      h += '<div class="jp-option-main">' + (j.job_number || '') + (j.job_number && j.client_name ? ' \u2014 ' : '') + (j.client_name || 'Unknown') + (j.site_suburb ? ' \u2014 ' + j.site_suburb : '') + '</div>';
+      h += '<div class="jp-option-sub">' + (j.status || '') + (j.type ? ' \u00b7 ' + j.type : '') + '</div>';
+      h += '</div>';
+      h += '</div>';
+    });
+    return h;
+  }
+
+  html += renderGroup('Patios', '#F15A29', patioJobs);
+  html += renderGroup('Fencing', '#4C6A7C', fencingJobs);
+  html += renderGroup('Other', '#95A5A6', otherJobs);
+
+  if (shown.length === 0) {
+    html = '<div style="padding:16px; text-align:center; color:var(--sw-text-sec); font-size:12px;">No matching jobs</div>';
+  }
+
+  if (limited) {
+    html += '<div class="jp-count">Showing 20 of ' + totalMatched + ' results \u2014 type to narrow down</div>';
+  }
+
+  // PO gets an "unlink" option
+  if (prefix === 'po') {
+    html += '<div class="jp-option" style="font-size:12px; color:var(--sw-text-sec); border-top:1px solid var(--sw-border);" onmousedown="selectJobPicker(\'po\',\'\')">No job linked</div>';
+  }
+
+  dd.innerHTML = html;
+  dd.classList.add('show');
+}
+
+function selectJobPicker(prefix, jobId) {
+  var dd = document.getElementById(prefix + 'JobDropdown');
+  var search = document.getElementById(prefix + 'JobSearch');
+  var hidden = document.getElementById(prefix + 'JobSelect');
+  if (dd) dd.classList.remove('show');
+  if (hidden) hidden.value = jobId || '';
+
+  if (!jobId) {
+    if (search) search.value = '';
+    // PO-specific cleanup
+    if (prefix === 'po') {
+      document.getElementById('poDeliveryAddress').value = '';
+      document.getElementById('poReference').value = '';
+    }
+    return;
+  }
+
+  var job = _poJobList.find(function(j) { return j.id === jobId; });
+  if (job && search) {
+    search.value = (job.job_number || '') + ' \u2014 ' + (job.client_name || 'Unknown') + (job.site_suburb ? ' \u2014 ' + job.site_suburb : '');
+  }
+
+  // Picker-specific post-select hooks
+  if (prefix === 'po') onPOJobSelect(jobId);
+  if (prefix === 'inv') onInvJobSelect(jobId);
+}
+
+// Legacy wrappers for PO modal (existing code calls these)
+function showJobDropdown() { filterJobPicker('po', document.getElementById('poJobSearch').value); }
+function filterJobDropdown(val) { filterJobPicker('po', val); }
+function selectPOJob(jobId) { selectJobPicker('po', jobId); }
+
+async function onPOJobSelect(jobId) {
+  if (!jobId) return;
+  autoPOFromScope(jobId);
+  try {
+    var data = await opsFetch('job_detail', { jobId: jobId });
+    var j = data.job || data;
+    if (j.site_address) document.getElementById('poDeliveryAddress').value = j.site_address + (j.site_suburb ? ', ' + j.site_suburb : '');
+    if (j.job_number) document.getElementById('poReference').value = j.job_number;
+  } catch(e) { /* non-critical */ }
+}
+
+// Close all job picker dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+  ['po', 'assign', 'wo', 'inv'].forEach(function(prefix) {
+    var dd = document.getElementById(prefix + 'JobDropdown');
+    var search = document.getElementById(prefix + 'JobSearch');
+    if (dd && search && !dd.contains(e.target) && e.target !== search) {
+      dd.classList.remove('show');
+    }
+  });
+});
+
+// Fulfilment type toggle (delivery vs pickup)
+function onPOFulfilmentChange(type) {
+  var dateLabel = document.getElementById('poDateLabel');
+  var addressLabel = document.getElementById('poAddressLabel');
+  var addressGroup = document.getElementById('poAddressGroup');
+  var addressInput = document.getElementById('poDeliveryAddress');
+
+  if (type === 'delivery') {
+    dateLabel.textContent = 'Delivery Date';
+    addressLabel.textContent = 'Delivery Address';
+    addressInput.placeholder = 'Job site address';
+    addressGroup.style.display = '';
+  } else if (type === 'pickup') {
+    dateLabel.textContent = 'Pickup Date';
+    addressLabel.textContent = 'Pickup Location';
+    addressInput.placeholder = 'Supplier branch address';
+    addressGroup.style.display = '';
+  } else {
+    dateLabel.textContent = 'Pickup Date';
+    addressLabel.textContent = 'Pickup Location';
+    addressInput.placeholder = 'Address for pickup';
+    addressGroup.style.display = '';
+  }
+}
+
+async function openWOModal() {
+  document.getElementById('woModal').classList.add('active');
+  document.getElementById('woJobSearch').value = '';
+  document.getElementById('woJobSelect').value = '';
+  await loadPOJobList();
+}
+
+async function loadSupplierList() {
+  if (_suppliers.length > 0) return;
+  try {
+    var data = await opsFetch('list_suppliers');
+    _suppliers = data.suppliers || [];
+    var dl = document.getElementById('supplierList');
+    dl.innerHTML = '';
+    _suppliers.forEach(function(s) {
+      var opt = document.createElement('option');
+      opt.value = s.name;
+      opt.dataset.xeroId = s.xero_contact_id;
+      dl.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('loadSupplierList error:', e);
+  }
+}
+
+async function submitAssignment() {
+  var jobId = document.getElementById('assignJobSelect').value;
+  var date = document.getElementById('assignDate').value;
+  if (!jobId || !date) { alert('Please select a job and date.'); return; }
+
+  var crewUserId = getCrewSelectId('assignCrew');
+  var crewName = getCrewSelectName('assignCrew');
+  if (!crewUserId) { alert('Please select a Team Lead.'); return; }
+
+  try {
+    var endDate = document.getElementById('assignEndDate').value || null;
+    var startTime = document.getElementById('assignStartTime').value || null;
+    var endTime = document.getElementById('assignEndTime').value || null;
+    var assignType = document.getElementById('assignType').value;
+    var notes = document.getElementById('assignNotes').value || null;
+
+    if (_editAssignmentId) {
+      // Delete old assignment and create new one (update_assignment doesn't support crew changes)
+      var editEv = _calEvents.find(function(e) { return e.assignment_id === _editAssignmentId; });
+      await opsPost('delete_assignment', { assignmentId: _editAssignmentId });
+      await opsPost('create_assignment', {
+        jobId: jobId,
+        scheduledDate: date,
+        scheduledEnd: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        assignmentType: assignType,
+        crewName: crewName || null,
+        userId: crewUserId || null,
+        role: 'lead_installer',
+        notes: notes,
+      });
+
+      // Sync dates to sibling assignments (other crew on same job)
+      if (editEv) {
+        var siblings = _calEvents.filter(function(e) {
+          return e.job_id === editEv.job_id && e.assignment_id !== _editAssignmentId;
+        });
+        for (var s = 0; s < siblings.length; s++) {
+          try {
+            await opsPost('update_assignment', {
+              assignmentId: siblings[s].assignment_id,
+              scheduled_date: date,
+              scheduled_end: endDate,
+            });
+          } catch(e) { /* best effort */ }
+        }
+      }
+
+      _editAssignmentId = null;
+      var totalAssigned = 1;
+    } else {
+      // Create lead assignment
+      await opsPost('create_assignment', {
+        jobId: jobId,
+        scheduledDate: date,
+        scheduledEnd: endDate,
+        startTime: startTime,
+        endTime: endTime,
+        assignmentType: assignType,
+        crewName: crewName || null,
+        userId: crewUserId || null,
+        role: 'lead_installer',
+        notes: notes,
+      });
+
+      // Create helper assignments for checked team members
+      var memberCbs = document.querySelectorAll('.assign-member-cb:checked');
+      for (var i = 0; i < memberCbs.length; i++) {
+        var memberId = memberCbs[i].value;
+        var memberName = memberCbs[i].getAttribute('data-name');
+        await opsPost('create_assignment', {
+          jobId: jobId,
+          scheduledDate: date,
+          scheduledEnd: endDate,
+          startTime: startTime,
+          endTime: endTime,
+          assignmentType: assignType,
+          crewName: memberName || null,
+          userId: memberId || null,
+          role: 'helper',
+          notes: notes,
+        });
+      }
+      var totalAssigned = 1 + memberCbs.length;
+    }
+    closeModal('assignmentModal');
+    // Reset form
+    document.getElementById('assignJobSelect').value = '';
+    document.getElementById('assignNotes').value = '';
+    document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
+    document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes('');
+    showToast('Scheduled — ' + totalAssigned + ' person' + (totalAssigned > 1 ? 's' : '') + ' assigned', 'success');
+    // Refresh
+    var activeView = document.querySelector('.view.active');
+    if (activeView) {
+      var id = activeView.id.replace('view', '').toLowerCase();
+      if (id === 'today') loadToday();
+      if (id === 'calendar') loadCalendar();
+      if (id === 'jobs') loadJobs();
+    }
+  } catch (e) {
+    alert('Failed to create assignment: ' + e.message);
+  }
+}
+
+function addPOLine(desc, qty, unit, unitPrice) {
+  var container = document.getElementById('poLineItems');
+  var row = document.createElement('div');
+  row.className = 'po-line-row';
+  row.style.cssText = 'display:grid; grid-template-columns:3fr 60px 60px 80px 80px auto; gap:6px; margin-bottom:4px; align-items:center;';
+  row.innerHTML =
+    '<input type="text" class="form-input" placeholder="Description" data-field="description" value="' + (desc || '').replace(/"/g, '&quot;') + '" style="font-size:12px; padding:6px 8px;">' +
+    '<input type="number" class="form-input" placeholder="Qty" data-field="quantity" value="' + (qty || 1) + '" style="font-size:12px; padding:6px 4px; text-align:center;" oninput="updatePOLineTotals()">' +
+    '<input type="text" class="form-input" placeholder="m/ea" data-field="unit" value="' + (unit || 'ea') + '" style="font-size:12px; padding:6px 4px; text-align:center;">' +
+    '<input type="number" class="form-input" placeholder="0.00" data-field="unit_price" step="0.01"' + (unitPrice ? ' value="' + unitPrice + '"' : '') + ' style="font-size:12px; padding:6px 4px; text-align:right;" oninput="updatePOLineTotals()">' +
+    '<div class="line-total" style="font-size:12px; font-family:var(--sw-font-num); text-align:right; color:var(--sw-text-sec);">$0</div>' +
+    '<button class="btn btn-secondary btn-sm" onclick="this.parentElement.remove(); updatePOLineTotals();" style="padding:3px 6px; font-size:11px;">&times;</button>';
+  container.appendChild(row);
+  updatePOLineTotals();
+}
+
+function updatePOLineTotals() {
+  var rows = document.querySelectorAll('#poLineItems .po-line-row');
+  var total = 0;
+  rows.forEach(function(row) {
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 0;
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    var lineTotal = qty * price;
+    total += lineTotal;
+    var ltEl = row.querySelector('.line-total');
+    if (ltEl) ltEl.textContent = fmt$(lineTotal);
+  });
+  var totalEl = document.getElementById('poLineTotal');
+  if (totalEl) totalEl.textContent = fmt$(total);
+}
+
+function formatScopeSummary(scope, jobType) {
+  if (!scope) return '';
+  if (typeof scope === 'string') return escapeHtml(scope);
+  var parts = [];
+  var s = scope.config || scope;
+  var type = (jobType || '').toLowerCase();
+
+  // Fencing: runs[] with name + length
+  if (s.runs && Array.isArray(s.runs)) {
+    var totalLen = 0;
+    var runDescs = [];
+    s.runs.forEach(function(r) {
+      var len = parseFloat(r.length) || 0;
+      if (len > 100) len = len / 1000; // mm to m
+      totalLen += len;
+      var name = r.name || 'Run';
+      runDescs.push(name + ': ' + len.toFixed(1) + 'm');
+    });
+    if (runDescs.length > 0) parts.push('<strong>' + s.runs.length + ' run' + (s.runs.length > 1 ? 's' : '') + '</strong> — ' + totalLen.toFixed(1) + 'm total');
+    runDescs.forEach(function(rd) { parts.push('&nbsp;&nbsp;' + escapeHtml(rd)); });
+    // Fence height/type
+    if (s.height || s.fenceHeight) parts.push('Height: ' + ((s.height || s.fenceHeight) / 1000 || s.height || s.fenceHeight) + 'm');
+    if (s.style || s.fenceType) parts.push('Style: ' + escapeHtml(s.style || s.fenceType));
+  }
+
+  // Patio/decking: length, projection, roofing
+  if (s.length && s.projection && !s.runs) {
+    var len = typeof s.length === 'string' ? parseFloat(s.length) : s.length;
+    var proj = typeof s.projection === 'string' ? parseFloat(s.projection) : s.projection;
+    if (len > 100) len = len / 1000;
+    if (proj > 100) proj = proj / 1000;
+    var area = len * proj;
+    parts.push('<strong>' + len.toFixed(1) + 'm × ' + proj.toFixed(1) + 'm</strong> (' + area.toFixed(1) + 'm²)');
+  }
+
+  // Roofing type
+  if (s.roofing) {
+    var roofMap = { solarspan75: 'SolarSpan 75mm', solarspan100: 'SolarSpan 100mm', trimdek: 'Trimdek', corrugated: 'Corrugated', spandek: 'Spandek', spanplus330: 'SpanPlus 330' };
+    var roofLabel = typeof s.roofing === 'string' ? (roofMap[s.roofing] || s.roofing) : (s.roofing.type || '');
+    if (roofLabel) parts.push('Roof: ' + escapeHtml(roofLabel));
+  }
+
+  // Roof style
+  if (s.roofStyle || s.roof_style) parts.push('Style: ' + escapeHtml(s.roofStyle || s.roof_style));
+
+  // Posts
+  var postCount = s.post_count || s.postQtyOverride || 0;
+  if (postCount > 0) parts.push('Posts: ' + postCount + (s.post_size || s.postSize ? ' × ' + escapeHtml(s.post_size || s.postSize) : ''));
+
+  // Colour
+  if (s.colour || s.color) parts.push('Colour: ' + escapeHtml(s.colour || s.color));
+
+  // Gate info (fencing)
+  if (s.gates && Array.isArray(s.gates) && s.gates.length > 0) {
+    parts.push('Gates: ' + s.gates.length + ' (' + s.gates.map(function(g) { return escapeHtml(g.type || g.name || 'gate'); }).join(', ') + ')');
+  }
+
+  // Fallback — if nothing parsed, show summary/description if available, otherwise skip (don't dump JSON)
+  if (parts.length === 0) {
+    if (scope.summary) return escapeHtml(scope.summary);
+    if (scope.description) return escapeHtml(scope.description);
+    return '';
+  }
+  return parts.join('<br>');
+}
+
+function trackingCategoryLabel(jobNumber) {
+  if (!jobNumber) return '';
+  var prefix = jobNumber.slice(0, 3).toUpperCase();
+  var map = { SWP: 'SW - PATIOS', SWF: 'SW - FENCING', SWD: 'SW - DECKING', SWR: 'SW - PRIVATE ROOFING', SWI: 'SW - INSURANCE WORK' };
+  return map[prefix] || '';
+}
+
+function accountCodeLabel(jobType) {
+  var map = { patio: '208 — Patios', fencing: '207 — Fencing', decking: '205 — Decking', roofing: '209 — Roofing', insurance: '210 — Insurance', renovation: '201 — Renovation' };
+  return map[(jobType || '').toLowerCase()] || '200 — General';
+}
+
+function accountCodeForJobFE(jobType) {
+  var map = { patio: '208', fencing: '207', decking: '205', roofing: '209', insurance: '210', renovation: '201' };
+  return map[(jobType || '').toLowerCase()] || '200';
+}
+
+function addInvLine(desc, qty, unitPrice, acLabel) {
+  var container = document.getElementById('invLineItems');
+  var row = document.createElement('div');
+  row.className = 'inv-line-row';
+  row.style.cssText = 'display:grid; grid-template-columns:3fr 60px 80px 80px 72px auto; gap:6px; margin-bottom:4px; align-items:center;';
+  var badgeLabel = acLabel || (_invJobCache ? accountCodeLabel(_invJobCache.type) : '200 — General');
+  row.innerHTML =
+    '<input type="text" class="form-input" placeholder="Description" data-field="description" value="' + (desc || '').replace(/"/g, '&quot;') + '" style="font-size:12px; padding:6px 8px;">' +
+    '<input type="number" class="form-input" placeholder="Qty" data-field="quantity" value="' + (qty || 1) + '" style="font-size:12px; padding:6px 4px; text-align:center;" oninput="updateInvLineTotals()">' +
+    '<input type="number" class="form-input" placeholder="0.00" data-field="unit_price" step="0.01"' + (unitPrice ? ' value="' + unitPrice + '"' : '') + ' style="font-size:12px; padding:6px 4px; text-align:right;" oninput="updateInvLineTotals()">' +
+    '<div class="line-total" style="font-size:12px; font-family:var(--sw-font-num); text-align:right; color:var(--sw-text-sec);">$0</div>' +
+    '<span style="font-size:9px; background:var(--sw-border); color:var(--sw-text-sec); padding:2px 5px; white-space:nowrap; text-align:center; font-weight:600; letter-spacing:0.2px;">' + escapeHtml(badgeLabel) + '</span>' +
+    '<button class="btn btn-secondary btn-sm" onclick="this.parentElement.remove(); updateInvLineTotals();" style="padding:3px 6px; font-size:11px;">&times;</button>';
+  container.appendChild(row);
+  updateInvLineTotals();
+}
+
+function updateInvLineTotals() {
+  var rows = document.querySelectorAll('#invLineItems .inv-line-row');
+  var total = 0;
+  rows.forEach(function(row) {
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 0;
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    var lineTotal = qty * price;
+    total += lineTotal;
+    var ltEl = row.querySelector('.line-total');
+    if (ltEl) ltEl.textContent = fmt$(lineTotal);
+  });
+  var totalEl = document.getElementById('invLineTotal');
+  if (totalEl) totalEl.textContent = fmt$(total);
+  var gstEl = document.getElementById('invGstTotal');
+  if (gstEl) gstEl.textContent = fmt$(Math.round(total * 0.1 * 100) / 100);
+  var incGstEl = document.getElementById('invIncGstTotal');
+  if (incGstEl) incGstEl.textContent = fmt$(Math.round(total * 1.1 * 100) / 100);
+}
+
+function gatherPOData() {
+  var supplier = document.getElementById('poSupplier').value;
+  if (!supplier) { alert('Please enter a supplier name.'); return null; }
+
+  var rows = document.querySelectorAll('#poLineItems .po-line-row');
+  var lineItems = [];
+  rows.forEach(function(row) {
+    var desc = row.querySelector('[data-field="description"]').value;
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 1;
+    var unit = row.querySelector('[data-field="unit"]');
+    var unitVal = unit ? unit.value : 'ea';
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    if (desc || price > 0) lineItems.push({ description: desc, quantity: qty, unit: unitVal, unit_price: price });
+  });
+
+  if (lineItems.length === 0) { alert('Please add at least one line item.'); return null; }
+
+  var xeroId = null;
+  var match = _suppliers.find(function(s) { return s.name === supplier; });
+  if (match) xeroId = match.xero_contact_id;
+
+  var fulfilment = document.getElementById('poFulfilment').value || 'delivery';
+  var timeVal = document.getElementById('poDeliveryTime').value || '';
+  var notesVal = document.getElementById('poNotes').value || '';
+  // Prepend fulfilment + time info to notes for visibility
+  var fulfilmentNote = '';
+  if (fulfilment !== 'delivery') fulfilmentNote = 'PICKUP' + (timeVal ? ' @ ' + timeVal : '');
+  else if (timeVal) fulfilmentNote = 'Delivery @ ' + timeVal;
+
+  return {
+    job_id: document.getElementById('poJobSelect').value || null,
+    supplier_name: supplier,
+    xero_contact_id: xeroId,
+    line_items: lineItems,
+    delivery_date: document.getElementById('poDeliveryDate').value || null,
+    delivery_address: document.getElementById('poDeliveryAddress').value || null,
+    reference: document.getElementById('poReference').value || null,
+    notes: (fulfilmentNote ? fulfilmentNote + '\n' : '') + notesVal || null,
+    supplier_reason: document.getElementById('poReason').value || null,
+  };
+}
+
+function confirmPOSend() {
+  var data = gatherPOData();
+  if (!data) return;
+  var supplier = data.supplier_name;
+  var supplierMatch = _suppliers.find(function(s) { return s.name === supplier; });
+  var email = supplierMatch ? (supplierMatch.email || 'no email on file') : 'no email on file';
+
+  document.getElementById('sendConfirmTitle').textContent = 'Approve & Send PO';
+  document.getElementById('sendConfirmBody').innerHTML =
+    'This will create the PO and send it to:<br><br>' +
+    '<strong>' + supplier + '</strong><br>' +
+    '<span style="color:var(--sw-text-sec);">' + email + '</span><br><br>' +
+    'The PO will be marked as <strong>AUTHORISED</strong> in Xero and emailed to the supplier.';
+  document.getElementById('sendConfirmBtn').onclick = function() {
+    closeModal('sendConfirmModal');
+    submitPO('send');
+  };
+  document.getElementById('sendConfirmModal').classList.add('active');
+}
+
+var _editingPOId = null; // Set when editing an existing PO
+
+async function submitPO(mode) {
+  var poData = gatherPOData();
+  if (!poData) return;
+
+  try {
+    var result;
+    if (_editingPOId) {
+      // Update existing PO
+      result = await opsPost('update_po', { id: _editingPOId, ...poData, status: mode === 'quote_requested' ? 'quote_requested' : poData.status });
+      result = { purchase_order: { id: _editingPOId } };
+    } else {
+      // Create new PO
+      if (mode === 'quote_requested') poData.status = 'quote_requested';
+      result = await opsPost('create_po', poData);
+    }
+
+    if (mode === 'quote_requested') {
+      showToast('Material list saved — send to supplier for pricing', 'success');
+    } else if ((mode === 'draft' || mode === 'send') && result.purchase_order && result.purchase_order.id) {
+      try {
+        var pushMode = mode === 'send' ? 'authorised' : 'draft';
+        await opsPost('push_po_to_xero', { id: result.purchase_order.id, status: pushMode });
+        if (mode === 'send') {
+          await opsPost('email_po', { id: result.purchase_order.id });
+          showToast('PO approved and sent to ' + poData.supplier_name, 'success');
+        } else {
+          showToast('PO saved as draft in Xero', 'success');
+        }
+      } catch (xe) {
+        showToast('PO saved locally but Xero push failed: ' + xe.message, 'warning');
+      }
+    } else {
+      showToast('PO saved as local draft', 'success');
+    }
+
+    closeModal('poModal');
+    resetPOModal();
+    loadPOs();
+    loadMaterials();
+  } catch (e) {
+    alert('Failed to create PO: ' + e.message);
+  }
+}
+
+// Save prices on a quote_requested PO (mode 2)
+async function savePOPrices() {
+  if (!_editingPOId) return;
+  var poData = gatherPOData();
+  if (!poData) return;
+
+  try {
+    await opsPost('update_po', { id: _editingPOId, line_items: poData.line_items, status: 'draft' });
+    showToast('Prices saved — PO moved to Draft', 'success');
+    closeModal('poModal');
+    resetPOModal();
+    loadPOs();
+    loadMaterials();
+  } catch (e) {
+    alert('Failed to save prices: ' + e.message);
+  }
+}
+
+// Open an existing PO for editing (pricing mode)
+async function openPOEdit(poId) {
+  resetPOModal();
+  _editingPOId = poId;
+
+  try {
+    var data = await opsFetch('list_pos', { job_id: '' });
+    var po = (data.purchase_orders || []).find(function(p) { return p.id === poId; });
+    if (!po) { alert('PO not found'); return; }
+
+    document.getElementById('poModalTitle').textContent = 'Edit PO — ' + po.po_number;
+    document.getElementById('poSupplier').value = po.supplier_name || '';
+    document.getElementById('poReference').value = po.reference || '';
+    document.getElementById('poDeliveryDate').value = po.delivery_date || '';
+
+    // Populate job search field
+    if (po.job_id) {
+      document.getElementById('poJobSelect').value = po.job_id;
+      await loadPOJobList();
+      var matchedJob = _poJobList.find(function(j) { return j.id === po.job_id; });
+      if (matchedJob) {
+        document.getElementById('poJobSearch').value = (matchedJob.job_number || '') + ' — ' + (matchedJob.client_name || '');
+      }
+    }
+
+    // Parse fulfilment type + time from notes
+    var notes = po.notes || '';
+    if (notes.indexOf('PICKUP') === 0) {
+      document.getElementById('poFulfilment').value = 'pickup';
+      onPOFulfilmentChange('pickup');
+      var timeMatch = notes.match(/@ (\d{2}:\d{2})/);
+      if (timeMatch) document.getElementById('poDeliveryTime').value = timeMatch[1];
+      notes = notes.replace(/^PICKUP(?: @ \d{2}:\d{2})?\n?/, '');
+    } else if (notes.indexOf('Delivery @') === 0) {
+      var timeMatch2 = notes.match(/@ (\d{2}:\d{2})/);
+      if (timeMatch2) document.getElementById('poDeliveryTime').value = timeMatch2[1];
+      notes = notes.replace(/^Delivery @ \d{2}:\d{2}\n?/, '');
+    }
+    if (notes) document.getElementById('poNotes').value = notes;
+
+    // Show mode bar for quote_requested POs
+    if (po.status === 'quote_requested') {
+      var modeBar = document.getElementById('poModeBar');
+      modeBar.style.display = 'block';
+      modeBar.style.background = 'rgba(230,126,34,0.1)';
+      modeBar.style.color = '#E67E22';
+      modeBar.textContent = 'Awaiting supplier pricing — enter costs below and save';
+      document.getElementById('poActionsNew').style.display = 'none';
+      document.getElementById('poActionsPricing').style.display = 'flex';
+    }
+
+    // Populate line items
+    var container = document.getElementById('poLineItems');
+    container.innerHTML = '';
+    (po.line_items || []).forEach(function(li) {
+      addPOLine(li.description, li.quantity, li.unit, li.unit_price || null);
+    });
+
+    await loadSupplierList();
+    document.getElementById('poModal').classList.add('active');
+  } catch (e) {
+    alert('Failed to load PO: ' + e.message);
+  }
+}
+
+function resetPOModal() {
+  _editingPOId = null;
+  document.getElementById('poModalTitle').textContent = 'New Purchase Order';
+  document.getElementById('poJobSelect').value = '';
+  document.getElementById('poJobSearch').value = '';
+  document.getElementById('poJobDropdown').style.display = 'none';
+  document.getElementById('poSupplier').value = '';
+  document.getElementById('poDeliveryDate').value = '';
+  document.getElementById('poDeliveryTime').value = '';
+  document.getElementById('poDeliveryAddress').value = '';
+  document.getElementById('poFulfilment').value = 'delivery';
+  onPOFulfilmentChange('delivery');
+  document.getElementById('poReference').value = '';
+  document.getElementById('poNotes').value = '';
+  document.getElementById('poLineItems').innerHTML = '';
+  document.getElementById('poModeBar').style.display = 'none';
+  document.getElementById('poActionsNew').style.display = 'flex';
+  document.getElementById('poActionsPricing').style.display = 'none';
+  addPOLine(); // Start with one empty row
+}
+
+async function submitWO() {
+  var jobId = document.getElementById('woJobSelect').value;
+  if (!jobId) { alert('Please select a job.'); return; }
+
+  try {
+    var priceVal = document.getElementById('woPrice').value;
+    await opsPost('create_work_order', {
+      job_id: jobId,
+      trade_name: document.getElementById('woTradeName').value || null,
+      trade_phone: document.getElementById('woTradePhone').value || null,
+      trade_email: document.getElementById('woTradeEmail').value || null,
+      scheduled_date: document.getElementById('woScheduledDate').value || null,
+      price: priceVal ? parseFloat(priceVal) : null,
+      special_instructions: document.getElementById('woInstructions').value || null,
+    });
+    closeModal('woModal');
+    loadWOs();
+  } catch (e) {
+    alert('Failed to create work order: ' + e.message);
+  }
+}
+
+// ── Supplier Quote Scanner ──
+function scanSupplierQuote(poId) {
+  // Create a hidden file input
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,.pdf';
+  input.capture = 'environment';
+  input.onchange = async function() {
+    if (!input.files || !input.files[0]) return;
+    var file = input.files[0];
+    showToast('Analysing supplier quote with AI...', 'info');
+
+    // Convert to base64
+    var reader = new FileReader();
+    reader.onload = async function() {
+      var base64 = reader.result.split(',')[1];
+      try {
+        var result = await opsPost('analyse_supplier_quote', {
+          po_id: poId,
+          image_base64: base64,
+        });
+        if (result.success) {
+          var alerts = result.price_alerts || [];
+          var msg = result.items_extracted + ' items extracted from ' + result.supplier + '.';
+          if (alerts.length > 0) {
+            msg += ' ' + alerts.length + ' price difference(s) found >5%.';
+          }
+          msg += ' Check Pending Prices in Materials tab.';
+          showToast(msg, 'success');
+          // Refresh materials tab if we're on it
+          if (typeof loadPendingPrices === 'function') loadPendingPrices();
+        } else {
+          showToast('Failed to analyse: ' + (result.error || 'unknown'), 'error');
+        }
+      } catch (e) {
+        showToast('Analysis failed: ' + e.message, 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+async function pushPOToXero(poId) {
+  if (!confirm('Push this PO to Xero?')) return;
+  try {
+    await opsPost('push_po_to_xero', { id: poId });
+    showToast('PO pushed to Xero', 'success');
+    loadPOs();
+  } catch (e) {
+    alert('Failed to push PO: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// INVOICE CREATION MODAL
+// ════════════════════════════════════════════════════════════
+
+// Unified invoice modal — replaces separate openInvoiceModal + openDepositModal
+var _uniInvSelectedQuoteDocs = [];
+
+async function openUnifiedInvoiceModal(preSelectJobId) {
+  resetUnifiedInvoiceModal();
+  document.getElementById('unifiedInvoiceModal').classList.add('active');
+
+  // Set default due date to 14 days from now
+  var due = new Date();
+  due.setDate(due.getDate() + 14);
+  document.getElementById('invDueDate').value = due.toISOString().slice(0, 10);
+
+  // Load jobs for searchable picker
+  document.getElementById('invJobSearch').value = '';
+  document.getElementById('invJobSelect').value = '';
+  await loadPOJobList();
+  if (preSelectJobId) {
+    selectJobPicker('inv', preSelectJobId);
+  }
+}
+
+// Backward compat — old call sites
+function openInvoiceModal(id) { openUnifiedInvoiceModal(id); }
+function openDepositModal(id) { openUnifiedInvoiceModal(id); }
+
+async function onInvJobSelect(jobId) {
+  var infoEl = document.getElementById('invJobInfo');
+  var refEl = document.getElementById('invReference');
+  var container = document.getElementById('invLineItems');
+
+  if (!jobId) {
+    infoEl.style.display = 'none';
+    refEl.value = '';
+    container.innerHTML = '';
+    addInvLine();
+    hideUnifiedInvoiceSections();
+    return;
+  }
+
+  infoEl.style.display = '';
+  infoEl.textContent = 'Loading job data...';
+
+  try {
+    var data = await opsFetch('job_detail', { jobId: jobId });
+    var j = data.job || data;
+    _invJobCache = j;
+    _invJobDetailCache = data;
+
+    // Set job number as reference (read-only)
+    refEl.value = j.job_number || '';
+
+    // Show job header
+    var headerEl = document.getElementById('uniInvJobHeader');
+    headerEl.style.display = '';
+    var typeBadge = j.type ? '<span style="display:inline-block;padding:1px 6px;background:var(--sw-border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;">' + escapeHtml(j.type) + '</span>' : '';
+    headerEl.innerHTML = '<div style="font-weight:700;">' + escapeHtml(j.client_name || '') + ' — ' + escapeHtml(j.job_number || '') + typeBadge + '</div>' +
+      '<div style="color:var(--sw-text-sec);font-size:12px;">' + escapeHtml(j.site_address || j.site_suburb || '') + '</div>';
+    infoEl.style.display = 'none';
+
+    // Hide job picker since we have a job
+    document.getElementById('uniInvJobPicker').style.display = 'none';
+
+    // Show accepted quotes if any
+    var docs = data.documents || [];
+    var quoteDocs = docs.filter(function(d) { return d.type === 'quote'; });
+    _uniInvSelectedQuoteDocs = [];
+    if (quoteDocs.length > 0) {
+      var quotesSection = document.getElementById('uniInvQuotesSection');
+      quotesSection.style.display = '';
+      var qhtml = '';
+      quoteDocs.forEach(function(doc) {
+        var statusLabel = doc.client_accepted ? 'Accepted' : doc.sent_to_client ? (doc.client_viewed_at ? 'Viewed' : 'Sent') : 'Draft';
+        var statusColor = doc.client_accepted ? 'var(--sw-green)' : doc.sent_to_client ? 'var(--sw-blue-mid, #4C6A7C)' : 'var(--sw-text-sec)';
+        var quoteNum = doc.quote_number || ('v' + doc.version);
+        qhtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--sw-border);margin-bottom:4px;cursor:pointer;font-size:13px;">';
+        qhtml += '<input type="checkbox" class="uni-quote-check" value="' + doc.id + '" ' + (doc.client_accepted ? 'checked' : '') + ' onchange="updateSelectedQuoteDocs()">';
+        qhtml += '<span style="font-weight:600;">' + escapeHtml(quoteNum) + '</span>';
+        qhtml += '<span style="color:' + statusColor + ';font-size:11px;font-weight:600;">' + statusLabel + '</span>';
+        if (doc.sent_at) qhtml += '<span style="color:var(--sw-text-sec);font-size:11px;">' + fmtDate(doc.sent_at) + '</span>';
+        qhtml += '<span style="margin-left:auto;font-weight:600;font-family:var(--sw-font-num);">' + (doc.data_snapshot_json?.total ? fmt$(doc.data_snapshot_json.total) : '') + '</span>';
+        qhtml += '</label>';
+      });
+      document.getElementById('uniInvQuotesList').innerHTML = qhtml;
+      updateSelectedQuoteDocs();
+
+      // Render quote detail panel from pricing_json
+      var detailEl = document.getElementById('uniInvQuoteDetail');
+      var pricing = j.pricing_json;
+      if (typeof pricing === 'string') try { pricing = JSON.parse(pricing); } catch(e) { pricing = null; }
+      if (pricing) {
+        var dhtml = '<div style="font-size:11px; font-weight:700; color:var(--sw-mid); text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px; cursor:pointer;" onclick="var p=this.parentElement;var c=p.querySelector(\'.qd-body\');c.style.display=c.style.display===\'none\'?\'\':\'none\';">Quote Details &#9662;</div>';
+        dhtml += '<div class="qd-body">';
+        // Totals
+        var totalInc = pricing.totalIncGST || pricing.total || 0;
+        var totalEx = Math.round((totalInc / 1.1) * 100) / 100;
+        dhtml += '<div style="display:flex; gap:16px; margin-bottom:8px; font-size:12px;">';
+        dhtml += '<div><span style="color:var(--sw-text-sec);">Total (inc GST):</span> <strong style="font-family:var(--sw-font-num);">' + fmt$(totalInc) + '</strong></div>';
+        dhtml += '<div><span style="color:var(--sw-text-sec);">Total (ex GST):</span> <strong style="font-family:var(--sw-font-num);">' + fmt$(totalEx) + '</strong></div>';
+        dhtml += '</div>';
+        // Line item breakdown
+        var items = pricing.items || pricing.lineItems || [];
+        if (items.length > 0) {
+          dhtml += '<div style="font-size:10px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; margin-bottom:3px;">Line Items</div>';
+          dhtml += '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:8px;">';
+          items.forEach(function(item) {
+            var iDesc = item.description || item.name || '';
+            var iQty = item.quantity || item.qty || 1;
+            var iPrice = item.unit_price || item.unitPrice || item.price || 0;
+            var iTotal = iQty * iPrice;
+            dhtml += '<tr style="border-bottom:1px solid var(--sw-border);">';
+            dhtml += '<td style="padding:2px 4px;">' + escapeHtml(iDesc) + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:center; width:40px;">' + iQty + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:right; width:70px; font-family:var(--sw-font-num);">' + fmt$(iPrice) + '</td>';
+            dhtml += '<td style="padding:2px 4px; text-align:right; width:70px; font-family:var(--sw-font-num);">' + fmt$(iTotal) + '</td>';
+            dhtml += '</tr>';
+          });
+          dhtml += '</table>';
+        }
+        // Scope summary — reuse the existing rich renderer
+        if (j.scope_json) {
+          dhtml += '<div style="font-size:10px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; margin-bottom:3px;">Scope Summary</div>';
+          dhtml += renderScopeSummary(j.scope_json, j.type, j.id);
+        }
+        // Xero mapping table — account + tracking category
+        var acLabel = accountCodeLabel(j.type);
+        var trackLabel = trackingCategoryLabel(j.job_number);
+        dhtml += '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;">';
+        dhtml += '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:4px 6px; color:var(--sw-text-sec); font-weight:600; width:120px;">Sales Account</td>';
+        dhtml += '<td style="padding:4px 6px;"><span style="display:inline-block;padding:2px 6px;background:var(--sw-border);font-size:10px;font-weight:700;letter-spacing:0.2px;">' + escapeHtml(acLabel) + '</span></td></tr>';
+        if (trackLabel) {
+          dhtml += '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:4px 6px; color:var(--sw-text-sec); font-weight:600;">Tracking Category</td>';
+          dhtml += '<td style="padding:4px 6px;"><span style="display:inline-block;padding:2px 6px;background:var(--sw-border);font-size:10px;font-weight:700;letter-spacing:0.2px;">' + escapeHtml(trackLabel) + '</span></td></tr>';
+        }
+        dhtml += '</table>';
+        // View Quote PDF buttons
+        var qdocs = (data.documents || []).filter(function(d) { return d.type === 'quote'; });
+        if (qdocs.length > 0) {
+          dhtml += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">';
+          qdocs.forEach(function(doc) {
+            var url = doc.share_token ? 'https://kevgrhcjxspbxgovpmfl.supabase.co/functions/v1/send-quote/view?token=' + encodeURIComponent(doc.share_token) : (doc.storage_url || doc.pdf_url);
+            var label = doc.quote_number || doc.file_name || 'Quote PDF';
+            if (url) {
+              dhtml += '<a href="' + escapeHtml(url) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">&#128196; View ' + escapeHtml(label) + '</a>';
+            }
+          });
+          dhtml += '</div>';
+        }
+        dhtml += '</div>';
+        detailEl.innerHTML = dhtml;
+        detailEl.style.display = '';
+      } else {
+        detailEl.style.display = 'none';
+      }
+    }
+
+    // Show invoice progress bar
+    var invSummary = data.invoice_summary;
+    if (invSummary && invSummary.quoted_total > 0) {
+      document.getElementById('uniInvProgress').style.display = '';
+      var pct = Math.min(100, Math.round((invSummary.invoiced_total / invSummary.quoted_total) * 100));
+      document.getElementById('uniInvProgressBar').style.width = pct + '%';
+      document.getElementById('uniInvInvoicedAmt').textContent = fmt$(invSummary.invoiced_total);
+      document.getElementById('uniInvRemainingAmt').textContent = fmt$(invSummary.remaining_to_invoice);
+    }
+
+    // Show presets
+    document.getElementById('uniInvPresets').style.display = '';
+
+    // Start with empty line items — user uses presets or adds manually
+    container.innerHTML = '';
+    addInvLine();
+  } catch (e) {
+    infoEl.textContent = 'Error loading job: ' + e.message;
+  }
+}
+
+function hideUnifiedInvoiceSections() {
+  document.getElementById('uniInvJobHeader').style.display = 'none';
+  document.getElementById('uniInvQuotesSection').style.display = 'none';
+  document.getElementById('uniInvProgress').style.display = 'none';
+  document.getElementById('uniInvPresets').style.display = 'none';
+  document.getElementById('uniInvJobPicker').style.display = '';
+}
+
+function updateSelectedQuoteDocs() {
+  _uniInvSelectedQuoteDocs = [];
+  document.querySelectorAll('.uni-quote-check:checked').forEach(function(cb) {
+    _uniInvSelectedQuoteDocs.push(cb.value);
+  });
+}
+
+function addDepositPreset(pct) {
+  if (!_invJobCache) return;
+  var pricing = _invJobCache.pricing_json;
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
+  if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
+  var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
+  var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
+  var desc = pct + '% Deposit — ' + (_invJobCache.job_number || '') + ' (' + fmt$(totalIncGst) + ' inc GST)' +
+    '\n' + (_invJobCache.client_name || '') +
+    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
+    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
+    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
+  addInvLine(desc, 1, depositExGst);
+}
+
+function addCouncilFeePreset() {
+  var defaultFee = Math.round((350 / 1.1) * 100) / 100; // $350 inc GST → ex GST
+  addInvLine('Council/Permit Application Fee', 1, defaultFee);
+}
+
+function addBalancePreset() {
+  if (!_invJobCache || !_invJobDetailCache) return;
+  var pricing = _invJobCache.pricing_json;
+  if (typeof pricing === 'string') pricing = JSON.parse(pricing);
+  var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
+  var invSummary = _invJobDetailCache.invoice_summary;
+  var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
+  if (remaining <= 0) { alert('No remaining balance to invoice.'); return; }
+  var exGst = Math.round((remaining / 1.1) * 100) / 100;
+  var balDesc = 'Balance Due — ' + (_invJobCache.job_number || '') +
+    '\n' + (_invJobCache.client_name || '') +
+    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
+    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
+    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
+  addInvLine(balDesc, 1, exGst);
+}
+
+function gatherInvoiceData() {
+  var jobId = document.getElementById('invJobSelect').value;
+  if (!jobId) { alert('Please select a job.'); return null; }
+
+  var rows = document.querySelectorAll('#invLineItems .inv-line-row');
+  var lineItems = [];
+  rows.forEach(function(row) {
+    var desc = row.querySelector('[data-field="description"]').value;
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 1;
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    var acCode = _invJobCache ? accountCodeForJobFE(_invJobCache.type) : '200';
+    if (desc || price > 0) lineItems.push({ description: desc, quantity: qty, unit_price: price, account_code: acCode });
+  });
+
+  if (lineItems.length === 0) { alert('Please add at least one line item.'); return null; }
+
+  return {
+    job_id: jobId,
+    line_items_override: lineItems,
+    due_date: document.getElementById('invDueDate').value || undefined,
+  };
+}
+
+function confirmUnifiedInvoiceSend() {
+  var data = gatherInvoiceData();
+  if (!data) return;
+
+  var clientName = _invJobCache ? _invJobCache.client_name : 'the client';
+  var clientEmail = _invJobCache ? (_invJobCache.client_email || '') : '';
+  var jobNumber = _invJobCache ? (_invJobCache.job_number || '') : '';
+  var dueDate = document.getElementById('invDueDate').value || 'Not set';
+  var acCode = _invJobCache ? accountCodeForJobFE(_invJobCache.type) : '200';
+  var acLabel = _invJobCache ? accountCodeLabel(_invJobCache.type) : '200 — General';
+
+  // Build line items preview table
+  var subtotal = 0;
+  var linesHtml = '<table style="width:100%; border-collapse:collapse; font-size:12px; margin:8px 0;">';
+  linesHtml += '<thead><tr style="border-bottom:2px solid var(--sw-border); text-align:left;">';
+  linesHtml += '<th style="padding:4px 6px;">Description</th><th style="padding:4px 6px; text-align:center;">Qty</th>';
+  linesHtml += '<th style="padding:4px 6px; text-align:right;">Unit Price</th><th style="padding:4px 6px; text-align:right;">Total</th>';
+  linesHtml += '<th style="padding:4px 6px; text-align:center;">Account</th></tr></thead><tbody>';
+  data.line_items_override.forEach(function(li) {
+    var lineTotal = li.quantity * li.unit_price;
+    subtotal += lineTotal;
+    linesHtml += '<tr style="border-bottom:1px solid var(--sw-border);">';
+    linesHtml += '<td style="padding:4px 6px;">' + escapeHtml(li.description) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:center;">' + li.quantity + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(li.unit_price) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(lineTotal) + '</td>';
+    linesHtml += '<td style="padding:4px 6px; text-align:center; font-size:10px;">' + li.account_code + '</td>';
+    linesHtml += '</tr>';
+  });
+  var gst = Math.round(subtotal * 0.1 * 100) / 100;
+  var totalIncGst = Math.round((subtotal + gst) * 100) / 100;
+  linesHtml += '</tbody>';
+  linesHtml += '<tfoot><tr style="border-top:2px solid var(--sw-border); font-weight:600;">';
+  linesHtml += '<td colspan="3" style="padding:4px 6px; text-align:right;">Subtotal (ex GST):</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(subtotal) + '</td><td></td></tr>';
+  linesHtml += '<tr><td colspan="3" style="padding:4px 6px; text-align:right;">GST:</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num);">' + fmt$(gst) + '</td><td></td></tr>';
+  linesHtml += '<tr style="font-size:14px;"><td colspan="3" style="padding:4px 6px; text-align:right; font-weight:700;">Total (inc GST):</td>';
+  linesHtml += '<td style="padding:4px 6px; text-align:right; font-family:var(--sw-font-num); font-weight:700;">' + fmt$(totalIncGst) + '</td><td></td></tr>';
+  linesHtml += '</tfoot></table>';
+
+  var bodyHtml = '';
+  bodyHtml += '<div style="margin-bottom:10px;">';
+  bodyHtml += '<label style="font-size:11px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; letter-spacing:0.3px;">Send To Email</label>';
+  bodyHtml += '<input type="email" id="sendConfirmEmail" class="form-input" value="' + (clientEmail || '').replace(/"/g, '&quot;') + '" style="font-size:13px; padding:6px 8px; margin-top:2px;">';
+  bodyHtml += '</div>';
+  bodyHtml += '<div style="display:flex; gap:16px; margin-bottom:10px; font-size:12px;">';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Xero Reference:</span> <strong>' + escapeHtml(jobNumber) + '</strong></div>';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Due Date:</span> <strong>' + escapeHtml(dueDate) + '</strong></div>';
+  bodyHtml += '</div>';
+  bodyHtml += linesHtml;
+  var trackLabel = _invJobCache ? trackingCategoryLabel(_invJobCache.job_number) : '';
+  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); margin:6px 0 10px; padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border); line-height:1.6;">';
+  bodyHtml += '<strong>Sales Account:</strong> ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ' Revenue)';
+  if (trackLabel) bodyHtml += '<br><strong>Tracking:</strong> ' + escapeHtml(trackLabel);
+  bodyHtml += '</div>';
+  bodyHtml += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">';
+  bodyHtml += '<input type="checkbox" id="sendConfirmBranded" checked>';
+  bodyHtml += '<span><strong>Send branded email</strong> (recommended)</span>';
+  bodyHtml += '</label>';
+  bodyHtml += '<div style="font-size:10px; color:var(--sw-text-sec); margin-left:24px;">Unchecked uses Xero\'s plain email template</div>';
+
+  document.getElementById('sendConfirmTitle').textContent = 'Approve & Send Invoice';
+  document.getElementById('sendConfirmBody').innerHTML = bodyHtml;
+  document.getElementById('sendConfirmBtn').onclick = function() {
+    closeModal('sendConfirmModal');
+    var emailOverride = document.getElementById('sendConfirmEmail').value.trim();
+    var useBranded = document.getElementById('sendConfirmBranded').checked;
+    submitUnifiedInvoice('send', emailOverride, useBranded);
+  };
+  document.getElementById('sendConfirmModal').classList.add('active');
+}
+
+// Backward compat
+function confirmInvoiceSend() { confirmUnifiedInvoiceSend(); }
+
+async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail, openInXero) {
+  var invData = gatherInvoiceData();
+  if (!invData) return;
+
+  invData.xero_status = mode === 'send' ? 'AUTHORISED' : 'DRAFT';
+  invData.send_email = mode === 'send';
+  invData.quote_document_ids = _uniInvSelectedQuoteDocs.length > 0 ? _uniInvSelectedQuoteDocs : undefined;
+
+  if (emailOverride) invData.email_override = emailOverride;
+  if (typeof useBrandedEmail !== 'undefined') invData.use_branded_email = useBrandedEmail;
+
+  // Use unified invoice endpoint when we have a job, else fallback
+  var action = 'create_unified_invoice';
+
+  invData.line_items = invData.line_items_override;
+  invData.reference = _invJobCache ? _invJobCache.job_number : '';
+  invData.contact_name = _invJobCache ? _invJobCache.client_name : '';
+  invData.xero_contact_id = _invJobCache ? _invJobCache.xero_contact_id : undefined;
+
+  try {
+    var result = await opsPost(action, invData);
+
+    if (result.error) {
+      alert('Error: ' + result.error);
+      return;
+    }
+
+    var invTotal = result.total || 0;
+    var invNum = result.invoice_number || '';
+    var xeroInvId = result.xero_invoice_id || '';
+    var msg = 'Invoice ' + invNum + (mode === 'send' ? ' sent' : ' saved as draft') + ' — ' + fmt$(invTotal);
+    if (result.warning) msg += '\n' + result.warning;
+    closeModal('unifiedInvoiceModal');
+    loadInvoices();
+    refreshActiveView();
+
+    if (mode === 'send' && xeroInvId) {
+      showInvoiceSuccessModal(invNum, emailOverride || '', xeroInvId, 'sent');
+    } else if (openInXero && xeroInvId) {
+      // Open the draft in Xero for preview
+      showToast(msg, 'success');
+      window.open('https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroInvId, '_blank');
+    } else {
+      showToast(msg, 'success');
+    }
+  } catch (e) {
+    alert('Failed to create invoice: ' + e.message);
+  }
+}
+
+// Backward compat
+function submitInvoice(mode) { submitUnifiedInvoice(mode); }
+
+var _invJobDetailCache = null;
+
+function resetUnifiedInvoiceModal() {
+  var select = document.getElementById('invJobSelect');
+  if (select) select.value = '';
+  var search = document.getElementById('invJobSearch');
+  if (search) search.value = '';
+  var info = document.getElementById('invJobInfo');
+  if (info) { info.style.display = 'none'; info.innerHTML = ''; }
+  var ref = document.getElementById('invReference');
+  if (ref) ref.value = '';
+  var items = document.getElementById('invLineItems');
+  if (items) items.innerHTML = '';
+  var total = document.getElementById('invLineTotal');
+  if (total) total.textContent = '$0';
+  var gst = document.getElementById('invGstTotal');
+  if (gst) gst.textContent = '$0';
+  var incGst = document.getElementById('invIncGstTotal');
+  if (incGst) incGst.textContent = '$0';
+  _invJobCache = null;
+  _invJobDetailCache = null;
+  _uniInvSelectedQuoteDocs = [];
+  hideUnifiedInvoiceSections();
+}
+
+// Backward compat
+function resetInvoiceModal() { resetUnifiedInvoiceModal(); }
+
+async function sendWO(woId) {
+  if (!confirm('Mark this work order as sent?')) return;
+  try {
+    await opsPost('send_work_order', { id: woId });
+    loadWOs();
+  } catch (e) {
+    alert('Failed to send WO: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// ACCEPTANCE REVIEW MODAL
+// ════════════════════════════════════════════════════════════
+
+async function openAcceptModal(jobId) {
+  document.getElementById('acceptJobId').value = jobId;
+  // Show modal and load job data
+  document.getElementById('acceptModal').classList.add('active');
+  try {
+    var data = await opsFetch('job_detail', { jobId: jobId });
+    var j = data.job || data;
+    document.getElementById('acceptName').value = j.client_name || '';
+    document.getElementById('acceptPhone').value = j.client_phone || '';
+    document.getElementById('acceptEmail').value = j.client_email || '';
+    document.getElementById('acceptAddress').value = j.site_address || '';
+    document.getElementById('acceptSuburb').value = j.site_suburb || '';
+    document.getElementById('acceptType').value = j.type || '';
+    var val = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0;
+    document.getElementById('acceptValue').value = fmt$(val);
+  } catch (e) {
+    console.error('Failed to load job for acceptance review:', e);
+  }
+}
+
+async function confirmAcceptance() {
+  var jobId = document.getElementById('acceptJobId').value;
+  if (!jobId) return;
+
+  // Gather possibly-edited fields
+  var updates = {
+    client_name: document.getElementById('acceptName').value.trim(),
+    client_phone: document.getElementById('acceptPhone').value.trim(),
+    client_email: document.getElementById('acceptEmail').value.trim(),
+    site_address: document.getElementById('acceptAddress').value.trim(),
+    site_suburb: document.getElementById('acceptSuburb').value.trim(),
+  };
+
+  // Validate — must have at least name, phone, email
+  var missing = [];
+  if (!updates.client_name) missing.push('Client name');
+  if (!updates.client_phone) missing.push('Phone');
+  if (!updates.client_email) missing.push('Email');
+  if (!updates.site_address) missing.push('Address');
+  if (missing.length > 0) {
+    alert('Cannot accept — missing: ' + missing.join(', '));
+    return;
+  }
+
+  try {
+    // Update job fields if edited
+    await opsPost('update_job_status', { jobId: jobId, status: 'accepted', updates: updates });
+    closeModal('acceptModal');
+    showToast('Job accepted — client data verified', 'success');
+    openJobPeek(jobId);
+    refreshActiveView();
+  } catch (e) {
+    alert('Failed to accept job: ' + e.message);
+  }
+}
+
