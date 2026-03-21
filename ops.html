@@ -7729,7 +7729,7 @@ function renderMoneyView(data) {
     pos.forEach(function(po) {
       if (po.status === 'draft') poByStatus.draft++;
       else if (po.status === 'approved') poByStatus.draft++;
-      else if (po.status === 'submitted' || po.status === 'sent') { poByStatus.sent++; if (po.sent_at && (now - new Date(po.sent_at).getTime()) > 48*3600*1000) awaitingReply++; }
+      else if (po.status === 'submitted' || po.status === 'sent') { poByStatus.sent++; var sentTs = po.updated_at || po.created_at; if (sentTs && (now - new Date(sentTs).getTime()) > 48*3600*1000) awaitingReply++; }
       else if (po.status === 'authorised' || po.status === 'confirmed') poByStatus.confirmed++;
       else if (po.status === 'billed' || po.status === 'delivered') poByStatus.delivered++;
       else poByStatus.other++;
