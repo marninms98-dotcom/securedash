@@ -4523,11 +4523,15 @@ function renderSwimlaneView(container, range) {
 
   if (crewNames.length === 0) crewNames = ['No assignments'];
 
-  // Build delivery lookup
+  // Build delivery lookup — use confirmed_delivery_date if available, fall back to delivery_date
   var deliveryMap = {};
   _calDeliveries.forEach(function(del) {
-    if (!deliveryMap[del.delivery_date]) deliveryMap[del.delivery_date] = [];
-    deliveryMap[del.delivery_date].push(del);
+    var effectiveDate = del.confirmed_delivery_date || del.delivery_date;
+    if (!effectiveDate) return;
+    del._effectiveDate = effectiveDate;
+    del._isConfirmed = !!del.confirmed_delivery_date;
+    if (!deliveryMap[effectiveDate]) deliveryMap[effectiveDate] = [];
+    deliveryMap[effectiveDate].push(del);
   });
 
   // Detect conflicts: same crew, same date, 2+ different jobs
@@ -4740,9 +4744,11 @@ function renderSwimlaneView(container, range) {
       html += '<div class="' + cellClass + '">';
       var dels = deliveryMap[dateStr] || [];
       dels.forEach(function(del) {
-        var isWarning = del.job_id && jobStartDates[del.job_id] && del.delivery_date > jobStartDates[del.job_id];
-        html += '<div class="cal-delivery-block' + (isWarning ? ' warning' : '') + '" title="' + del.po_number + ' — ' + del.supplier_name + '">';
-        html += del.supplier_name;
+        var effectiveDate = del._effectiveDate || del.delivery_date;
+        var isWarning = del.job_id && jobStartDates[del.job_id] && effectiveDate > jobStartDates[del.job_id];
+        var confirmedStyle = del._isConfirmed ? 'border-left:3px solid var(--sw-green);' : 'border-left:3px dashed var(--sw-orange);';
+        html += '<div class="cal-delivery-block' + (isWarning ? ' warning' : '') + '" style="' + confirmedStyle + '" title="' + del.po_number + ' — ' + del.supplier_name + (del._isConfirmed ? ' (confirmed)' : ' (requested)') + '">';
+        html += (del._isConfirmed ? '&#10003; ' : '') + del.supplier_name;
         if (isWarning) html += ' &#9888;';
         html += '</div>';
       });
@@ -10958,6 +10964,209 @@ async function markPOPaid(poId) {
   }
 }
 
+// ── Generate PO PDF (branded, using jsPDF + SW_BRAND helpers) ──
+// Returns a base64 data URL string, or null on failure.
+async function generatePOPDF(poId) {
+  var jsPDF = window.jspdf ? window.jspdf.jsPDF : null;
+  if (!jsPDF) { console.log('jsPDF not loaded'); return null; }
+
+  var po = _allPOs.find(function(p) { return p.id === poId; });
+  if (!po) return null;
+
+  var B = window.SW_BRAND;
+  var P = B.pdf;
+  var M = B.PDF_M;
+  var W = B.PDF_W;
+  var CW = B.PDF_CW;
+  var doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  var fmt = P.fmt;
+
+  // Job data
+  var jobAddress = '';
+  var siteContact = '';
+  if (_currentJobData && _currentJobData.job) {
+    var j = _currentJobData.job;
+    jobAddress = [j.site_address, j.site_suburb, 'WA', j.site_postcode].filter(Boolean).join(', ');
+    siteContact = j.crew_lead || '';
+  }
+
+  var dateStr = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+  var deliveryStr = po.delivery_date ? new Date(po.delivery_date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'TBC';
+
+  // ── Header ──
+  var logoPng = null;
+  try { logoPng = await B.getLogoPNG(); } catch(e) {}
+  var y = P.header(doc, logoPng, 'PURCHASE ORDER', po.po_number || '');
+
+  // ── PO details card ──
+  var pairs = [
+    ['PO Number', po.po_number || ''],
+    ['Date', dateStr],
+    ['Supplier', po.supplier_name || ''],
+    ['Job Ref', po.job_number || ''],
+    ['Required By', deliveryStr],
+    ['Reference', po.reference || ''],
+  ];
+  y = P.infoCard(doc, y, pairs, { cols: 2 });
+
+  // ── Deliver To section ──
+  if (jobAddress) {
+    y = P.subSection(doc, y, 'DELIVER TO');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor.apply(doc, B.SW_DARK);
+    doc.text(jobAddress, M, y);
+    y += 5;
+    if (siteContact) {
+      doc.setTextColor.apply(doc, B.SW_MID);
+      doc.setFontSize(8);
+      doc.text('Site contact: ' + siteContact, M, y);
+      y += 5;
+    }
+    y += 2;
+  }
+
+  // ── Line Items Table ──
+  y = P.sectionHeader(doc, y, 'ORDER ITEMS');
+
+  var lineItems = po.line_items || [];
+  // Table header
+  doc.setFillColor(240, 244, 247);
+  doc.rect(M, y, CW, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor.apply(doc, B.SW_MID);
+  var cols = [M + 2, M + 90, M + 110, M + 132, M + 158];
+  doc.text('Description', cols[0], y + 5);
+  doc.text('Qty', cols[1], y + 5);
+  doc.text('Unit', cols[2], y + 5);
+  doc.text('Unit Price', cols[3], y + 5);
+  doc.text('Total', cols[4], y + 5);
+  y += 9;
+
+  // Table rows
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  var subtotal = 0;
+  lineItems.forEach(function(item, i) {
+    y = P.checkPage(doc, y, 8);
+    if (i % 2 === 0) {
+      doc.setFillColor(250, 250, 252);
+      doc.rect(M, y - 3.5, CW, 7, 'F');
+    }
+    var desc = item.description || item.item || item.desc || '';
+    var qty = item.quantity || item.qty || 0;
+    var unit = item.unit || 'ea';
+    var price = item.unit_price || item.price || 0;
+    var total = qty * price;
+    subtotal += total;
+
+    doc.setTextColor.apply(doc, B.SW_DARK);
+    // Truncate long descriptions
+    var descText = desc.length > 50 ? desc.substring(0, 47) + '...' : desc;
+    doc.text(descText, cols[0], y);
+    doc.text(String(qty), cols[1], y);
+    doc.text(unit, cols[2], y);
+    doc.text('$' + fmt(price), cols[3], y);
+    doc.setFont('helvetica', 'bold');
+    doc.text('$' + fmt(total), cols[4], y);
+    doc.setFont('helvetica', 'normal');
+    y += 7;
+  });
+
+  // Totals
+  y += 2;
+  doc.setDrawColor.apply(doc, B.SW_MID);
+  doc.setLineWidth(0.3);
+  doc.line(cols[3], y - 2, M + CW - 2, y - 2);
+  var gst = subtotal * 0.1;
+  var grandTotal = subtotal + gst;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor.apply(doc, B.SW_MID);
+  doc.text('Subtotal', cols[3], y);
+  doc.setTextColor.apply(doc, B.SW_DARK);
+  doc.text('$' + fmt(subtotal), cols[4], y);
+  y += 5;
+  doc.setTextColor.apply(doc, B.SW_MID);
+  doc.text('GST (10%)', cols[3], y);
+  doc.setTextColor.apply(doc, B.SW_DARK);
+  doc.text('$' + fmt(gst), cols[4], y);
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor.apply(doc, B.SW_DARK);
+  doc.text('TOTAL', cols[3], y);
+  doc.setTextColor.apply(doc, B.SW_ORANGE);
+  doc.text('$' + fmt(grandTotal), cols[4], y);
+  y += 8;
+
+  // ── Notes ──
+  if (po.notes) {
+    y = P.checkPage(doc, y, 20);
+    y = P.subSection(doc, y, 'NOTES');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor.apply(doc, B.SW_DARK);
+    var noteLines = doc.splitTextToSize(po.notes, CW - 4);
+    doc.text(noteLines, M, y);
+    y += noteLines.length * 4 + 4;
+  }
+
+  // ── Confirmation request ──
+  y = P.checkPage(doc, y, 15);
+  doc.setFillColor(240, 244, 247);
+  doc.rect(M, y, CW, 10, 'F');
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor.apply(doc, B.SW_MID);
+  doc.text('Please confirm receipt and expected delivery date.', M + 4, y + 6);
+  y += 14;
+
+  // ── Footer ──
+  P.addPageNumbers(doc);
+
+  // Return as base64 blob
+  return doc.output('datauristring');
+}
+
+// Upload PO PDF to Supabase Storage and return the public URL
+async function uploadPOPDF(poId, dataUri) {
+  if (!dataUri || !window.SUPABASE_URL) return null;
+  try {
+    // Convert data URI to blob
+    var byteString = atob(dataUri.split(',')[1]);
+    var ab = new ArrayBuffer(byteString.length);
+    var ia = new Uint8Array(ab);
+    for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    var blob = new Blob([ab], { type: 'application/pdf' });
+
+    var po = _allPOs.find(function(p) { return p.id === poId; });
+    var filename = (po ? po.po_number : 'PO') + '.pdf';
+    var path = 'po-documents/' + poId + '/' + filename;
+
+    // Upload via Supabase Storage (use cloud.js client)
+    var cloud = window.SECUREWORKS_CLOUD;
+    if (!cloud || !cloud.supabase) return null;
+
+    var { data, error } = await cloud.supabase.storage
+      .from('po-documents')
+      .upload(path, blob, { contentType: 'application/pdf', upsert: true });
+
+    if (error) {
+      console.log('[PO PDF] Upload error:', error.message);
+      return null;
+    }
+
+    var { data: urlData } = cloud.supabase.storage.from('po-documents').getPublicUrl(path);
+    return urlData ? urlData.publicUrl : null;
+  } catch(e) {
+    console.log('[PO PDF] Upload failed:', e.message);
+    return null;
+  }
+}
+
 // Approve & Send PO — pushes to Xero then emails supplier
 async function approveAndSendPO(poId, btnEl) {
   if (!confirm('Approve this PO and send to supplier?')) return;
@@ -11928,6 +12137,21 @@ async function sendPOEmail() {
     }
   }
 
+  // Generate + upload PO PDF if requested
+  var pdfUrl = null;
+  if (attachPDF && poId) {
+    try {
+      showToast('Generating PO PDF...', 'info');
+      var pdfDataUri = await generatePOPDF(poId);
+      if (pdfDataUri) {
+        pdfUrl = await uploadPOPDF(poId, pdfDataUri);
+        if (pdfUrl) console.log('[PO PDF] Uploaded:', pdfUrl);
+      }
+    } catch (e) {
+      console.log('[PO PDF] Generation failed (non-blocking):', e.message);
+    }
+  }
+
   // Try to send via edge function
   try {
     var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
@@ -11939,7 +12163,8 @@ async function sendPOEmail() {
         subject: subject,
         body_text: body,
         body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
-        attach_po_pdf: attachPDF
+        attach_po_pdf: attachPDF,
+        pdf_url: pdfUrl
       })
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
