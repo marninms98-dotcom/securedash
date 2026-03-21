@@ -965,6 +965,18 @@
     .status-badge.confirmed { background: rgba(22,128,63,0.15); color: #168040; }
     .status-badge.delivered { background: #f0f0f0; color: #666; }
 
+    /* ── PO Review Cards ── */
+    .po-review-card { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+    .po-review-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; background: #f8f9fa; }
+    .po-review-header:hover { background: #f0f1f2; }
+    .po-review-body { padding: 14px; border-top: 1px solid #e0e0e0; }
+    .po-items-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+    .po-items-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #e0e0e0; font-size: 11px; text-transform: uppercase; color: #666; }
+    .po-items-table td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+    .po-subtotal-row td { border-top: 2px solid #e0e0e0; }
+    .po-review-actions { padding-top: 8px; }
+    .po-card-chevron { font-size: 10px; color: #999; transition: transform 0.2s; }
+
     /* ── Materials Kanban ── */
     .materials-kanban {
       display: grid;
@@ -7804,19 +7816,85 @@ function renderBuildView(data) {
   materialsHtml += '</div>';
   html += materialsHtml;
 
-  // PO list with Log Email buttons
+  // PO list with expandable review cards for drafts
   if ((data.purchase_orders || []).length > 0) {
     html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Purchase Orders (' + data.purchase_orders.length + ')</div>';
     data.purchase_orders.forEach(function(po) {
-      html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
-      html += '<div style="flex:1;">';
-      html += '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ';
-      html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
-      html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
-      html += '</div>';
-      html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email Supplier</button>';
-      html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
-      html += '</div>';
+      if (po.status === 'draft') {
+        // Draft PO — expandable review card
+        var poType = 'Purchase Order';
+        var isCommission = false;
+        if (po.notes) {
+          if (po.notes.indexOf('MATERIALS') !== -1) poType = 'Materials PO';
+          else if (po.notes.indexOf('LABOUR') !== -1) poType = 'Labour PO';
+          if (po.notes.indexOf('SALES COMMISSION') !== -1 || po.notes.indexOf('Commission') !== -1) {
+            poType = 'Commission PO';
+            isCommission = true;
+          }
+        }
+
+        var items = [];
+        try { items = typeof po.line_items === 'string' ? JSON.parse(po.line_items) : (po.line_items || []); } catch(e) {}
+        var subtotal = items.reduce(function(sum, item) { return sum + (item.quantity || 1) * (item.unit_price || 0); }, 0);
+
+        html += '<div class="po-review-card" id="poCard' + po.id + '" data-supplier="' + escapeHtml(po.supplier_name || '') + '">';
+        html += '<div class="po-review-header" onclick="togglePOCard(\'' + po.id + '\')">';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap">';
+        html += '<span style="font-weight:600">' + poType + '</span>';
+        html += '<span class="status-badge draft" style="font-size:11px">Draft</span>';
+        html += po.supplier_name ? '<span class="status-badge" style="font-size:11px;background:rgba(52,152,219,0.1);color:var(--sw-blue);">' + escapeHtml(po.supplier_name) + '</span>' : '<span class="status-badge" style="font-size:11px;background:#F15A29;color:#fff">Needs Supplier</span>';
+        if (po.po_number) html += '<span style="font-size:11px;color:var(--sw-text-sec)">' + po.po_number + '</span>';
+        html += '</div>';
+        html += '<span style="font-weight:600;font-family:var(--sw-font-num);">$' + subtotal.toFixed(2) + '</span>';
+        html += '<span class="po-card-chevron" id="poChevron' + po.id + '">&#9660;</span>';
+        html += '</div>';
+
+        // Expandable body (hidden by default)
+        html += '<div class="po-review-body" id="poBody' + po.id + '" style="display:none">';
+
+        // Line items table
+        html += '<div style="overflow-x:auto">';
+        html += '<table class="po-items-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>';
+        items.forEach(function(item) {
+          var lineTotal = (item.quantity || 1) * (item.unit_price || 0);
+          html += '<tr><td>' + escapeHtml(item.description || '') + '</td><td>' + (item.quantity || 1) + '</td><td>' + (item.unit || 'ea') + '</td><td>$' + (item.unit_price || 0).toFixed(2) + '</td><td>$' + lineTotal.toFixed(2) + '</td></tr>';
+        });
+        html += '<tr class="po-subtotal-row"><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td style="font-weight:600">$' + subtotal.toFixed(2) + '</td></tr>';
+        html += '</tbody></table>';
+        html += '</div>';
+
+        // Inline supplier picker + actions
+        html += '<div class="po-review-actions">';
+        html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+        html += '<select id="poSupplierPick' + po.id + '" class="form-input" style="max-width:220px;font-size:13px;padding:6px 8px"><option value="">Select supplier...</option></select>';
+        if (poType === 'Materials PO') {
+          html += '<input type="date" id="poDeliveryPick' + po.id + '" class="form-input" style="max-width:160px;font-size:13px;padding:6px 8px" placeholder="Delivery date">';
+        }
+        html += '</div>';
+
+        // Action buttons
+        html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">';
+        if (!isCommission) {
+          html += '<button class="btn btn-sm btn-primary" onclick="quickApprovePO(\'' + po.id + '\', false)">Approve as Draft in Xero</button>';
+          html += '<button class="btn btn-sm btn-success" onclick="quickApprovePO(\'' + po.id + '\', true)">Approve &amp; Send to Supplier</button>';
+        }
+        html += '<button class="btn btn-sm btn-outline" onclick="openPOEdit(\'' + po.id + '\')">Edit Full PO</button>';
+        html += '</div>';
+        html += '</div>';  // po-review-actions
+        html += '</div>';  // po-review-body
+        html += '</div>';  // po-review-card
+      } else {
+        // Non-draft POs — standard one-line rendering
+        html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
+        html += '<div style="flex:1;">';
+        html += '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ';
+        html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
+        html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
+        html += '</div>';
+        html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email Supplier</button>';
+        html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
+        html += '</div>';
+      }
     });
   }
 
@@ -10866,6 +10944,93 @@ async function approveAndSendPO(poId, btnEl) {
   } catch(e) {
     showToast('Error: ' + e.message, 'warning');
     if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Approve & Send'; }
+  }
+}
+
+// Toggle expandable PO review card
+function togglePOCard(poId) {
+  var body = document.getElementById('poBody' + poId);
+  var chevron = document.getElementById('poChevron' + poId);
+  if (!body) return;
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    chevron.innerHTML = '&#9650;';
+    // Populate supplier dropdown if not already done
+    var sel = document.getElementById('poSupplierPick' + poId);
+    if (sel && sel.options.length <= 1) {
+      if (_suppliers && _suppliers.length) {
+        _suppliers.forEach(function(s) {
+          var opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = s.name;
+          sel.appendChild(opt);
+        });
+      } else {
+        // Load suppliers then populate
+        loadSupplierList().then(function() {
+          if (_suppliers && _suppliers.length) {
+            _suppliers.forEach(function(s) {
+              var opt = document.createElement('option');
+              opt.value = s.name;
+              opt.textContent = s.name;
+              sel.appendChild(opt);
+            });
+          }
+        });
+      }
+    }
+    // Pre-select supplier if PO already has one
+    var card = document.getElementById('poCard' + poId);
+    if (sel && card) {
+      var existing = card.getAttribute('data-supplier');
+      if (existing && sel.value === '') {
+        sel.value = existing;
+      }
+    }
+  } else {
+    body.style.display = 'none';
+    chevron.innerHTML = '&#9660;';
+  }
+}
+
+// Quick approve PO from review card
+async function quickApprovePO(poId, sendToSupplier) {
+  var supplierEl = document.getElementById('poSupplierPick' + poId);
+  var supplier = supplierEl ? supplierEl.value : '';
+  var dateEl = document.getElementById('poDeliveryPick' + poId);
+  var deliveryDate = dateEl ? dateEl.value : '';
+
+  if (!supplier) {
+    showToast('Please select a supplier first', 'warning');
+    return;
+  }
+
+  try {
+    // Update PO with supplier and delivery date
+    await opsPost('update_po', {
+      id: poId,
+      supplier_name: supplier,
+      delivery_date: deliveryDate || null,
+      status: 'draft'
+    });
+
+    if (sendToSupplier) {
+      // Push as authorised and email
+      await opsPost('push_po_to_xero', { id: poId, status: 'AUTHORISED' });
+      await opsPost('email_po', { id: poId });
+      showToast('PO approved, synced to Xero, and emailed to ' + supplier, 'success');
+    } else {
+      // Push as draft to Xero
+      await opsPost('push_po_to_xero', { id: poId, status: 'draft' });
+      showToast('PO saved as draft in Xero', 'success');
+    }
+
+    // Refresh the job detail view
+    if (_currentJobId) {
+      openJobDetail(_currentJobId);
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'warning');
   }
 }
 
