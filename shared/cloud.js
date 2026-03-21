@@ -24,6 +24,14 @@
   var metaKey = document.querySelector('meta[name="supabase-anon-key"]');
   var SUPABASE_URL = window.SUPABASE_URL || (metaUrl && metaUrl.content) || '';
   var SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || (metaKey && metaKey.content) || '';
+  var SW_API_KEY = window.SW_API_KEY || '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
+
+  // Helper: standard headers for edge function calls
+  function _swHeaders(extra) {
+    var h = { 'Content-Type': 'application/json', 'x-api-key': SW_API_KEY };
+    if (extra) { for (var k in extra) h[k] = extra[k]; }
+    return h;
+  }
 
   console.log('[SecureWorks Cloud] URL:', SUPABASE_URL ? 'found' : 'MISSING');
   console.log('[SecureWorks Cloud] Key:', SUPABASE_ANON_KEY ? 'found' : 'MISSING');
@@ -128,16 +136,10 @@
     async sendMagicLink(email) {
       // Use current URL if on GitHub Pages, otherwise fall back to GitHub Pages patio URL
       var redirectUrl = window.location.href.split('?')[0].split('#')[0];
-      if (redirectUrl.startsWith('file:')) {
-        // Local file — redirect to localhost server so the link actually works
+      if (redirectUrl.startsWith('file:') || redirectUrl.includes('127.0.0.1') || redirectUrl.includes('localhost')) {
+        // Local dev — redirect to GitHub Pages so the link actually works
         var title = (document.title || '').toLowerCase();
-        if (title.includes('dashboard') || title.includes('job')) {
-          redirectUrl = 'http://localhost:8080/dashboard/index.html';
-        } else if (title.includes('fence')) {
-          redirectUrl = 'https://marninms98-dotcom.github.io/fence-designer/';
-        } else {
-          redirectUrl = 'https://marninms98-dotcom.github.io/patio/';
-        }
+        redirectUrl = title.includes('fence') ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
       }
       var result = await sb.auth.signInWithOtp({
         email: email,
@@ -147,7 +149,7 @@
       return true;
     },
 
-    // Sign in with email + password
+    // Sign in with email + password (fallback)
     async signIn(email, password) {
       var result = await sb.auth.signInWithPassword({ email: email, password: password });
       if (result.error) throw result.error;
@@ -155,11 +157,6 @@
       await _loadUserProfile();
       emit('auth:login', _userProfile);
       return _userProfile;
-    },
-
-    // Alias for signIn — used by trade.html
-    async signInWithPassword(email, password) {
-      return this.signIn(email, password);
     },
 
     // Sign out
@@ -187,7 +184,7 @@
     try {
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=get_profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _swHeaders(),
         body: JSON.stringify({ userId: _user.id, email: _user.email || '' })
       });
       var data = await res.json();
@@ -303,7 +300,7 @@
     async listJobs(filters) {
       filters = filters || {};
       var query = sb.from('jobs')
-        .select('id, type, status, client_name, client_phone, client_email, site_address, site_suburb, job_number, created_at, updated_at, pricing_json')
+        .select('id, type, status, client_name, client_phone, site_suburb, created_at, updated_at, pricing_json')
         .order('updated_at', { ascending: false });
 
       if (filters.status) query = query.eq('status', filters.status);
@@ -363,58 +360,6 @@
       var result = await sb.from('upcoming_schedule').select('*');
       if (result.error) throw result.error;
       return result.data;
-    },
-
-    // ── Calendar CRUD (used by ops dashboard) ──
-    async assignJob(jobId, userId, date, opts) {
-      opts = opts || {};
-      var result = await sb.from('job_assignments').insert({
-        job_id: jobId,
-        user_id: userId || null,
-        scheduled_date: date,
-        scheduled_end: opts.scheduledEnd || null,
-        start_time: opts.startTime || null,
-        end_time: opts.endTime || null,
-        assignment_type: opts.assignmentType || 'install',
-        crew_name: opts.crewName || null,
-        notes: opts.notes || null,
-        role: opts.role || 'lead_installer',
-        status: 'scheduled'
-      }).select().single();
-      if (result.error) throw result.error;
-      emit('assignment:created', result.data);
-      return result.data;
-    },
-
-    async getCalendarSchedule(from, to) {
-      var query = sb.from('calendar_events').select('*')
-        .eq('org_id', _orgId || '00000000-0000-0000-0000-000000000001')
-        .gte('scheduled_date', from)
-        .lte('scheduled_date', to)
-        .neq('assignment_status', 'cancelled')
-        .order('scheduled_date', { ascending: true });
-      var result = await query;
-      if (result.error) throw result.error;
-      return result.data;
-    },
-
-    async updateAssignment(assignmentId, updates) {
-      var result = await sb.from('job_assignments')
-        .update(updates)
-        .eq('id', assignmentId)
-        .select().single();
-      if (result.error) throw result.error;
-      emit('assignment:updated', result.data);
-      return result.data;
-    },
-
-    async deleteAssignment(assignmentId) {
-      var result = await sb.from('job_assignments')
-        .delete()
-        .eq('id', assignmentId);
-      if (result.error) throw result.error;
-      emit('assignment:deleted', { id: assignmentId });
-      return true;
     }
   };
 
@@ -425,7 +370,7 @@
   var ghl = {
     // Get opportunities from a pipeline
     async getOpportunities(pipeline) {
-      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=opportunities&pipeline=' + encodeURIComponent(pipeline));
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=opportunities&pipeline=' + encodeURIComponent(pipeline), { headers: { 'x-api-key': SW_API_KEY } });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load opportunities');
       return data.opportunities || [];
@@ -433,7 +378,7 @@
 
     // Search opportunities by contact name
     async search(query) {
-      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=search&q=' + encodeURIComponent(query));
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=search&q=' + encodeURIComponent(query), { headers: { 'x-api-key': SW_API_KEY } });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Search failed');
       return data.opportunities || [];
@@ -441,7 +386,7 @@
 
     // Get full contact details from GHL
     async getContact(contactId) {
-      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=contact&contactId=' + encodeURIComponent(contactId));
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=contact&contactId=' + encodeURIComponent(contactId), { headers: { 'x-api-key': SW_API_KEY } });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to get contact');
       return data.contact;
@@ -451,7 +396,7 @@
     async updateContact(contactId, details) {
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=update_contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _swHeaders(),
         body: JSON.stringify(Object.assign({ contactId: contactId }, details))
       });
       var data = await res.json();
@@ -463,7 +408,7 @@
     async linkScope(opportunityId, jobId, toolType, contactId) {
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=link', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _swHeaders(),
         body: JSON.stringify({ opportunityId: opportunityId, jobId: jobId, toolType: toolType, contactId: contactId || '' })
       });
       var data = await res.json();
@@ -486,7 +431,7 @@
     // Load a job by ID (via edge function, bypasses RLS)
     async loadJob(jobId) {
       console.log('[Cloud] loadJob:', jobId);
-      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=load_job&jobId=' + encodeURIComponent(jobId));
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=load_job&jobId=' + encodeURIComponent(jobId), { headers: { 'x-api-key': SW_API_KEY } });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load job');
       return data.job;
@@ -495,7 +440,7 @@
     // List photos/videos for a job (via edge function)
     async listMedia(jobId) {
       console.log('[Cloud] listMedia:', jobId);
-      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=list_media&jobId=' + encodeURIComponent(jobId));
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=list_media&jobId=' + encodeURIComponent(jobId), { headers: { 'x-api-key': SW_API_KEY } });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to list media');
       return data.media || [];
@@ -506,7 +451,7 @@
       console.log('[Cloud] uploadPhoto:', jobId, label);
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=upload_photo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _swHeaders(),
         body: JSON.stringify({ jobId: jobId, dataUrl: dataUrl, label: label || '', caption: caption || '' })
       });
       var data = await res.json();
@@ -519,7 +464,7 @@
       console.log('[Cloud] saveScope:', jobId);
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=save_scope', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _swHeaders(),
         body: JSON.stringify({ jobId: jobId, scopeJson: scopeJson, meta: meta })
       });
       var data = await res.json();
@@ -528,21 +473,52 @@
       return data.job;
     },
 
+    // Auto-create GHL contact + opportunity for walk-up clients (dedup by email/phone)
+    async createContactAndOpportunity(contact, toolType) {
+      console.log('[Cloud] createContactAndOpportunity:', toolType);
+      var firstName = contact.firstName || '';
+      var lastName = contact.lastName || '';
+      if (!firstName && contact.name) {
+        var parts = contact.name.trim().split(/\s+/);
+        firstName = parts[0] || '';
+        lastName = parts.slice(1).join(' ') || '';
+      }
+      var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=create_contact_and_opportunity', {
+        method: 'POST',
+        headers: _swHeaders(),
+        body: JSON.stringify({
+          firstName: firstName,
+          lastName: lastName,
+          email: contact.email || '',
+          phone: contact.phone || '',
+          address: contact.address || '',
+          suburb: contact.suburb || '',
+          toolType: toolType
+        })
+      });
+      var data = await res.json();
+      console.log('[Cloud] createContactAndOpportunity result:', data);
+      if (!res.ok) throw new Error(data.error || 'Failed to create contact/opportunity');
+      return data;
+    },
+
     // Create a Supabase job linked to a GHL opportunity (via edge function to bypass RLS)
     async createJobForOpportunity(opportunityId, toolType, contact) {
       console.log('[Cloud] createJobForOpportunity:', opportunityId, toolType);
+      var payload = {
+        toolType: toolType,
+        clientName: contact.name || '',
+        clientPhone: contact.phone || '',
+        clientEmail: contact.email || '',
+        siteAddress: contact.address || '',
+        siteSuburb: contact.suburb || ''
+      };
+      if (opportunityId) payload.opportunityId = opportunityId;
+      if (contact.contactId) payload.contactId = contact.contactId;
       var res = await fetch(SUPABASE_URL + '/functions/v1/ghl-proxy?action=create_job', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          opportunityId: opportunityId,
-          toolType: toolType,
-          clientName: contact.name || '',
-          clientPhone: contact.phone || '',
-          clientEmail: contact.email || '',
-          siteAddress: contact.address || '',
-          siteSuburb: contact.suburb || ''
-        })
+        headers: _swHeaders(),
+        body: JSON.stringify(payload)
       });
       var data = await res.json();
       console.log('[Cloud] createJobForOpportunity result:', data);
@@ -850,8 +826,23 @@
         var state = getStateFn();
         if (!state) return;
 
-        // Build meta with pricing so auto-save keeps pricing_json current
+        // Build meta so auto-save keeps jobs table fields current
         var meta = {};
+        if (state.customer || state.client) {
+          var c = state.customer || {};
+          var cl = state.client || {};
+          meta.client_name = c.name || cl.name || '';
+          meta.client_phone = c.phone || cl.phone || '';
+          meta.client_email = c.email || cl.email || '';
+          meta.site_address = c.address || cl.address || '';
+          meta.site_suburb = cl.suburb || '';
+        } else if (state.job) {
+          meta.client_name = ((state.job.clientFirstName || '') + ' ' + (state.job.clientLastName || '')).trim() || state.job.client || '';
+          meta.client_phone = state.job.phone || '';
+          meta.client_email = state.job.email || '';
+          meta.site_address = state.job.address || '';
+          meta.site_suburb = state.job.suburb || '';
+        }
         if (state.job && state.job._pricing_json) {
           meta.pricing_json = state.job._pricing_json;
         } else if (state._pricing_json) {
@@ -886,11 +877,12 @@
       overlay.id = 'sw-login-overlay';
       overlay.innerHTML =
         '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;">' +
-          '<div style="background:#fff;border-radius:12px;padding:32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+          '<div style="background:#fff;border-radius:12px;padding:32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative;">' +
             '<h2 style="margin:0 0 8px;color:' + hex.dark + ';font-size:18px;">Sign In</h2>' +
-            '<p style="margin:0 0 20px;color:' + hex.mid + ';font-size:13px;">Enter your email to receive a magic link</p>' +
-            '<input type="email" id="sw-login-email" placeholder="your@email.com" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:12px;">' +
-            '<button id="sw-login-btn" style="width:100%;padding:10px;background:' + hex.orange + ';color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">Send Magic Link</button>' +
+            '<p style="margin:0 0 20px;color:' + hex.mid + ';font-size:13px;">Enter your email and password</p>' +
+            '<input type="email" id="sw-login-email" placeholder="your@email.com" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:10px;">' +
+            '<input type="password" id="sw-login-password" placeholder="Password" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin-bottom:12px;">' +
+            '<button id="sw-login-btn" style="width:100%;padding:10px;background:' + hex.orange + ';color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">Log In</button>' +
             '<p id="sw-login-status" style="margin:12px 0 0;font-size:12px;color:' + hex.mid + ';text-align:center;"></p>' +
             '<button id="sw-login-close" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#999;">&times;</button>' +
           '</div>' +
@@ -902,22 +894,28 @@
         overlay.remove();
       };
 
+      // Enter key on password field
+      document.getElementById('sw-login-password').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') document.getElementById('sw-login-btn').click();
+      });
+
       document.getElementById('sw-login-btn').onclick = async function() {
         var email = document.getElementById('sw-login-email').value.trim();
+        var password = document.getElementById('sw-login-password').value;
         var status = document.getElementById('sw-login-status');
-        if (!email) { status.textContent = 'Please enter your email'; return; }
+        if (!email || !password) { status.textContent = 'Please enter email and password'; return; }
 
         try {
           document.getElementById('sw-login-btn').disabled = true;
-          document.getElementById('sw-login-btn').textContent = 'Sending...';
-          await auth.sendMagicLink(email);
-          status.style.color = '#34C759';
-          status.textContent = 'Check your email for the login link!';
+          document.getElementById('sw-login-btn').textContent = 'Logging in...';
+          await auth.signIn(email, password);
+          overlay.remove();
+          if (onSuccess) onSuccess(_userProfile);
         } catch(e) {
           status.style.color = '#FF3B30';
-          status.textContent = e.message || 'Failed to send link';
+          status.textContent = e.message || 'Wrong email or password';
           document.getElementById('sw-login-btn').disabled = false;
-          document.getElementById('sw-login-btn').textContent = 'Send Magic Link';
+          document.getElementById('sw-login-btn').textContent = 'Log In';
         }
       };
 
@@ -1006,15 +1004,11 @@
         _searchTimer = setTimeout(function() { _loadList(val); }, 300);
       };
 
-      // New job button
-      document.getElementById('sw-job-new').onclick = async function() {
-        try {
-          var job = await cloud.createJob(toolType, {});
-          overlay.remove();
-          if (onSelect) onSelect(job.id);
-        } catch(e) {
-          alert('Failed to create job: ' + e.message);
-        }
+      // New job button — local-only until explicit cloud save
+      document.getElementById('sw-job-new').onclick = function() {
+        var localId = 'local-' + Date.now();
+        overlay.remove();
+        if (onSelect) onSelect(localId);
       };
     },
 
@@ -1064,14 +1058,19 @@
 
           // Render cards first (fast), then enrich with Supabase data (async)
           list.innerHTML = opps.map(function(opp) {
-            var subtitle = [opp.stageName, opp.contactPhone, opp.contactEmail].filter(Boolean).join(' \u00b7 ');
+            var infoParts = [opp.contactPhone, opp.contactEmail].filter(Boolean);
+            var addrParts = [opp.contactAddress, opp.contactCity].filter(Boolean);
+            var subtitle = infoParts.join(' \u00b7 ');
+            var addrLine = addrParts.length ? addrParts.join(', ') : '';
             return '<div class="sw-ghl-item" data-opp=\'' + JSON.stringify(opp).replace(/'/g, '&#39;') + '\' data-oppid="' + opp.id + '" style="padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#f8f8f8\'" onmouseout="this.style.background=\'#fff\'">' +
               '<div style="display:flex;justify-content:space-between;align-items:center;">' +
                 '<strong style="color:' + hex.dark + ';">' + (opp.contactName || opp.name || 'Unknown') + '</strong>' +
                 '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:' + hex.orange + '20;color:' + hex.orange + ';font-weight:600;">' + (opp.stageName || opp.status || '') + '</span>' +
               '</div>' +
               (subtitle ? '<div style="font-size:12px;color:' + hex.mid + ';margin-top:4px;">' + subtitle + '</div>' : '') +
+              (addrLine ? '<div style="font-size:11px;color:#999;margin-top:2px;">' + addrLine + '</div>' : '') +
               '<div class="sw-ghl-job-info" data-oppid="' + opp.id + '" style="margin-top:6px;font-size:11px;color:' + hex.mid + ';"></div>' +
+              '<div class="sw-ghl-action" data-oppid="' + opp.id + '" style="margin-top:6px;"><span style="font-size:11px;padding:3px 10px;border-radius:6px;background:' + hex.orange + '18;color:' + hex.orange + ';font-weight:600;">Start New Scope</span></div>' +
             '</div>';
           }).join('');
 
@@ -1092,6 +1091,16 @@
               if (job) {
                 var card = infoEl.parentElement;
                 var hasScope = job.scope_json && Object.keys(job.scope_json).length > 0;
+
+                // Backfill address from Supabase if GHL didn't provide one
+                var cardAddrLine = card.querySelector('div[style*="color:#999"]');
+                if (!cardAddrLine && job.site_address) {
+                    var addrDiv = document.createElement('div');
+                    addrDiv.style.cssText = 'font-size:11px;color:#999;margin-top:2px;';
+                    addrDiv.textContent = job.site_address;
+                    var infoParent = infoEl.parentElement;
+                    infoParent.insertBefore(addrDiv, infoEl);
+                }
 
                 // Build job number headline (bold, prominent)
                 var html = '';
@@ -1133,6 +1142,13 @@
                 if (badges.length) html += '<div style="margin-top:3px;">' + badges.join(' ') + '</div>';
 
                 infoEl.innerHTML = html;
+                // Update action badge
+                var actionEl = list.querySelector('.sw-ghl-action[data-oppid="' + opp.id + '"]');
+                if (actionEl) {
+                    if (hasScope) {
+                        actionEl.innerHTML = '<span style="font-size:11px;padding:3px 10px;border-radius:6px;background:#22C55E18;color:#22C55E;font-weight:600;">Resume Scope \u2192</span>';
+                    }
+                }
                 // Highlight the card border to show it has a linked job
                 card.style.borderColor = '#34C759';
                 card.style.borderWidth = '2px';
@@ -1214,6 +1230,27 @@
   })();
 
   // ════════════════════════════════════════════════════════════
+  // PRICING — fetch scope_tool_defaults from DB
+  // ════════════════════════════════════════════════════════════
+
+  var pricing = {
+    async getDefaults(scopeTool) {
+      try {
+        var { data, error } = await sb.from('scope_tool_defaults')
+          .select('category, item_key, item_description, unit, default_price, default_cost_rate, default_sqm_rate, last_updated_at')
+          .eq('scope_tool', scopeTool);
+        if (error || !data) return null;
+        var map = {};
+        data.forEach(function(row) { map[row.item_key] = row; });
+        return { defaults: map, fetched_at: new Date().toISOString() };
+      } catch(e) {
+        console.warn('[Cloud] pricing.getDefaults failed:', e);
+        return null;
+      }
+    }
+  };
+
+  // ════════════════════════════════════════════════════════════
   // EXPORT
   // ════════════════════════════════════════════════════════════
 
@@ -1224,6 +1261,7 @@
     media: media,
     ghl: ghl,
     ui: ui,
+    pricing: pricing,
 
     // Auto-save helpers
     startAutoSave: startAutoSave,
@@ -1238,9 +1276,7 @@
 
     // Direct Supabase access (escape hatch)
     supabase: sb,
-    sb: sb,
-    supabaseUrl: SUPABASE_URL,
-    supabaseKey: SUPABASE_ANON_KEY
+    supabaseUrl: SUPABASE_URL
   };
 
 })();

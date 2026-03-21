@@ -585,6 +585,7 @@
     <a href="#costs" data-section="costs">Costs</a>
     <a href="#operations" data-section="operations">Performance</a>
     <a href="#customers" data-section="customers">Customers</a>
+    <a href="#priceUpdates" data-section="priceUpdates">Prices</a>
   </nav>
 
   <!-- Loading state -->
@@ -845,6 +846,17 @@
       </div>
     </div>
 
+    <!-- ════════════════════════════════════════ -->
+    <!-- PRICE UPDATE REPORT                    -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="priceUpdates">
+      <div class="section-title">Recommended Price Updates</div>
+      <div class="section-subtitle">Supplier prices from confirmed purchase orders vs current scope tool rates</div>
+      <div id="priceUpdateContent" style="margin-top:12px;">
+        <div style="color:var(--sw-text-sec);font-size:13px;">Loading price data...</div>
+      </div>
+    </div>
+
     <!-- Timestamp -->
     <div style="text-align:center; font-size:12px; color:var(--sw-text-sec); padding:20px 0 40px;">
       Report generated <span id="reportTimestamp"></span>
@@ -858,6 +870,7 @@
 // ════════════════════════════════════════════════════════════
 // AUTH GATE — CEO email whitelist
 // ════════════════════════════════════════════════════════════
+var _swApiKey = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
 var CEO_EMAILS = ['marnin@secureworkswa.com.au'];
 var _supaAuth = null;
 
@@ -934,7 +947,7 @@ var _ceoAmberOpen = false;
 async function loadCeoAlerts() {
   try {
     var digestUrl = window.SUPABASE_URL + '/functions/v1/daily-digest';
-    var resp = await fetch(digestUrl, { headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } });
+    var resp = await fetch(digestUrl, { headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY, 'x-api-key': _swApiKey } });
     if (!resp.ok) return;
     var digest = await resp.json();
     var alerts = digest.alerts || [];
@@ -984,7 +997,8 @@ function toggleCeoAmber() {
 async function loadReport() {
   try {
     const res = await fetch(
-      window.SUPABASE_URL + '/functions/v1/reporting-api?action=ceo_report'
+      window.SUPABASE_URL + '/functions/v1/reporting-api?action=ceo_report',
+      { headers: { 'x-api-key': _swApiKey } }
     );
     if (!res.ok) throw new Error('API error: ' + res.status);
     reportData = await res.json();
@@ -1013,12 +1027,113 @@ async function loadReport() {
     }
     // Load AI alerts (non-blocking)
     loadCeoAlerts();
+    // Load price updates (non-blocking)
+    loadPriceUpdates();
   } catch (err) {
     document.getElementById('loadingState').innerHTML =
       '<div style="color:var(--sw-red);">Failed to load report: ' + err.message + '</div>';
   }
 }
 
+
+// ════════════════════════════════════════════════════════════
+// PRICE UPDATE REPORT
+// ════════════════════════════════════════════════════════════
+
+async function loadPriceUpdates() {
+  const container = document.getElementById('priceUpdateContent');
+  if (!container) return;
+  try {
+    // Fetch pending (unconfirmed) prices and recently confirmed prices in parallel
+    const opsBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+    const [pendingRes, confirmedRes] = await Promise.allSettled([
+      fetch(opsBase + '?action=pending_prices', { headers: { 'x-api-key': _swApiKey } }),
+      fetch(opsBase + '?action=confirmed_prices', { headers: { 'x-api-key': _swApiKey } })
+    ]);
+
+    let pending = [];
+    let confirmed = [];
+    if (pendingRes.status === 'fulfilled' && pendingRes.value.ok) {
+      const data = await pendingRes.value.json();
+      pending = data.prices || data || [];
+    }
+    if (confirmedRes.status === 'fulfilled' && confirmedRes.value.ok) {
+      const data = await confirmedRes.value.json();
+      confirmed = data.prices || data || [];
+    }
+
+    if ((!Array.isArray(pending) || pending.length === 0) && (!Array.isArray(confirmed) || confirmed.length === 0)) {
+      container.innerHTML = '<div class="alert-card info" style="margin:0;">No price updates available. Prices will appear here once purchase orders are confirmed in the system.</div>';
+      return;
+    }
+
+    let html = '';
+
+    // Confirmed price changes — recommendations
+    if (Array.isArray(confirmed) && confirmed.length > 0) {
+      html += '<div class="card" style="margin-bottom:16px;"><div class="card-title">Confirmed Price Changes</div>';
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;">Based on confirmed purchase orders from suppliers</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+      html += '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">'
+            + '<th style="padding:6px 8px;">Material</th>'
+            + '<th style="padding:6px 8px;text-align:right;">Old Rate</th>'
+            + '<th style="padding:6px 8px;text-align:right;">New Rate</th>'
+            + '<th style="padding:6px 8px;text-align:right;">Change</th>'
+            + '<th style="padding:6px 8px;text-align:right;">POs</th>'
+            + '</tr></thead><tbody>';
+      confirmed.forEach(function(item) {
+        const oldRate = parseFloat(item.old_rate || item.oldRate || 0);
+        const newRate = parseFloat(item.new_rate || item.newRate || item.confirmed_rate || item.rate || 0);
+        const poCount = item.po_count || item.poCount || item.count || '—';
+        const desc = item.description || item.material || item.name || '—';
+        const unit = item.unit || 'm';
+        const change = newRate - oldRate;
+        const changeColor = change > 0 ? 'var(--sw-red)' : change < 0 ? 'var(--sw-green)' : 'var(--sw-text-sec)';
+        const changeStr = change > 0 ? '+$' + change.toFixed(2) : change < 0 ? '-$' + Math.abs(change).toFixed(2) : '$0.00';
+        html += '<tr style="border-bottom:1px solid var(--sw-border);">'
+              + '<td style="padding:6px 8px;">' + desc + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;">$' + oldRate.toFixed(2) + '/' + unit + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;font-weight:600;">$' + newRate.toFixed(2) + '/' + unit + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;color:' + changeColor + ';">' + changeStr + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;">' + poCount + '</td>'
+              + '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    // Pending / unconfirmed prices
+    if (Array.isArray(pending) && pending.length > 0) {
+      html += '<div class="card" style="margin-bottom:16px;"><div class="card-title">Pending Price Confirmations</div>';
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;">PO prices awaiting confirmation — not yet applied to scope tools</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+      html += '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">'
+            + '<th style="padding:6px 8px;">Material</th>'
+            + '<th style="padding:6px 8px;text-align:right;">PO Price</th>'
+            + '<th style="padding:6px 8px;text-align:right;">Supplier</th>'
+            + '<th style="padding:6px 8px;text-align:right;">PO Date</th>'
+            + '</tr></thead><tbody>';
+      pending.forEach(function(item) {
+        const desc = item.description || item.material || item.name || '—';
+        const price = parseFloat(item.price || item.rate || 0);
+        const unit = item.unit || 'm';
+        const supplier = item.supplier || '—';
+        const date = item.date || item.po_date || '—';
+        html += '<tr style="border-bottom:1px solid var(--sw-border);">'
+              + '<td style="padding:6px 8px;">' + desc + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;">$' + price.toFixed(2) + '/' + unit + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;">' + supplier + '</td>'
+              + '<td style="padding:6px 8px;text-align:right;">' + date + '</td>'
+              + '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    container.innerHTML = html;
+  } catch (err) {
+    console.error('Price updates load error:', err);
+    container.innerHTML = '<div class="alert-card warning" style="margin:0;">Could not load price data: ' + err.message + '</div>';
+  }
+}
 
 // ════════════════════════════════════════════════════════════
 // SECTION NAV — scroll spy + smooth scroll
@@ -1033,7 +1148,7 @@ document.querySelectorAll('.section-nav a').forEach(link => {
 });
 
 // Scroll spy: highlight active section in nav
-const sectionIds = ['overview', 'financials', 'costs', 'operations', 'customers'];
+const sectionIds = ['overview', 'financials', 'costs', 'operations', 'customers', 'priceUpdates'];
 window.addEventListener('scroll', () => {
   let current = sectionIds[0];
   for (const id of sectionIds) {
@@ -2131,7 +2246,7 @@ async function sendChat() {
 
     var resp = await fetch(_opsAiBase, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
       body: JSON.stringify({ messages: msgs, view: 'ceo' }),
     });
     var data = await resp.json();

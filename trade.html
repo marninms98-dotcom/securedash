@@ -2590,6 +2590,7 @@
   // ══════════════════════════════════════════════════
 
   // GHL comms API — uses ghl-proxy edge function (same as Ops dashboard)
+  var _swApiKey = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
   var _ghlBase = window.SUPABASE_URL + '/functions/v1/ghl-proxy';
 
   function ghlApi(action, params, postBody) {
@@ -2600,7 +2601,7 @@
           if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
         });
       }
-      var headers = { 'Content-Type': 'application/json' };
+      var headers = { 'Content-Type': 'application/json', 'x-api-key': _swApiKey };
       if (token) headers['Authorization'] = 'Bearer ' + token;
       var opts = { headers: headers };
       if (postBody) { opts.method = 'POST'; opts.body = JSON.stringify(postBody); }
@@ -2620,7 +2621,7 @@
         });
       }
 
-      var headers = { 'Content-Type': 'application/json' };
+      var headers = { 'Content-Type': 'application/json', 'x-api-key': _swApiKey };
       if (token) headers['Authorization'] = 'Bearer ' + token;
 
       var opts = { headers: headers };
