@@ -1863,6 +1863,7 @@
         <button onclick="showView('jobs')" data-view="jobs">Jobs</button>
         <button onclick="showView('financials')" data-view="financials">Financials</button>
         <button onclick="showView('materials')" data-view="materials">Materials</button>
+        <button onclick="showView('approvals')" data-view="approvals">Approvals</button>
         <button onclick="showView('inbox')" data-view="inbox">Inbox <span id="inboxBadge" class="nav-badge" style="display:none;"></span></button>
       </div>
       <!-- Persistent search bar -->
@@ -2062,6 +2063,7 @@
         <button class="sub-tab" onclick="showSubTab('pos')" data-sub="pos">Purchase Orders</button>
         <button class="sub-tab" onclick="showSubTab('workorders')" data-sub="workorders">Work Orders</button>
         <button class="sub-tab" onclick="showSubTab('tradebills')" data-sub="tradebills">Trade Bills</button>
+        <button class="sub-tab" onclick="showSubTab('unreconciled')" data-sub="unreconciled">Unreconciled</button>
       </div>
 
       <!-- Invoices -->
@@ -2164,6 +2166,17 @@
           </table>
         </div>
       </div>
+
+      <!-- Unreconciled Transactions -->
+      <div id="subUnreconciled" class="sub-view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div class="section-heading">Unreconciled Transactions</div>
+          <span id="unreconciledCount" style="font-size:12px;color:var(--sw-text-sec);"></span>
+        </div>
+        <div id="unreconciledContent">
+          <div class="loading" style="text-align:center;padding:40px;color:var(--sw-text-sec);">Loading...</div>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════ MATERIALS TAB ═══════════ -->
@@ -2225,6 +2238,17 @@
       <div class="materials-kanban" id="materialsKanban"></div>
     </div>
 
+    <!-- ═══════════ APPROVALS TAB ═══════════ -->
+    <div id="viewApprovals" class="view">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div class="section-heading">Council & Engineering Approvals</div>
+        <span id="approvalsCount" style="font-size:12px;color:var(--sw-text-sec);"></span>
+      </div>
+      <div id="approvalsKanban" class="kanban-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="loading" style="text-align:center;padding:40px;color:var(--sw-text-sec);grid-column:1/-1;">Loading...</div>
+      </div>
+    </div>
+
     <!-- ═══════════ INBOX TAB ═══════════ -->
     <div id="viewInbox" class="view">
       <div style="margin-bottom:16px;">
@@ -2248,6 +2272,7 @@
     <button onclick="showView('jobs')" data-view="jobs"><span class="nav-icon">&#128188;</span>Jobs</button>
     <button onclick="showView('financials')" data-view="financials"><span class="nav-icon">&#128176;</span>Money</button>
     <button onclick="showView('materials')" data-view="materials"><span class="nav-icon">&#128230;</span>Materials</button>
+    <button onclick="showView('approvals')" data-view="approvals"><span class="nav-icon">&#128220;</span>Approvals</button>
     <button onclick="showView('inbox')" data-view="inbox"><span class="nav-icon">&#128172;</span>Inbox<span id="inboxBadgeMobile" class="nav-badge" style="display:none;"></span></button>
   </div>
 
@@ -2979,6 +3004,8 @@
 <script src="modules/ops-chat.js"></script>
 <!-- Quick quote: inline quote builder -->
 <script src="modules/ops-quick-quote.js"></script>
+<!-- Council/Engineering approvals kanban -->
+<script src="modules/ops-council.js"></script>
 <!-- PO comms: compose, send, email thread, PO PDF -->
 <script src="modules/ops-po-comms.js"></script>
 <!-- Init: boot app after DOM ready -->

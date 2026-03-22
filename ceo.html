@@ -585,6 +585,7 @@
     <a href="#costs" data-section="costs">Costs</a>
     <a href="#operations" data-section="operations">Performance</a>
     <a href="#customers" data-section="customers">Customers</a>
+    <a href="#team" data-section="team">Team</a>
     <a href="#priceUpdates" data-section="priceUpdates">Prices</a>
   </nav>
 
@@ -847,6 +848,30 @@
     </div>
 
     <!-- ════════════════════════════════════════ -->
+    <!-- TEAM PERFORMANCE                       -->
+    <!-- ════════════════════════════════════════ -->
+    <div class="section" id="team">
+      <div class="section-title">Team Performance</div>
+      <div class="section-subtitle">Activity this week from business events</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <select id="teamPeriodSelect" onchange="loadTeamActivity()" style="padding:4px 8px;border:1px solid var(--sw-border);border-radius:3px;font-size:12px;">
+          <option value="7">This Week</option>
+          <option value="14">Last 2 Weeks</option>
+          <option value="30">This Month</option>
+        </select>
+      </div>
+      <div id="teamActivityContent">
+        <div style="color:var(--sw-text-sec);font-size:13px;">Loading team data...</div>
+      </div>
+      <div style="margin-top:24px;">
+        <div class="section-title" style="font-size:16px;">Shaun's KPIs</div>
+        <div id="shaunKPIContent">
+          <div style="color:var(--sw-text-sec);font-size:13px;">Loading KPIs...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════ -->
     <!-- PRICE UPDATE REPORT                    -->
     <!-- ════════════════════════════════════════ -->
     <div class="section" id="priceUpdates">
@@ -1029,6 +1054,8 @@ async function loadReport() {
     loadCeoAlerts();
     // Load price updates (non-blocking)
     loadPriceUpdates();
+    // Load team activity (non-blocking)
+    loadTeamActivity();
   } catch (err) {
     document.getElementById('loadingState').innerHTML =
       '<div style="color:var(--sw-red);">Failed to load report: ' + err.message + '</div>';
@@ -1136,6 +1163,100 @@ async function loadPriceUpdates() {
 }
 
 // ════════════════════════════════════════════════════════════
+// TEAM PERFORMANCE
+// ════════════════════════════════════════════════════════════
+
+async function loadTeamActivity() {
+  const container = document.getElementById('teamActivityContent');
+  const kpiContainer = document.getElementById('shaunKPIContent');
+  if (!container) return;
+
+  const days = parseInt(document.getElementById('teamPeriodSelect')?.value || '7');
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+
+  try {
+    const opsBase = window.SUPABASE_URL + '/functions/v1/reporting-api';
+    const resp = await fetch(opsBase + '?action=team_activity&since=' + encodeURIComponent(since), {
+      headers: { 'x-api-key': _swApiKey }
+    });
+
+    let teamData = {};
+    if (resp.ok) {
+      teamData = await resp.json();
+    }
+
+    const members = teamData.members || [];
+
+    if (members.length === 0) {
+      container.innerHTML = '<div style="color:var(--sw-text-sec);font-size:13px;">No team activity data available yet. Activity will appear here as business events accumulate.</div>';
+    } else {
+      let html = '';
+      members.forEach(function(m) {
+        html += '<div class="card" style="margin-bottom:12px;padding:14px 16px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+        html += '<strong style="font-size:14px;color:var(--sw-dark);">' + escapeHtml(m.name || '') + '</strong>';
+        html += '<span style="font-size:11px;color:var(--sw-text-sec);">' + escapeHtml(m.role || '') + '</span>';
+        html += '</div>';
+        html += '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">';
+        if (m.metrics) {
+          Object.entries(m.metrics).forEach(function([key, val]) {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+            html += '<div><span style="color:var(--sw-text-sec);">' + label + ':</span> <strong>' + val + '</strong></div>';
+          });
+        }
+        html += '</div>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }
+
+    // Shaun's KPIs
+    const kpis = teamData.shaun_kpis || [];
+    if (kpis.length === 0 && kpiContainer) {
+      kpiContainer.innerHTML = renderDefaultKPIs();
+    } else if (kpiContainer) {
+      let kpiHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+      kpiHtml += '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">';
+      kpiHtml += '<th style="padding:8px;">KPI</th><th style="padding:8px;text-align:right;">Target</th><th style="padding:8px;text-align:right;">Actual</th><th style="padding:8px;text-align:center;">Status</th>';
+      kpiHtml += '</tr></thead><tbody>';
+      kpis.forEach(function(kpi) {
+        const statusIcon = kpi.status === 'green' ? '<span style="color:var(--sw-green);font-size:16px;">&#10003;</span>' :
+                           kpi.status === 'amber' ? '<span style="color:#D97706;font-size:16px;">&#9888;</span>' :
+                           '<span style="color:var(--sw-red);font-size:16px;">&#10007;</span>';
+        kpiHtml += '<tr style="border-bottom:1px solid var(--sw-border);">';
+        kpiHtml += '<td style="padding:8px;">' + escapeHtml(kpi.name || '') + '</td>';
+        kpiHtml += '<td style="padding:8px;text-align:right;">' + escapeHtml(kpi.target || '') + '</td>';
+        kpiHtml += '<td style="padding:8px;text-align:right;font-weight:600;">' + escapeHtml(kpi.actual || '') + '</td>';
+        kpiHtml += '<td style="padding:8px;text-align:center;">' + statusIcon + '</td>';
+        kpiHtml += '</tr>';
+      });
+      kpiHtml += '</tbody></table>';
+      kpiContainer.innerHTML = kpiHtml;
+    }
+  } catch (err) {
+    console.error('Team activity load error:', err);
+    container.innerHTML = '<div class="alert-card warning" style="margin:0;">Could not load team data: ' + err.message + '</div>';
+    if (kpiContainer) kpiContainer.innerHTML = renderDefaultKPIs();
+  }
+}
+
+function renderDefaultKPIs() {
+  // Static KPIs when reporting-api doesn't have the team_activity action yet
+  return '<div class="card" style="padding:14px 16px;">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+    '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">' +
+    '<th style="padding:8px;">KPI</th><th style="padding:8px;text-align:right;">Target</th><th style="padding:8px;text-align:right;">Actual</th><th style="padding:8px;text-align:center;">Status</th>' +
+    '</tr></thead><tbody>' +
+    '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:8px;">Accounts Receivable (60+ days)</td><td style="padding:8px;text-align:right;">&lt;$20K</td><td style="padding:8px;text-align:right;font-weight:600;">—</td><td style="padding:8px;text-align:center;">—</td></tr>' +
+    '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:8px;">Material Order Accuracy</td><td style="padding:8px;text-align:right;">100%</td><td style="padding:8px;text-align:right;font-weight:600;">—</td><td style="padding:8px;text-align:center;">—</td></tr>' +
+    '<tr style="border-bottom:1px solid var(--sw-border);"><td style="padding:8px;">Avg Days to Invoice After Completion</td><td style="padding:8px;text-align:right;">&lt;2 days</td><td style="padding:8px;text-align:right;font-weight:600;">—</td><td style="padding:8px;text-align:center;">—</td></tr>' +
+    '<tr><td style="padding:8px;">Jobs Fully Ready Before Install</td><td style="padding:8px;text-align:right;">&gt;90%</td><td style="padding:8px;text-align:right;font-weight:600;">—</td><td style="padding:8px;text-align:center;">—</td></tr>' +
+    '</tbody></table>' +
+    '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:8px;">KPI data will populate once the reporting-api team_activity endpoint is active.</div>' +
+    '</div>';
+}
+
+// ════════════════════════════════════════════════════════════
 // SECTION NAV — scroll spy + smooth scroll
 // ════════════════════════════════════════════════════════════
 
@@ -1148,7 +1269,7 @@ document.querySelectorAll('.section-nav a').forEach(link => {
 });
 
 // Scroll spy: highlight active section in nav
-const sectionIds = ['overview', 'financials', 'costs', 'operations', 'customers', 'priceUpdates'];
+const sectionIds = ['overview', 'financials', 'costs', 'operations', 'customers', 'team', 'priceUpdates'];
 window.addEventListener('scroll', () => {
   let current = sectionIds[0];
   for (const id of sectionIds) {

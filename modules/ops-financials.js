@@ -15,6 +15,7 @@ function showSubTab(tab) {
   if (tab === 'workorders') loadWOs();
   if (tab === 'quotes') loadQuotes();
   if (tab === 'tradebills') loadTradeBills();
+  if (tab === 'unreconciled') loadUnreconciled();
 }
 
 async function loadFinancials() {
@@ -460,5 +461,116 @@ async function loadQuotes() {
     console.error('loadQuotes error:', e);
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load quotes</td></tr>';
   }
+}
+
+// ═══════════════════════════════════════════════════
+// UNRECONCILED TRANSACTIONS
+// ═══════════════════════════════════════════════════
+
+async function loadUnreconciled() {
+  var container = document.getElementById('unreconciledContent');
+  var countEl = document.getElementById('unreconciledCount');
+  try {
+    var resp = await opsFetch('list_unreconciled_transactions', { days_back: 30, limit: 50 });
+    var txns = resp.transactions || [];
+    if (countEl) countEl.textContent = txns.length + ' items';
+
+    if (txns.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sw-text-sec);font-size:13px;">No unreconciled transactions found. All clear.</div>';
+      return;
+    }
+
+    var html = '';
+    txns.forEach(function(txn) {
+      var suggested = txn.suggested_matches || [];
+      var hasSuggestion = suggested.length > 0;
+      var topMatch = hasSuggestion ? suggested[0] : null;
+
+      html += '<div class="jd-money-card" style="margin-bottom:8px;padding:10px 12px;">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+      html += '<span style="font-size:12px;color:var(--sw-text-sec);min-width:70px;">' + fmtDate(txn.date) + '</span>';
+      html += '<span style="flex:1;font-weight:600;color:var(--sw-dark);">' + escapeHtml(txn.contact_name || txn.description || 'Unknown') + '</span>';
+      html += '<strong style="font-size:14px;">' + fmt$(txn.amount) + '</strong>';
+      html += '</div>';
+      if (txn.description && txn.description !== txn.contact_name) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:6px;">' + escapeHtml(txn.description) + '</div>';
+      }
+
+      // Suggested match
+      if (topMatch) {
+        html += '<div style="font-size:11px;padding:4px 8px;background:#E8F5E9;border-radius:3px;margin-bottom:6px;color:#2E7D32;">';
+        html += 'Suggested: <strong>' + escapeHtml(topMatch.po_number || topMatch.job_number || '') + '</strong> ' + escapeHtml(topMatch.job_number || '') + ' — ' + escapeHtml(topMatch.supplier_name || '');
+        if (topMatch.confidence) html += ' (' + Math.round(topMatch.confidence * 100) + '% match)';
+        html += '</div>';
+      }
+
+      // Actions
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      if (topMatch) {
+        html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;font-size:11px;padding:4px 10px;" onclick="confirmUnreconciledMatch(\'' + txn.xero_txn_id + '\',\'' + (topMatch.job_id || '') + '\',\'' + (topMatch.po_id || '') + '\')">Confirm Match</button>';
+      }
+      html += '<select class="form-input" style="font-size:11px;padding:3px 6px;max-width:160px;" onchange="matchUnreconciledToJob(\'' + txn.xero_txn_id + '\', this.value)" title="Match to job">';
+      html += '<option value="">Match to Job...</option>';
+      // Populate from recent jobs if available
+      html += '</select>';
+      html += '<button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="markUnreconciledStock(\'' + txn.xero_txn_id + '\')">General Stock</button>';
+      html += '<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:none;border:1px solid var(--sw-border);color:var(--sw-text-sec);" onclick="dismissUnreconciled(\'' + txn.xero_txn_id + '\')">Dismiss</button>';
+      html += '</div>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+
+    // Populate job dropdowns from cached data
+    populateUnreconciledJobDropdowns();
+  } catch (e) {
+    console.error('loadUnreconciled error:', e);
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sw-red);font-size:13px;">Failed to load unreconciled transactions.</div>';
+  }
+}
+
+async function populateUnreconciledJobDropdowns() {
+  try {
+    var resp = await opsFetch('search_jobs', { status: 'in_progress,scheduled,accepted,quoted', limit: 50 });
+    var jobs = resp.jobs || resp || [];
+    if (!Array.isArray(jobs)) return;
+    var selects = document.querySelectorAll('#subUnreconciled select');
+    selects.forEach(function(sel) {
+      jobs.forEach(function(j) {
+        var opt = document.createElement('option');
+        opt.value = j.id;
+        opt.textContent = (j.job_number || '') + ' ' + (j.client_name || '');
+        sel.appendChild(opt);
+      });
+    });
+  } catch (e) { /* non-critical */ }
+}
+
+async function confirmUnreconciledMatch(txnId, jobId, poId) {
+  try {
+    await opsPost('reconcile_transaction', { xero_txn_id: txnId, job_id: jobId, po_id: poId, action: 'confirm_match' });
+    loadUnreconciled();
+  } catch (e) { alert('Failed to confirm match: ' + e.message); }
+}
+
+async function matchUnreconciledToJob(txnId, jobId) {
+  if (!jobId) return;
+  try {
+    await opsPost('reconcile_transaction', { xero_txn_id: txnId, job_id: jobId, action: 'match_to_job' });
+    loadUnreconciled();
+  } catch (e) { alert('Failed to match: ' + e.message); }
+}
+
+async function markUnreconciledStock(txnId) {
+  try {
+    await opsPost('reconcile_transaction', { xero_txn_id: txnId, action: 'general_stock', cost_centre: 'general_stock' });
+    loadUnreconciled();
+  } catch (e) { alert('Failed to mark as stock: ' + e.message); }
+}
+
+async function dismissUnreconciled(txnId) {
+  try {
+    await opsPost('reconcile_transaction', { xero_txn_id: txnId, action: 'dismiss' });
+    loadUnreconciled();
+  } catch (e) { alert('Failed to dismiss: ' + e.message); }
 }
 

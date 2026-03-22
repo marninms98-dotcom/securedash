@@ -211,6 +211,10 @@ function renderJobPeek(data) {
     html += '</div>';
   }
 
+  // Council/Engineering section
+  html += '<div id="jdCouncilSection"></div>';
+  loadJobCouncilSection(data.job.id);
+
   // Timeline (chronological events)
   if (data.events && data.events.length > 0) {
     html += '<div class="panel-title" style="margin-top:16px;">Timeline</div>';
@@ -229,6 +233,43 @@ function renderJobPeek(data) {
   }
 
   document.getElementById('slidePanelBody').innerHTML = html;
+}
+
+async function loadJobCouncilSection(jobId) {
+  var el = document.getElementById('jdCouncilSection');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_council_submissions', { job_id: jobId });
+    var subs = resp.submissions || [];
+    if (subs.length === 0) {
+      el.innerHTML = '';
+      return;
+    }
+    var sub = subs[0];
+    var steps = sub.steps || [];
+    var completed = steps.filter(function(s) { return s.status === 'complete'; }).length;
+    var html = '<div class="panel-title" style="margin-top:16px;">Council/Engineering</div>';
+    html += '<div style="font-size:12px;margin-bottom:6px;color:var(--sw-dark);font-weight:600;">' + completed + '/' + steps.length + ' steps complete — ' + (sub.overall_status || '').replace(/_/g, ' ') + '</div>';
+    html += '<div style="display:flex;gap:2px;margin-bottom:6px;">';
+    steps.forEach(function(step) {
+      var c = step.status === 'complete' ? 'var(--sw-green)' : step.status === 'in_progress' ? 'var(--sw-mid)' : step.status === 'blocked' ? 'var(--sw-red)' : '#E0E0E0';
+      html += '<div title="' + escapeHtml(step.name) + '" style="flex:1;height:6px;border-radius:3px;background:' + c + ';"></div>';
+    });
+    html += '</div>';
+    steps.forEach(function(step) {
+      var icon = step.status === 'complete' ? '&#10003;' : step.status === 'in_progress' ? '&#9679;' : step.status === 'blocked' ? '&#10007;' : '&#9675;';
+      var color = step.status === 'complete' ? 'var(--sw-green)' : step.status === 'in_progress' ? 'var(--sw-mid)' : step.status === 'blocked' ? 'var(--sw-red)' : 'var(--sw-text-sec)';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;">';
+      html += '<span style="color:' + color + ';">' + icon + '</span>';
+      html += '<span>' + escapeHtml(step.name) + '</span>';
+      if (step.vendor) html += '<span style="color:var(--sw-text-sec);font-size:11px;">(' + escapeHtml(step.vendor) + ')</span>';
+      html += '</div>';
+    });
+    html += '<div style="margin-top:6px;"><button class="btn btn-sm btn-secondary" style="font-size:11px;" onclick="showView(\'approvals\')">View in Approvals</button></div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
 }
 
 function formatEventType(type, detail) {
@@ -984,6 +1025,11 @@ function getTimelineColor(source) {
 
 // ── Money View ──
 
+function togglePODetailExpand(poId) {
+  var el = document.getElementById('poDetail_' + poId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function renderMoneyView(data) {
   var j = data.job;
   var quoteVal = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0;
@@ -1095,12 +1141,57 @@ function renderMoneyView(data) {
     if (awaitingReply > 0) html += ' (' + awaitingReply + ' awaiting reply 48h+)';
     html += '</div>';
     pos.forEach(function(po) {
-      html += '<div class="jd-money-card"><div class="jd-money-card-head">';
+      var poCardId = 'poDetail_' + po.id;
+      html += '<div class="jd-money-card" style="cursor:pointer;" onclick="togglePODetailExpand(\'' + po.id + '\')">';
+      html += '<div class="jd-money-card-head">';
       html += '<span>' + (po.po_number || '') + ' — ' + escapeHtml(po.supplier_name || '') + '</span>';
       html += '<strong>' + fmt$(po.total) + '</strong></div>';
       html += '<div class="jd-money-card-sub"><span class="status-badge ' + po.status + '">' + (po.status || '') + '</span>';
       if (po.confirmed_delivery_date) html += ' &middot; Delivery ' + fmtDate(po.confirmed_delivery_date);
       else if (po.delivery_date) html += ' &middot; Req. ' + fmtDate(po.delivery_date);
+      // Email count preview
+      var poEmails = po.communications || po.email_threads || [];
+      if (poEmails.length > 0) {
+        var lastPE = poEmails[poEmails.length - 1];
+        var lastPEPreview = (lastPE.subject || lastPE.body_text || '').slice(0, 40);
+        html += ' &middot; <span style="color:var(--sw-mid);">' + poEmails.length + ' email' + (poEmails.length > 1 ? 's' : '') + '</span>';
+      }
+      html += '</div>';
+      // Expandable detail section
+      html += '<div id="' + poCardId + '" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--sw-border);font-size:11px;">';
+      // Line items
+      if (po.line_items && po.line_items.length > 0) {
+        html += '<div style="font-weight:600;margin-bottom:4px;color:var(--sw-dark);">Line Items</div>';
+        po.line_items.forEach(function(li) {
+          html += '<div style="display:flex;gap:6px;padding:2px 0;color:var(--sw-text-sec);">';
+          html += '<span style="flex:1;">' + escapeHtml(li.description || '') + '</span>';
+          if (li.quantity) html += '<span>' + li.quantity + (li.unit ? ' ' + li.unit : '') + '</span>';
+          if (li.total) html += '<span style="font-weight:600;">' + fmt$(li.total) + '</span>';
+          html += '</div>';
+        });
+      }
+      // Email thread
+      if (poEmails.length > 0) {
+        html += '<div style="font-weight:600;margin:8px 0 4px;color:var(--sw-dark);">Email Thread</div>';
+        poEmails.forEach(function(em) {
+          var dir = em.direction === 'inbound' ? '&#8601; Received' : '&#8599; Sent';
+          var emDate = em.created_at ? fmtDate(em.created_at) : '';
+          html += '<div style="padding:4px 0;border-bottom:1px solid var(--sw-border);">';
+          html += '<div style="display:flex;gap:6px;align-items:center;">';
+          html += '<span style="color:var(--sw-mid);font-weight:600;">' + dir + '</span>';
+          html += '<span style="color:var(--sw-text-sec);">' + emDate + '</span>';
+          if (em.from_email) html += '<span style="color:var(--sw-text-sec);">' + escapeHtml(em.from_email) + '</span>';
+          html += '</div>';
+          if (em.subject) html += '<div style="font-weight:600;color:var(--sw-dark);">' + escapeHtml(em.subject) + '</div>';
+          if (em.body_text) html += '<div style="color:var(--sw-text-sec);white-space:pre-wrap;max-height:80px;overflow:auto;">' + escapeHtml(em.body_text.slice(0, 300)) + '</div>';
+          if (em.attachments && em.attachments.length > 0) {
+            em.attachments.forEach(function(att) {
+              html += '<a href="' + escapeHtml(att.url || '') + '" target="_blank" style="font-size:10px;color:var(--sw-mid);">&#128206; ' + escapeHtml(att.filename || 'Attachment') + '</a> ';
+            });
+          }
+          html += '</div>';
+        });
+      }
       html += '</div></div>';
     });
   }
@@ -1115,6 +1206,89 @@ function renderMoneyView(data) {
     html += '<div class="jd-money-card-sub">Invoiced: ' + fmt$(data.xero_project.total_invoiced) + ' | Expenses: ' + fmt$(data.xero_project.total_expenses) + '</div></div>';
   }
   html += '</div></div>';
+
+  // ── Labour Cost Section ──
+  var assignments = data.assignments || [];
+  var labourPOs = pos.filter(function(po) {
+    return (po.category || '').toLowerCase() === 'labour' ||
+           (po.supplier_name || '').toLowerCase().includes('labour') ||
+           (po.description || '').toLowerCase().includes('labour');
+  });
+  var labourBudget = labourPOs.reduce(function(s, po) { return s + (po.total || 0); }, 0);
+
+  // Group assignments by crew member and calculate hours
+  var crewHours = {};
+  assignments.forEach(function(a) {
+    if (a.status === 'cancelled') return;
+    var name = cleanCrewName(a.crew_name || a.users?.name || 'Unknown');
+    if (!crewHours[name]) crewHours[name] = { hours: 0, days: 0, rate: 0, verified: 0, unverified: 0 };
+    crewHours[name].days++;
+    // If hours tracked (clocked_on/clocked_off), use actual hours
+    if (a.hours_worked) {
+      crewHours[name].hours += parseFloat(a.hours_worked) || 0;
+      crewHours[name].verified++;
+    } else if (a.clocked_on && a.clocked_off) {
+      var hrs = (new Date(a.clocked_off) - new Date(a.clocked_on)) / 3600000;
+      crewHours[name].hours += Math.round(hrs * 10) / 10;
+      crewHours[name].verified++;
+    } else if (a.status === 'complete') {
+      crewHours[name].hours += 8; // Default 8hr day
+      crewHours[name].unverified++;
+    }
+  });
+
+  var crewNames = Object.keys(crewHours);
+  if (crewNames.length > 0) {
+    html += '<div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--sw-border);">';
+    html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Labour' + (labourBudget > 0 ? ' — ' + fmt$(labourBudget) + ' budgeted' : '') + '</div>';
+
+    var totalLabourCost = 0;
+    crewNames.forEach(function(name) {
+      var c = crewHours[name];
+      // Look up trade rate from work_orders or use default
+      var rate = 0;
+      var wos = data.work_orders || [];
+      wos.forEach(function(wo) {
+        if (wo.trade_name && cleanCrewName(wo.trade_name) === name && wo.hourly_rate) {
+          rate = parseFloat(wo.hourly_rate) || 0;
+        }
+      });
+      if (!rate) rate = 45; // Default $45/hr
+      c.rate = rate;
+      var cost = c.hours * rate;
+      totalLabourCost += cost;
+
+      var verifiedLabel = c.verified > 0 ? (c.unverified > 0 ? 'Partial' : 'Verified') : (c.hours > 0 ? 'Estimated' : '');
+      var verifiedColor = c.verified > 0 && c.unverified === 0 ? 'var(--sw-green)' : 'var(--sw-orange)';
+
+      html += '<div class="jd-money-card"><div class="jd-money-card-head">';
+      html += '<span>' + escapeHtml(name) + '</span>';
+      html += '<strong>' + fmt$(cost) + '</strong></div>';
+      html += '<div class="jd-money-card-sub">';
+      html += c.days + ' day' + (c.days > 1 ? 's' : '') + ' &middot; ' + c.hours + 'h &times; $' + rate + '/hr';
+      if (verifiedLabel) html += ' &middot; <span style="color:' + verifiedColor + '">' + verifiedLabel + ' &#10003;</span>';
+      html += '</div></div>';
+    });
+
+    // Total and budget comparison
+    html += '<div class="jd-money-card" style="border-color:var(--sw-dark);"><div class="jd-money-card-head">';
+    html += '<span style="font-weight:700;">Total Labour</span>';
+    html += '<strong>' + fmt$(totalLabourCost) + '</strong></div>';
+    if (labourBudget > 0) {
+      var labourDiff = totalLabourCost - labourBudget;
+      var labourPct = Math.round(labourDiff / labourBudget * 100);
+      var remaining = labourBudget - totalLabourCost;
+      var labourWarnColor = labourPct > 25 ? 'var(--sw-red)' : labourPct > 10 ? 'var(--sw-orange)' : 'var(--sw-green)';
+      html += '<div class="jd-money-card-sub" style="color:' + labourWarnColor + '">';
+      if (remaining >= 0) {
+        html += 'Remaining: ' + fmt$(remaining) + ' (' + Math.abs(labourPct) + '% used)';
+      } else {
+        html += 'Over budget by ' + fmt$(Math.abs(remaining)) + ' (' + labourPct + '% over)';
+      }
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
 
   // Margin bar
   if (quoteVal > 0) {

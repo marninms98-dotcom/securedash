@@ -531,6 +531,12 @@ function renderCommsView(data) {
     html += '</div>';
     html += '</div>';
   }
+  // ── Automated Communications Timeline ──
+  html += '<div id="commsAutoSection" style="margin-top:16px;border-top:2px solid var(--sw-border);padding-top:12px;">';
+  html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Automated Communications</div>';
+  html += '<div id="commsAutoTimeline"><div class="loading" style="text-align:center;padding:12px;font-size:12px;color:var(--sw-text-sec);">Loading...</div></div>';
+  html += '</div>';
+
   html += '</div>'; // end commsClientView
 
   // ── Supplier View ──
@@ -583,6 +589,9 @@ function renderCommsView(data) {
   if (j.ghl_contact_id) {
     loadConversation(j.ghl_contact_id);
   }
+
+  // Load automated comms timeline
+  loadAutoCommsTimeline(j.id);
 
   // Load supplier email threads
   if (pos.length > 0) {
@@ -1377,6 +1386,72 @@ function togglePOEmailThread(poId, toggleEl) {
     });
   } else {
     threadEl.style.display = 'none';
+  }
+}
+
+// ── Automated Communications Timeline ──
+
+var COMMS_TRIGGER_LABELS = {
+  quote_sent: 'Quote sent',
+  quote_accepted: 'Quote accepted',
+  deposit_paid: 'Deposit paid',
+  materials_ordered: 'Materials ordered',
+  council_submitted: 'Council submitted',
+  council_approved: 'Council approved',
+  crew_scheduled: 'Crew scheduled',
+  crew_arriving: 'Crew arriving',
+  daily_progress: 'Daily progress',
+  job_complete: 'Job complete',
+  invoice_sent: 'Invoice sent',
+  payment_received: 'Payment received',
+  follow_up_30d: '30-day follow-up',
+};
+
+var COMMS_STATUS_ICONS = {
+  sent: { icon: '&#10003;', color: 'var(--sw-mid)', label: 'Sent' },
+  delivered: { icon: '&#10003;&#10003;', color: 'var(--sw-green)', label: 'Delivered' },
+  opened: { icon: '&#128065;', color: 'var(--sw-green)', label: 'Opened' },
+  bounced: { icon: '&#10007;', color: 'var(--sw-red)', label: 'Bounced' },
+  failed: { icon: '&#10007;', color: 'var(--sw-red)', label: 'Failed' },
+};
+
+async function loadAutoCommsTimeline(jobId) {
+  var el = document.getElementById('commsAutoTimeline');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_email_events', { job_id: jobId, limit: 50 });
+    var events = resp.events || resp.email_events || resp || [];
+    if (!Array.isArray(events)) events = [];
+    if (events.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec);padding:8px 0;font-style:italic;">No automated communications sent yet.</div>';
+      return;
+    }
+    // Sort by created_at
+    events.sort(function(a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+    var html = '';
+    events.forEach(function(ev) {
+      var trigger = ev.comms_trigger || ev.event_type || '';
+      var label = COMMS_TRIGGER_LABELS[trigger] || trigger.replace(/_/g, ' ');
+      var channel = ev.comms_channel || ev.channel || 'email';
+      var channelBadge = channel === 'sms' ? '<span style="background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:2px;font-size:10px;font-weight:600;">SMS</span>' :
+                         '<span style="background:#fce4ec;color:#c62828;padding:1px 5px;border-radius:2px;font-size:10px;font-weight:600;">Email</span>';
+      var status = ev.status || ev.delivery_status || 'sent';
+      var statusInfo = COMMS_STATUS_ICONS[status] || COMMS_STATUS_ICONS.sent;
+      var openCount = ev.open_count || ev.metadata?.open_count || 0;
+      var openText = openCount > 0 ? ' &middot; Opened ' + openCount + ' time' + (openCount > 1 ? 's' : '') : '';
+      var date = ev.created_at ? fmtDate(ev.created_at) : '';
+
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px;">';
+      html += '<span style="color:' + statusInfo.color + ';font-size:14px;min-width:18px;">' + statusInfo.icon + '</span>';
+      html += '<span style="min-width:60px;color:var(--sw-text-sec);font-size:11px;">' + date + '</span>';
+      html += '<span style="flex:1;font-weight:600;color:var(--sw-dark);">' + escapeHtml(label) + '</span>';
+      html += channelBadge;
+      html += '<span style="font-size:11px;color:' + statusInfo.color + ';">' + statusInfo.label + openText + '</span>';
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:8px 0;">Could not load automated comms.</div>';
   }
 }
 

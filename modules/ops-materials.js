@@ -453,9 +453,18 @@ function renderMaterialsKanban() {
       }
       html += '</div>';
 
-      // PO Email Thread toggle
+      // PO Email Thread preview + toggle
+      var emailCount = (po.communications || po.email_threads || []).length;
+      var lastEmail = emailCount > 0 ? (po.communications || po.email_threads)[emailCount - 1] : null;
+      if (emailCount > 0 && lastEmail) {
+        var emailDir = lastEmail.direction === 'inbound' ? '&#8601;' : '&#8599;';
+        var emailPreview = (lastEmail.subject || lastEmail.body_text || '').slice(0, 60);
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;padding:3px 0;border-top:1px solid var(--sw-border);">';
+        html += emailDir + ' ' + emailCount + ' email' + (emailCount > 1 ? 's' : '') + ' — last: ' + escapeHtml(emailPreview);
+        html += '</div>';
+      }
       html += '<div class="po-email-thread-toggle" onclick="event.stopPropagation();togglePOEmailThread(\'' + po.id + '\', this)">';
-      html += 'Supplier Emails <span class="po-email-count" id="poEmailCount_' + po.id + '">(0)</span>';
+      html += 'Supplier Emails <span class="po-email-count" id="poEmailCount_' + po.id + '">(' + emailCount + ')</span>';
       html += '</div>';
       html += '<div class="po-email-thread" id="poThread_' + po.id + '" style="display:none;"></div>';
 

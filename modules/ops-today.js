@@ -25,6 +25,7 @@ function showView(view) {
   if (view === 'financials') loadFinancials();
   if (view === 'materials') loadMaterials();
   if (view === 'inbox') loadInbox();
+  if (view === 'approvals') loadApprovals();
 }
 
 function restoreTab() {
@@ -37,7 +38,7 @@ function restoreTab() {
     setTimeout(function() { openJobDetailByRef(jobRef); }, 500);
     return;
   }
-  var validTabs = ['today', 'calendar', 'jobs', 'financials', 'materials', 'inbox'];
+  var validTabs = ['today', 'calendar', 'jobs', 'financials', 'materials', 'inbox', 'approvals'];
   if (hash && validTabs.indexOf(hash) >= 0) { showView(hash); return; }
   var saved = localStorage.getItem('sw_ops_tab');
   if (saved && validTabs.indexOf(saved) >= 0) { showView(saved); return; }
