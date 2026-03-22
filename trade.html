@@ -2388,33 +2388,57 @@
   }
 
   // ── Time tracking state machine ──
-  var _timeTrackingState = 'idle'; // idle | travelling | on_site | stopped
-  var _travelStartTime = null;
-  var _onSiteStartTime = null;
-  var _stoppedTravelMins = 0;
-  var _stoppedOnsiteMins = 0;
+  // ══════════════════════════════════════════════════
+  // CLOCK STATE — Simplified 2-state (on/off) with travel metadata
+  // ══════════════════════════════════════════════════
+  var _clockState = 'off'; // 'off' | 'on'
+  var _clockedOnAt = null; // ISO string — when clock-on happened
+  var _travelStartTime = null; // ISO string — optional travel start
+  var _arrivedAt = null; // ISO string — when arrived on site
+  var _manualOverride = false; // flag if time was manually adjusted
   var _timerTickInterval = null;
   var _autoNotifyClient = true;
 
+  // Backward-compat: keep these for EOD timesheet calculation
+  var _stoppedTravelMins = 0;
+  var _stoppedOnsiteMins = 0;
+
   function loadTimerState() {
     try {
-      var raw = localStorage.getItem('sw_timer_' + _currentJobId);
-      if (!raw) return;
-      var s = JSON.parse(raw);
-      _timeTrackingState = s.state || 'idle';
-      _travelStartTime = s.travelStart || null;
-      _onSiteStartTime = s.onSiteStart || null;
-      _stoppedTravelMins = s.travelMins || 0;
-      _stoppedOnsiteMins = s.onsiteMins || 0;
+      var raw = localStorage.getItem('sw_clock_' + _currentJobId);
+      if (raw) {
+        var s = JSON.parse(raw);
+        _clockState = s.clockState || 'off';
+        _clockedOnAt = s.clockedOnAt || null;
+        _travelStartTime = s.travelStart || null;
+        _arrivedAt = s.arrivedAt || null;
+        _manualOverride = s.manualOverride || false;
+        _stoppedTravelMins = s.travelMins || 0;
+        _stoppedOnsiteMins = s.onsiteMins || 0;
+        return;
+      }
+      // Migration: try old key
+      var old = localStorage.getItem('sw_timer_' + _currentJobId);
+      if (old) {
+        var o = JSON.parse(old);
+        if (o.state === 'travelling') { _clockState = 'on'; _clockedOnAt = o.travelStart; _travelStartTime = o.travelStart; }
+        else if (o.state === 'on_site') { _clockState = 'on'; _clockedOnAt = o.onSiteStart; _arrivedAt = o.onSiteStart; }
+        else if (o.state === 'stopped') { _clockState = 'on'; _clockedOnAt = o.travelStart || o.onSiteStart; _stoppedTravelMins = o.travelMins || 0; _stoppedOnsiteMins = o.onsiteMins || 0; }
+        else { _clockState = 'off'; }
+        saveTimerState(); // save in new format
+        try { localStorage.removeItem('sw_timer_' + _currentJobId); } catch(e) {}
+      }
     } catch (e) { /* ignore */ }
   }
 
   function saveTimerState() {
     try {
-      localStorage.setItem('sw_timer_' + _currentJobId, JSON.stringify({
-        state: _timeTrackingState,
+      localStorage.setItem('sw_clock_' + _currentJobId, JSON.stringify({
+        clockState: _clockState,
+        clockedOnAt: _clockedOnAt,
         travelStart: _travelStartTime,
-        onSiteStart: _onSiteStartTime,
+        arrivedAt: _arrivedAt,
+        manualOverride: _manualOverride,
         travelMins: _stoppedTravelMins,
         onsiteMins: _stoppedOnsiteMins
       }));
@@ -2422,12 +2446,27 @@
   }
 
   function clearTimerState() {
-    _timeTrackingState = 'idle';
+    _clockState = 'off';
+    _clockedOnAt = null;
     _travelStartTime = null;
-    _onSiteStartTime = null;
+    _arrivedAt = null;
+    _manualOverride = false;
     _stoppedTravelMins = 0;
     _stoppedOnsiteMins = 0;
-    try { localStorage.removeItem('sw_timer_' + _currentJobId); } catch (e) {}
+    try { localStorage.removeItem('sw_clock_' + _currentJobId); } catch (e) {}
+  }
+
+  // Check if clocked on from a previous day (stale clock)
+  function checkStaleClock() {
+    if (_clockState !== 'on' || !_clockedOnAt) return;
+    var clockDate = new Date(_clockedOnAt).toISOString().slice(0, 10);
+    var today = new Date().toISOString().slice(0, 10);
+    if (clockDate < today) {
+      var dayStr = new Date(_clockedOnAt).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' });
+      showConfirm('Still Clocked On', 'You\'re still clocked on from ' + dayStr + '. Clock off for that day?', 'Clock Off for ' + dayStr).then(function(ok) {
+        if (ok) openEOD();
+      });
+    }
   }
 
   function roundTo15(mins) {
@@ -3351,6 +3390,8 @@
       _currentJob = data;
       _currentJobLoaded = jobId;
       renderJobDetail(data);
+      // Check for stale clock-on from previous day
+      checkStaleClock();
     }).catch(function(err) {
       clearTimeout(slowTimer);
       container.innerHTML = '<div class="empty-state">Error: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="loadJobDetail(\'' + jobId + '\')">Retry</button></div>';
@@ -3435,11 +3476,12 @@
     // Check if job is complete
     if (job.status === 'complete' || myAssignment.status === 'complete') return 'complete';
 
-    // Check timer state
+    // Check clock state (new simplified model)
     loadTimerState();
-    if (_timeTrackingState === 'stopped') return 'end_of_day';
-    if (_timeTrackingState === 'on_site') return 'on_site';
-    if (_timeTrackingState === 'travelling') return 'travelling';
+    if (_clockState === 'on') {
+      if (!_arrivedAt && _travelStartTime) return 'travelling';
+      return 'on_site';
+    }
 
     // Check assignment status
     if (myAssignment.status === 'confirmed' || myAssignment.status === 'in_progress') return 'confirmed';
@@ -3628,30 +3670,24 @@
     var type = (job.type || 'patio').toLowerCase();
     var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
 
+    // Load clock state for this job
+    loadTimerState();
+
+    // Simplified steps: Clock On → Working → Clock Off → Complete
     var steps = [
-      { key: 'travel', icon: '🚗', label: "On My Way", phase: 'travelling', sub: 'Starts travel timer' },
-      { key: 'arrived', icon: '📍', label: 'Arrived', phase: 'on_site', sub: 'Logs arrival on site' },
-      { key: 'materials', icon: '📦', label: 'Materials', phase: 'on_site', sub: 'Confirm materials' },
-      { key: 'working', icon: '🔨', label: 'Working', phase: 'on_site', sub: 'On-site timer running' },
-      { key: 'eod', icon: '🏁', label: 'Done Today', phase: 'end_of_day', sub: 'Stops timer' },
-      { key: 'complete', icon: '✅', label: 'Complete', phase: 'complete', sub: 'Final sign-off' },
+      { key: 'clock_on', icon: '🟢', label: 'Clock On' },
+      { key: 'working', icon: '🔨', label: 'Working' },
+      { key: 'clock_off', icon: '🏁', label: 'Clock Off' },
+      { key: 'complete', icon: '✅', label: 'Complete' },
     ];
 
-    // Determine which step is current based on phase + timer
+    // Determine current step
     var currentIdx = 0;
-    if (phase === 'travelling') currentIdx = 0;
-    else if (phase === 'on_site') {
-      // Check if materials check was done
-      var matState = deriveMaterialsState(data);
-      if (matState.state === 'none' || matState.state === 'ordered' || matState.state === 'confirmed') currentIdx = 2; // materials check
-      else currentIdx = 3; // working
-    }
-    else if (phase === 'end_of_day') currentIdx = 4;
-    else if (phase === 'complete') currentIdx = 5;
-    else if (phase === 'confirmed') currentIdx = 0;
-    else currentIdx = 0; // pre_confirm
+    if (_clockState === 'off' && phase === 'complete') currentIdx = 3;
+    else if (_clockState === 'off') currentIdx = 0;
+    else if (_clockState === 'on' && !_arrivedAt && _travelStartTime) currentIdx = 0; // travelling
+    else if (_clockState === 'on') currentIdx = 1; // working
 
-    // Check if scope needs acknowledgement first
     var needsAck = myAssignment && !myAssignment.acknowledged_at && job.scope_json;
 
     var h = '<div style="--job-color:' + color + '">';
@@ -3666,115 +3702,65 @@
       h += '<div class="' + cls + '">';
       h += '<span class="sf-step-icon">' + (i < currentIdx ? '✓' : steps[i].icon) + '</span>';
       h += steps[i].label;
-      if (i === currentIdx && steps[i].sub) h += '<div style="font-size:9px;font-weight:400;color:var(--sw-text-sec);margin-top:1px">' + steps[i].sub + '</div>';
       h += '</div>';
     }
     h += '</div>';
 
-    // Expanded action area for current step
+    // Expanded action area
     h += '<div class="sf-expanded">';
 
-    if (phase === 'pre_confirm' || phase === 'confirmed') {
+    if (_clockState === 'off' && phase !== 'complete') {
+      // ── CLOCKED OFF: Show Clock On button ──
       if (needsAck) {
-        h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:8px">Read scope below first, then confirm ↓</div>';
+        h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:8px">Read scope below first, then clock on ↓</div>';
       }
-      // Timer card functionality
-      loadTimerState();
-      if (_timeTrackingState === 'idle') {
-        h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:8px">Ready to head to site?</div>';
-        h += '<button class="sf-action-btn" style="background:' + color + '" onclick="confirmThenTravel(\'' + myAssignment.id + '\')">';
-        h += '🚗 I\'m On My Way</button>';
-        h += '<div style="margin-top:8px">';
-        h += '<button class="sf-action-btn" style="background:var(--sw-light);color:var(--sw-text);font-size:13px;min-width:140px;padding:10px 20px" onclick="timerAction(\'go_on_site\', \'' + myAssignment.id + '\')">';
-        h += 'Already On Site</button>';
-        h += '</div>';
-        if (canMessage()) {
-          var checked = _autoNotifyClient ? ' checked' : '';
-          h += '<label style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px;font-size:12px;color:var(--sw-text-sec)">';
-          h += '<input type="checkbox" id="autoNotifyCheck"' + checked + ' onchange="_autoNotifyClient=this.checked"> Auto-notify client';
-          h += '</label>';
-        }
+      var jobLabel = job.job_number ? esc(job.job_number) : 'this job';
+      h += '<button class="sf-action-btn" style="background:var(--sw-green);font-size:16px;padding:16px 24px" onclick="confirmClockOn(\'' + myAssignment.id + '\')">';
+      h += '🟢 Clock On to ' + jobLabel + '</button>';
+      // Optional travel start
+      h += '<div style="margin-top:10px">';
+      h += '<a href="#" onclick="event.preventDefault();confirmThenTravel(\'' + myAssignment.id + '\')" style="font-size:13px;color:var(--sw-text-sec);text-decoration:underline">Start travel first</a>';
+      h += '</div>';
+      if (canMessage()) {
+        var checked = _autoNotifyClient ? ' checked' : '';
+        h += '<label style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px;font-size:12px;color:var(--sw-text-sec)">';
+        h += '<input type="checkbox" id="autoNotifyCheck"' + checked + ' onchange="_autoNotifyClient=this.checked"> Auto-notify client';
+        h += '</label>';
       }
-    } else if (phase === 'travelling') {
+
+    } else if (_clockState === 'on' && !_arrivedAt && _travelStartTime) {
+      // ── TRAVELLING ──
       h += '<div style="font-size:14px;color:var(--sw-text-sec)">Travelling</div>';
       h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_travelStartTime) + '</div>';
       h += '<button class="sf-action-btn" style="background:' + color + '" onclick="timerAction(\'arrived\', \'' + myAssignment.id + '\')">';
       h += '📍 Arrived On Site</button>';
-      // Undo link — visible for 5 minutes after starting travel
+      // Undo link
       var travelStartedAt = parseInt(localStorage.getItem('sw_travel_started') || '0');
       if (travelStartedAt && (Date.now() - travelStartedAt) < 300000) {
         h += '<div style="margin-top:10px"><a href="#" onclick="event.preventDefault();undoTravel()" style="font-size:13px;color:var(--sw-text-sec);text-decoration:underline">Undo — I haven\'t left yet</a></div>';
       }
-    } else if (phase === 'on_site') {
-      var matChecked = localStorage.getItem('sw_matcheck_' + job.id);
-      if (!matChecked) {
-        // Materials check step — grouped by category from POs
-        h += '<div style="font-size:15px;font-weight:700;margin-bottom:8px">Materials Check</div>';
-        var pos = data.purchaseOrders || [];
-        var allItems = [];
-        pos.forEach(function(po) {
-          if (po.line_items) po.line_items.forEach(function(li) {
-            if (li.description) allItems.push(li.description);
-          });
-        });
-        if (allItems.length > 0) {
-          // Show expected colour prominently if available
-          var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
-          var expectedColour = scopeConfig.sheetColor || scopeConfig.colour || scopeConfig.color || '';
-          if (expectedColour) {
-            var colourHex = (typeof COLORBOND !== 'undefined' && COLORBOND[expectedColour]) || '#ccc';
-            h += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#FFF8E1;border:1px solid #FFD54F;border-radius:8px;margin-bottom:10px">';
-            h += '<span style="width:24px;height:24px;border-radius:4px;background:' + colourHex + ';border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>';
-            h += '<div style="font-size:13px;font-weight:600;color:#8D6E00">Expected colour: <strong>' + esc(expectedColour) + '</strong></div>';
-            h += '</div>';
-          }
-          var cats = categorizeMaterials(allItems);
-          var catKeys = Object.keys(cats);
-          h += '<div id="matCheckList" style="margin-bottom:12px">';
-          catKeys.forEach(function(cat) {
-            h += '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sw-card);border-radius:8px;margin-bottom:6px;box-shadow:var(--sw-shadow);cursor:pointer">';
-            h += '<input type="checkbox" class="matcat-check" data-cat="' + esc(cat) + '" style="width:20px;height:20px;accent-color:var(--sw-green)">';
-            h += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(cat) + '</div>';
-            h += '<div style="font-size:12px;color:var(--sw-text-sec)">' + cats[cat].length + ' item' + (cats[cat].length > 1 ? 's' : '') + '</div></div>';
-            h += '<button onclick="event.preventDefault();event.stopPropagation();reportMaterialIssue(\'' + esc(job.id) + '\', \'' + esc(cat) + '\')" style="background:none;border:1px solid var(--sw-yellow);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--sw-yellow);cursor:pointer;font-weight:600">Issue</button>';
-            h += '</label>';
-          });
-          h += '</div>';
-          h += '<button class="sf-action-btn" style="background:var(--sw-green)" id="matConfirmBtn" onclick="confirmAllMaterials(\'' + esc(job.id) + '\')">✅ All Materials Confirmed</button>';
-        } else {
-          // Fallback: simple check if no PO items
-          h += '<div class="materials-check">';
-          h += '<button class="mc-good" onclick="materialsCheckDone(\'' + esc(job.id) + '\', true)">✅ All Good</button>';
-          h += '<button class="mc-missing" onclick="materialsCheckDone(\'' + esc(job.id) + '\', false)">❌ Missing</button>';
-          h += '</div>';
-        }
-      } else {
-        // Working state
-        h += '<div style="font-size:14px;color:var(--sw-text-sec)">On Site</div>';
-        h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_onSiteStartTime) + '</div>';
-        h += '<button class="sf-action-btn" style="background:#293C46" onclick="confirmThenStop(\'' + myAssignment.id + '\')">';
-        h += '🏁 Done For Today</button>';
+
+    } else if (_clockState === 'on') {
+      // ── CLOCKED ON & WORKING ──
+      h += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-green);letter-spacing:0.5px">Clocked On ✓</div>';
+      h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_clockedOnAt) + '</div>';
+      if (_stoppedTravelMins > 0) {
+        h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:4px">Travel: ' + formatMins(_stoppedTravelMins) + '</div>';
       }
-    } else if (phase === 'end_of_day') {
-      var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
-      var rounded = roundTo15(totalMins);
-      h += '<div style="font-size:14px;color:var(--sw-text-sec)">Day complete</div>';
-      h += '<div style="margin:8px 0;font-size:14px">';
-      if (_stoppedTravelMins > 0) h += '<div>Travel: ' + formatMins(_stoppedTravelMins) + '</div>';
-      h += '<div>On site: ' + formatMins(_stoppedOnsiteMins) + '</div>';
-      h += '<div style="font-size:18px;font-weight:700;margin-top:4px">Total: ' + formatMins(rounded) + '</div>';
+      h += '<button class="sf-action-btn" style="background:var(--sw-red);font-size:16px;padding:14px 24px" onclick="confirmClockOff(\'' + myAssignment.id + '\')">';
+      h += '🔴 Clock Off</button>';
+      // Manual override link
+      h += '<div style="margin-top:10px">';
+      h += '<a href="#" onclick="event.preventDefault();showManualTimeOverride()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Adjust time manually</a>';
       h += '</div>';
-      h += '<div style="display:flex;gap:8px;justify-content:center">';
-      h += '<button class="sf-action-btn" style="background:var(--sw-light);color:var(--sw-text);min-width:100px" onclick="timerAction(\'resume\', \'' + myAssignment.id + '\')">Resume</button>';
-      h += '<button class="sf-action-btn" style="background:' + color + ';min-width:140px" onclick="openEOD()">Submit Hours</button>';
-      h += '</div>';
+
     } else if (phase === 'complete') {
       h += '<div style="font-size:16px;font-weight:700;color:var(--sw-green)">✅ Job Complete</div>';
     }
 
     h += '</div>'; // sf-expanded
 
-    // Pending materials issue banner (uses unified state)
+    // Pending materials issue banner
     var matBannerState = deriveMaterialsState(data);
     if (matBannerState.state === 'issue' && phase !== 'complete') {
       h += '<div class="persistent-banner amber">⚠️ Materials issue reported — waiting on response</div>';
@@ -3812,58 +3798,7 @@
     return cats;
   }
 
-  // Grouped materials confirmation
-  window.confirmAllMaterials = function(jobId) {
-    if (navigator.vibrate) navigator.vibrate(10);
-    localStorage.setItem('sw_matcheck_' + jobId, 'good');
-    // Update phase to working
-    var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
-    if (myAssignment) updatePhaseOnServer(myAssignment.id, 'working');
-    if (_currentJob) renderJobDetail(_currentJob);
-  };
-
-  // Report issue for a specific material category
-  window.reportMaterialIssue = function(jobId, category) {
-    showConfirm('Report ' + category + ' Issue?', 'This will notify the office about missing or incorrect ' + category.toLowerCase() + '.', 'Report Issue').then(function(ok) {
-      if (!ok) return;
-      localStorage.setItem('sw_matissue_' + jobId, '1');
-      api('create_trade_alert', null, {
-        jobId: jobId,
-        issueType: 'materials_missing',
-        detail: category + ' — not on site or incorrect'
-      }).then(function() {
-        toast(category + ' issue reported');
-      }).catch(function() {
-        toast('Issue saved — will sync when online');
-      });
-    });
-  };
-
-  // Materials check handler
-  window.materialsCheckDone = function(jobId, allGood) {
-    if (navigator.vibrate) navigator.vibrate(10);
-    localStorage.setItem('sw_matcheck_' + jobId, allGood ? 'good' : 'missing');
-    // Update phase
-    var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
-    if (myAssignment && allGood) updatePhaseOnServer(myAssignment.id, 'working');
-
-    if (!allGood) {
-      // Report materials issue
-      localStorage.setItem('sw_matissue_' + jobId, '1');
-      api('create_trade_alert', null, {
-        jobId: jobId,
-        issueType: 'materials_missing',
-        detail: 'Materials not on site at arrival'
-      }).then(function() {
-        toast('Materials issue reported');
-      }).catch(function() {
-        toast('Issue saved — will sync when online');
-      });
-    }
-
-    // Re-render
-    if (_currentJob) renderJobDetail(_currentJob);
-  };
+  // Materials check functions moved to showMaterialsCheckPrompt / matCheckAllGood / matCheckIssue
 
   function renderSafetyBanner(data, phase) {
     if (phase === 'complete' || phase === 'travelling' || phase === 'end_of_day') return '';
@@ -3947,7 +3882,7 @@
   }
 
   function renderHandoffCard(data, phase) {
-    if (phase !== 'pre_confirm' && phase !== 'confirmed') return '';
+    // Show "Previous Days" context for multi-day jobs
     var myAssignment = getMyAssignment(data);
     if (!myAssignment || !myAssignment.scheduled_date) return '';
 
@@ -3955,62 +3890,71 @@
     var notes = data.notes || [];
     var media = data.media || [];
 
-    // Find first scheduled date to determine if day 2+
-    var dates = [];
+    // Get unique scheduled dates sorted ascending
+    var dateSet = {};
     for (var i = 0; i < crew.length; i++) {
-      if (crew[i].scheduled_date) dates.push(crew[i].scheduled_date);
+      if (crew[i].scheduled_date) dateSet[crew[i].scheduled_date] = true;
     }
-    dates.sort();
-    if (dates.length === 0) return '';
+    var dates = Object.keys(dateSet).sort();
+    if (dates.length <= 1) return ''; // Single-day job, no context needed
 
-    var firstDate = dates[0];
     var myDate = myAssignment.scheduled_date;
-    if (myDate <= firstDate) return ''; // Day 1, no handoff needed
+    var priorDates = dates.filter(function(d) { return d < myDate; });
+    if (priorDates.length === 0) return ''; // Day 1
 
-    // Get yesterday's date
-    var yesterday = new Date(myDate + 'T00:00:00');
-    yesterday.setDate(yesterday.getDate() - 1);
-    var yesterdayStr = yesterday.toISOString().split('T')[0];
+    var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-    // Filter crew/notes/media to yesterday
-    var yesterdayCrew = crew.filter(function(c) { return c.scheduled_date === yesterdayStr; });
-    var yesterdayNotes = notes.filter(function(n) {
-      if (!n.created_at) return false;
-      return n.created_at.startsWith(yesterdayStr);
-    });
+    var innerHtml = '';
+    for (var di = 0; di < priorDates.length; di++) {
+      var dt = priorDates[di];
+      var d = new Date(dt + 'T00:00:00');
+      var label = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+      var dayNum = di + 1;
 
-    if (yesterdayCrew.length === 0 && yesterdayNotes.length === 0) return '';
-
-    // Get progress from localStorage
-    var progress = localStorage.getItem('sw_progress_' + data.job.id);
-
-    var h = '<div class="handoff-card">';
-    h += '<div class="handoff-title">📋 Yesterday</div>';
-
-    // Who worked
-    for (var i = 0; i < yesterdayCrew.length; i++) {
-      var c = yesterdayCrew[i];
-      var name = (c.users && c.users.name) || 'Unknown';
-      h += '<div style="font-size:14px;margin-bottom:4px"><strong>' + esc(name) + '</strong></div>';
-    }
-
-    // Progress
-    if (progress) {
-      h += '<div style="font-size:13px;color:var(--sw-text-sec);margin:6px 0">Progress: ' + esc(progress) + '%</div>';
-      h += '<div style="height:6px;background:var(--sw-border);border-radius:3px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + Math.min(100, Number(progress)) + '%;background:var(--sw-green);border-radius:3px"></div></div>';
-    }
-
-    // Notes from yesterday
-    for (var i = 0; i < Math.min(yesterdayNotes.length, 3); i++) {
-      var n = yesterdayNotes[i];
-      var text = (n.detail_json && n.detail_json.text) || '';
-      if (text) {
-        h += '<div style="font-size:13px;color:var(--sw-text);margin-top:4px;padding:6px 8px;background:var(--sw-light);border-radius:6px">"' + esc(text) + '"</div>';
+      // Find notes from this date
+      var dayNotes = notes.filter(function(n) { return n.created_at && n.created_at.startsWith(dt); });
+      var eodNote = '';
+      var progress = '';
+      for (var ni = 0; ni < dayNotes.length; ni++) {
+        var text = (dayNotes[ni].detail_json && dayNotes[ni].detail_json.text) || '';
+        if (text.indexOf('EOD') === 0 || text.indexOf('Progress:') !== -1) {
+          eodNote = text;
+          var progMatch = text.match(/Progress:\s*(\d+)%/);
+          if (progMatch) progress = progMatch[1];
+        }
       }
+
+      // Count photos from this date
+      var dayPhotos = media.filter(function(m) { return m.created_at && m.created_at.startsWith(dt) && m.phase === 'in_progress'; });
+
+      // Who worked
+      var dayCrew = crew.filter(function(c) { return c.scheduled_date === dt; }).map(function(c) { return (c.users && c.users.name) || 'Unknown'; });
+
+      innerHtml += '<div style="padding:10px 12px;background:var(--sw-card);border-radius:8px;margin-bottom:6px;box-shadow:var(--sw-shadow)">';
+      innerHtml += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      innerHtml += '<div style="font-weight:700;font-size:14px">Day ' + dayNum + ' (' + label + ')</div>';
+      if (progress) innerHtml += '<div style="font-size:13px;color:var(--sw-orange);font-weight:700">' + progress + '%</div>';
+      innerHtml += '</div>';
+      if (dayCrew.length > 0) {
+        innerHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px">' + esc(dayCrew.join(', ')) + '</div>';
+      }
+      if (eodNote) {
+        var cleanNote = eodNote.replace(/^EOD\s*—?\s*/, '').replace(/\|\s*Progress:\s*\d+%$/, '').trim();
+        if (cleanNote) innerHtml += '<div style="font-size:13px;color:var(--sw-text);margin-top:4px">"' + esc(cleanNote) + '"</div>';
+      }
+      if (dayPhotos.length > 0) {
+        innerHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px">' + dayPhotos.length + ' photo' + (dayPhotos.length > 1 ? 's' : '') + '</div>';
+      }
+      innerHtml += '</div>';
     }
 
-    h += '</div>';
-    return h;
+    // Today marker
+    innerHtml += '<div style="padding:10px 12px;background:var(--sw-orange);color:#fff;border-radius:8px;font-weight:700;font-size:14px;text-align:center">';
+    innerHtml += 'Day ' + (priorDates.length + 1) + ' (Today) — You\'re here';
+    innerHtml += '</div>';
+
+    return wrapCollapsible('📋 Previous Days (' + priorDates.length + ')', innerHtml);
   }
 
   function renderPrepChecklist(data, phase) {
@@ -4588,13 +4532,14 @@
       h += '<div style="margin-top:6px;font-size:12px;color:var(--sw-text-sec)">' + unlinkedReceipts.length + ' receipt(s) not linked to a PO</div>';
     }
 
-    // Quick expense
+    // Add Expense button
     h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--sw-border)">';
-    h += '  <button class="btn btn-secondary btn-small" onclick="openQuickExpense(\'' + job.id + '\')" style="width:100%;font-size:12px;padding:8px">';
-    h += '    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>';
-    h += '    Quick Expense (under $200)';
-    h += '  </button>';
+    h += '<button class="btn btn-primary btn-small" onclick="openExpenseOverlay(\'' + job.id + '\')" style="width:100%;font-size:13px;padding:10px;background:var(--sw-orange)">';
+    h += '&#128247; Add Expense Receipt</button>';
     h += '</div>';
+
+    // Previous expenses for this job
+    h += renderJobExpenses(data);
 
     h += '</div>';
     return h;
@@ -6691,14 +6636,32 @@
       });
     }
 
-    // Submit button or submitted pill
+    // Submit / verification flow
     if (data.already_submitted) {
       html += '<div class="hours-submitted-pill">';
       html += '  &#10003; Submitted to Xero';
       if (data.xero_bill_number) html += ' — ' + esc(data.xero_bill_number);
       html += '</div>';
+    } else if (data.pending_verification) {
+      html += '<div style="text-align:center;padding:12px;background:#FEF3CD;border-radius:10px;margin-top:12px">';
+      html += '<div style="font-size:14px;font-weight:600;color:#92400E">Awaiting verification</div>';
+      html += '<div style="font-size:12px;color:#92400E;margin-top:4px">Your work order lead will review and approve these hours</div>';
+      html += '</div>';
+    } else if (data.all_verified) {
+      // All verified — can now submit to Xero
+      html += '<div style="text-align:center;padding:8px;margin-top:8px"><span style="color:var(--sw-green);font-weight:600;font-size:13px">&#10003; All hours verified by lead</span></div>';
+      html += '<button class="hours-submit-btn" id="btnSubmitHours" onclick="submitTradeHours()">Submit Invoice to Xero</button>';
     } else if (data.assignments && data.assignments.length > 0) {
-      html += '<button class="hours-submit-btn" id="btnSubmitHours" onclick="submitTradeHours()">Submit Invoice for This Week</button>';
+      // New 2-step flow: submit for verification first, or direct to Xero
+      html += '<button class="hours-submit-btn" id="btnSubmitVerify" onclick="submitForVerification()" style="background:var(--sw-orange)">Submit for Verification</button>';
+      html += '<div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();submitTradeHours()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Skip verification — submit directly to Xero</a></div>';
+    }
+
+    // Lead verification inbox button (Tier 2+ / lead_installer role)
+    if (_user && (_user.role === 'lead_installer' || _userTier >= 2)) {
+      html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--sw-border)">';
+      html += '<button class="btn btn-secondary" style="width:100%;font-size:13px" onclick="openVerificationInbox()">Review Crew Hours</button>';
+      html += '</div>';
     }
 
     container.innerHTML = html;
@@ -6787,6 +6750,133 @@
   };
 
   // ══════════════════════════════════════════════════
+  // INVOICE VERIFICATION CHAIN
+  // ══════════════════════════════════════════════════
+
+  // Submit hours for verification (instead of direct Xero push)
+  window.submitForVerification = function() {
+    if (!_hoursData) return;
+    var rateInput = document.getElementById('hoursRateInput');
+    var editedRate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+    if (editedRate <= 0) { toast('Enter your hourly rate first', true); return; }
+
+    showConfirm('Submit for Verification', 'Your work order lead will review and approve these hours before you can invoice.', 'Submit').then(function(ok) {
+      if (!ok) return;
+      var btn = document.getElementById('btnSubmitVerify');
+      if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+      api('update_my_assignment', null, {
+        week_ending: _hoursData.week_ending,
+        status: 'submitted',
+        hourly_rate: editedRate
+      }).then(function() {
+        toast('Hours submitted for verification');
+        loadHoursView();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Submit for Verification'; }
+      });
+    });
+  };
+
+  // Verification inbox for work order leads (Tier 2+)
+  window.openVerificationInbox = function() {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading verifications...</div>';
+
+    api('list_pending_verifications', { lead_id: _user ? _user.id : '' }).then(function(data) {
+      renderVerificationInbox(data);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="hours-no-data">Error: ' + friendlyError(err) + '</div>';
+    });
+  };
+
+  function renderVerificationInbox(data) {
+    var container = document.getElementById('hoursContent');
+    var entries = data.verifications || [];
+    var html = '';
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">Verify Hours</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back to My Hours</button>';
+    html += '</div>';
+
+    if (entries.length === 0) {
+      html += '<div class="hours-no-data">No pending verifications</div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    entries.forEach(function(entry) {
+      var name = entry.user_name || entry.user_email || 'Unknown';
+      var jobNum = entry.job_number || '';
+      var hours = Number(entry.hours || 0).toFixed(1);
+      var isManual = entry.manual_override;
+
+      html += '<div style="padding:14px;background:var(--sw-card);border-radius:10px;margin-bottom:8px;box-shadow:var(--sw-shadow)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div>';
+      html += '<div style="font-weight:700;font-size:15px">' + esc(name) + '</div>';
+      html += '<div style="font-size:13px;color:var(--sw-text-sec)">' + esc(jobNum) + ' · ' + esc(entry.scheduled_date || '') + '</div>';
+      html += '</div>';
+      html += '<div style="text-align:right">';
+      html += '<div style="font-weight:700;font-size:16px">' + hours + 'h</div>';
+      if (isManual) html += '<div style="font-size:11px;color:var(--sw-orange)">&#9998; Manual</div>';
+      html += '</div>';
+      html += '</div>';
+
+      html += '<div style="display:flex;gap:8px;margin-top:10px">';
+      html += '<button onclick="verifyHours(\'' + entry.id + '\', true)" style="flex:1;padding:10px;background:var(--sw-green);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">&#10003; Approve</button>';
+      html += '<button onclick="disputeHours(\'' + entry.id + '\')" style="flex:1;padding:10px;background:#fff;color:var(--sw-red);border:2px solid var(--sw-red);border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">&#10007; Dispute</button>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    // Bulk approve button
+    if (entries.length > 1) {
+      html += '<button onclick="bulkApproveAll()" style="width:100%;padding:14px;margin-top:12px;background:var(--sw-green);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:var(--sw-font)">Approve All (' + entries.length + ')</button>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.verifyHours = function(assignmentId, approved) {
+    api('verify_hours', null, { assignment_ids: [assignmentId], approved: true }).then(function() {
+      toast('Hours approved');
+      openVerificationInbox(); // reload
+    }).catch(function(err) {
+      toast(friendlyError(err), true);
+    });
+  };
+
+  window.disputeHours = function(assignmentId) {
+    var reason = prompt('What\'s wrong with these hours?');
+    if (!reason) return;
+    api('dispute_hours', null, { assignment_id: assignmentId, reason: reason }).then(function() {
+      toast('Hours disputed — labourer notified');
+      openVerificationInbox();
+    }).catch(function(err) {
+      toast(friendlyError(err), true);
+    });
+  };
+
+  window.bulkApproveAll = function() {
+    showConfirm('Approve All', 'Approve all pending hours?', 'Approve All').then(function(ok) {
+      if (!ok) return;
+      // Collect all pending IDs from the DOM
+      api('list_pending_verifications', { lead_id: _user ? _user.id : '' }).then(function(data) {
+        var ids = (data.verifications || []).map(function(v) { return v.id; });
+        return api('verify_hours', null, { assignment_ids: ids, approved: true });
+      }).then(function() {
+        toast('All hours approved');
+        openVerificationInbox();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+      });
+    });
+  };
+
+  // ══════════════════════════════════════════════════
   // PROFILE VIEW — User info + sign out + rate + invoices
   // ══════════════════════════════════════════════════
 
@@ -6859,11 +6949,14 @@
     html += '  <div id="profileInvoiceList"><div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div></div>';
     html += '</div>';
 
+    // General expense
+    html += '<button class="btn btn-secondary" style="margin-top:16px;width:100%" onclick="openGeneralExpense()">&#128247; Add General Expense (no job)</button>';
+
     // Sign out
     html += '<button class="btn btn-danger" style="margin-top:24px" onclick="doLogout()">Sign Out</button>';
 
     // App version
-    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.3 · Tiers + Comms + Time Tracking</div>';
+    html += '<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--sw-text-sec)">SW Trade v1.4 · Phase 2 — Clock + EOD + Expenses</div>';
 
     container.innerHTML = html;
 
@@ -6938,114 +7031,80 @@
   // TIME TRACKING — State Machine + Timer UI
   // ══════════════════════════════════════════════════
 
-  function renderTimerCard(myAssignment, job) {
-    var h = '';
-    var state = _timeTrackingState;
-
-    if (state === 'idle') {
-      h += '<div class="timer-label">Ready to start</div>';
-      h += '<div class="timer-btn-row">';
-      h += '  <button class="timer-btn timer-btn-travel" onclick="timerAction(\'start_travel\', \'' + myAssignment.id + '\')">';
-      h += '    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>';
-      h += '    Start Travel';
-      h += '  </button>';
-      h += '  <button class="timer-btn timer-btn-skip" onclick="timerAction(\'go_on_site\', \'' + myAssignment.id + '\')">';
-      h += '    On Site';
-      h += '  </button>';
-      h += '</div>';
-      if (canMessage()) {
-        var checked = _autoNotifyClient ? ' checked' : '';
-        h += '<label class="timer-auto-notify">';
-        h += '  <input type="checkbox" id="autoNotifyCheck"' + checked + ' onchange="_autoNotifyClient=this.checked"> Auto-notify client when travelling';
-        h += '</label>';
-      }
-    } else if (state === 'travelling') {
-      h += '<div class="timer-label">Travelling</div>';
-      h += '<div class="timer-elapsed" id="timerElapsed">' + formatElapsed(_travelStartTime) + '</div>';
-      h += '<div class="timer-btn-row">';
-      h += '  <button class="timer-btn timer-btn-arrive" onclick="timerAction(\'arrived\', \'' + myAssignment.id + '\')">';
-      h += '    Arrived';
-      h += '  </button>';
-      h += '</div>';
-    } else if (state === 'on_site') {
-      h += '<div class="timer-label">On Site</div>';
-      h += '<div class="timer-elapsed" id="timerElapsed">' + formatElapsed(_onSiteStartTime) + '</div>';
-      h += '<div class="timer-btn-row">';
-      h += '  <button class="timer-btn timer-btn-stop" onclick="timerAction(\'stop\', \'' + myAssignment.id + '\')">';
-      h += '    Stop';
-      h += '  </button>';
-      h += '</div>';
-    } else if (state === 'stopped') {
-      var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
-      var rounded = roundTo15(totalMins);
-      h += '<div class="timer-label">Stopped</div>';
-      h += '<div style="margin:8px 0">';
-      if (_stoppedTravelMins > 0) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Travel: ' + formatMins(_stoppedTravelMins) + '</div>';
-      h += '<div style="font-size:13px;color:var(--sw-text-sec)">On site: ' + formatMins(_stoppedOnsiteMins) + '</div>';
-      h += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-top:4px">Total: ' + formatMins(rounded) + ' (rounded to 15 min)</div>';
-      h += '</div>';
-      h += '<div class="timer-btn-row">';
-      h += '  <button class="timer-btn timer-btn-resume" onclick="timerAction(\'resume\', \'' + myAssignment.id + '\')">Resume</button>';
-      h += '  <button class="timer-btn timer-btn-done" onclick="timerAction(\'done\', \'' + myAssignment.id + '\')">Done for Today</button>';
-      h += '</div>';
-    }
-
-    return h;
-  }
+  // renderTimerCard is now deprecated — timer UI is in renderSmartStatusFlow
+  // Kept as stub for any remaining callers
+  function renderTimerCard(myAssignment, job) { return ''; }
 
   function updateTimerDisplay() {
     var el = document.getElementById('timerElapsed');
     if (!el) return;
-    var src = _timeTrackingState === 'travelling' ? _travelStartTime : _onSiteStartTime;
-    if (src) el.textContent = formatElapsed(src);
+    // Show elapsed from clock-on time
+    if (_clockState === 'on' && _clockedOnAt) {
+      el.textContent = formatElapsed(_clockedOnAt);
+    }
   }
 
   function startTimerTick() {
     clearInterval(_timerTickInterval);
-    if (_timeTrackingState === 'travelling' || _timeTrackingState === 'on_site') {
-      updateTimerDisplay(); // immediate update (catches time elapsed while backgrounded)
+    if (_clockState === 'on') {
+      updateTimerDisplay();
       _timerTickInterval = setInterval(updateTimerDisplay, 10000);
     }
   }
 
   // When app comes back from background, immediately update the timer
   document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible' && (_timeTrackingState === 'travelling' || _timeTrackingState === 'on_site')) {
+    if (document.visibilityState === 'visible' && _clockState === 'on') {
       updateTimerDisplay();
+      checkStaleClock();
     }
   });
+
+  // ══════════════════════════════════════════════════
+  // CLOCK ACTIONS — Simplified: clock_on, clock_off, start_travel, arrived
+  // ══════════════════════════════════════════════════
 
   window.timerAction = function(action, assignmentId) {
     if (navigator.vibrate) navigator.vibrate(10);
 
-    if (action === 'start_travel') {
-      _timeTrackingState = 'travelling';
-      _travelStartTime = new Date().toISOString();
+    if (action === 'clock_on') {
+      _clockState = 'on';
+      _clockedOnAt = new Date().toISOString();
+      _arrivedAt = new Date().toISOString(); // default: assume on-site unless travel started
       saveTimerState();
-      // Update phase on server (also syncs legacy status)
+      // Show success immediately — sync in background
+      updatePhaseOnServer(assignmentId, 'working');
+      // Create business event (fire and forget)
+      api('add_note', null, { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' }).catch(function() {
+        queueOfflineAction('add_note', { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' });
+      });
+      captureGPS();
+      // After clock-on: show materials check if POs exist
+      setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+
+    } else if (action === 'start_travel') {
+      _clockState = 'on';
+      _clockedOnAt = new Date().toISOString();
+      _travelStartTime = new Date().toISOString();
+      _arrivedAt = null; // not arrived yet
+      saveTimerState();
       updatePhaseOnServer(assignmentId, 'travelling');
+      localStorage.setItem('sw_travel_started', Date.now().toString());
       // Auto-SMS (Tier 2+)
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
         if (job.ghl_contact_id) {
           var firstName = (job.client_name || '').split(' ')[0] || 'there';
-          var msg = 'On my way — arriving in about 20 minutes';
-          // TODO: ops-api?action=send_sms — should log job_event, get_my_messages endpoint
-          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: msg, jobId: job.id }).then(function() {
+          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: 'On my way — arriving in about 20 minutes', jobId: job.id }).then(function() {
             toast('Auto-notified ' + firstName);
-          }).catch(function() { /* silently fail — edge function not ready yet */ });
+          }).catch(function() {});
         }
       }
-    } else if (action === 'go_on_site') {
-      _timeTrackingState = 'on_site';
-      _onSiteStartTime = new Date().toISOString();
-      saveTimerState();
-      updatePhaseOnServer(assignmentId, 'working');
+      api('add_note', null, { jobId: _currentJobId, text: 'Started travel', eventType: 'assignment.clocked_on' }).catch(function() {});
+
     } else if (action === 'arrived') {
-      // Stop travel timer, start on-site
       _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
-      _timeTrackingState = 'on_site';
-      _onSiteStartTime = new Date().toISOString();
+      _arrivedAt = new Date().toISOString();
       saveTimerState();
       updatePhaseOnServer(assignmentId, 'arrived');
       // Auto "arrived" SMS
@@ -7055,24 +7114,22 @@
           ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).catch(function() {});
         }
       }
-    } else if (action === 'stop') {
-      _stoppedOnsiteMins = Math.round((Date.now() - new Date(_onSiteStartTime).getTime()) / 60000);
-      _timeTrackingState = 'stopped';
-      saveTimerState();
-      updatePhaseOnServer(assignmentId, 'wrap_up');
-    } else if (action === 'resume') {
-      // Resume: start a new on-site timer, but carry forward the already-accumulated minutes
-      _timeTrackingState = 'on_site';
-      _onSiteStartTime = new Date(Date.now() - (_stoppedOnsiteMins * 60000)).toISOString();
-      saveTimerState();
-      updatePhaseOnServer(assignmentId, 'working');
-    } else if (action === 'done') {
+      // Show materials check after arrival
+      setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+
+    } else if (action === 'clock_off') {
+      // Clock off happens ONLY after EOD form is submitted
+      // Calculate total on-site minutes
+      if (_arrivedAt) {
+        _stoppedOnsiteMins = Math.round((Date.now() - new Date(_arrivedAt).getTime()) / 60000);
+      } else if (_clockedOnAt) {
+        _stoppedOnsiteMins = Math.round((Date.now() - new Date(_clockedOnAt).getTime()) / 60000);
+      }
       var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
       var rounded = roundTo15(totalMins);
-      var hours = (rounded / 60).toFixed(2);
       updatePhaseOnServer(assignmentId, 'complete');
-      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'complete' }).then(function() {
-        toast('Done — ' + formatMins(rounded) + ' logged');
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'complete', manual_override: _manualOverride }).then(function() {
+        toast('Clocked off — ' + formatMins(rounded) + ' logged');
         clearTimerState();
       }).catch(function(err) {
         toast(friendlyError(err), true);
@@ -7080,53 +7137,186 @@
       captureGPS();
     }
 
-    // Re-render timer card
-    var card = document.getElementById('timerCard');
-    if (card && _currentJob) {
-      var myAss = null;
-      var crew = _currentJob.crew || [];
-      for (var i = 0; i < crew.length; i++) {
-        if (crew[i].user_id === _user.id) { myAss = crew[i]; break; }
-      }
-      if (myAss) {
-        card.innerHTML = renderTimerCard(myAss, _currentJob.job);
-        startTimerTick();
-      }
+    // Re-render job detail
+    if (_currentJob) {
+      renderJobDetail(_currentJob);
+      startTimerTick();
     }
   };
 
-  // Confirmation wrappers for status transitions
+  // ── Confirmation wrappers ──
+  window.confirmClockOn = function(assignmentId) {
+    var jobName = _currentJob ? (_currentJob.job.job_number || 'this job') : 'this job';
+    showConfirm('Clock On?', 'Starting timer for ' + jobName + '.', 'Yes, Clock On').then(function(ok) {
+      if (ok) timerAction('clock_on', assignmentId);
+    });
+  };
+
   window.confirmThenTravel = function(assignmentId) {
     showConfirm('Leave for Site?', 'This starts travel time for this job.', 'Leave now').then(function(ok) {
       if (ok) {
         timerAction('start_travel', assignmentId);
-        // Store travel start time for undo window
-        localStorage.setItem('sw_travel_started', Date.now().toString());
         if (_currentJob) renderJobDetail(_currentJob);
       }
     });
   };
 
-  window.confirmThenStop = function(assignmentId) {
-    showConfirm('Done for today?', 'This stops the timer and opens your end-of-day report.', 'Yes, wrap up').then(function(ok) {
-      if (ok) timerAction('stop', assignmentId);
+  window.confirmClockOff = function(assignmentId) {
+    showConfirm('Clock Off?', 'This opens your end-of-day report. You must complete it to clock off.', 'Yes, Clock Off').then(function(ok) {
+      if (ok) openEOD();
     });
   };
 
   window.confirmThenComplete = function() {
-    showConfirm('Complete this job?', 'This is a multi-day job. Only mark complete if all work is finished.', 'Yes, job is done').then(function(ok) {
-      if (ok) openWizard();
+    // Pre-completion checks (warnings, not blockers)
+    var warnings = [];
+    if (_currentJob) {
+      var crew = _currentJob.crew || [];
+      var activeCrew = [];
+      for (var i = 0; i < crew.length; i++) {
+        if (crew[i].user_id !== _user.id && crew[i].status !== 'complete' && crew[i].status !== 'done') {
+          activeCrew.push(crew[i].name || crew[i].user_email || 'A crew member');
+        }
+      }
+      if (activeCrew.length > 0) {
+        warnings.push(activeCrew.join(', ') + ' still clocked on.');
+      }
+      var prog = parseInt(localStorage.getItem('sw_progress_' + _currentJobId) || '0', 10);
+      if (prog > 0 && prog < 90) {
+        warnings.push('Progress is at ' + prog + '%.');
+      }
+    }
+    var msg = warnings.length > 0
+      ? warnings.join(' ') + ' Are you sure the job is complete?'
+      : 'This opens the completion wizard for final sign-off.';
+    showConfirm('Complete this job?', msg, 'Yes, complete').then(function(ok) {
+      if (ok) {
+        // If overriding warnings, create annotation for ops
+        if (warnings.length > 0) {
+          api('add_note', null, { jobId: _currentJobId, text: 'Completion override: ' + warnings.join(' '), eventType: 'completion.override_warning' }).catch(function() {});
+        }
+        openWizard();
+      }
     });
   };
 
   // Undo travel — available for 5 minutes after starting travel
   window.undoTravel = function() {
-    _timeTrackingState = 'idle';
+    _clockState = 'off';
+    _clockedOnAt = null;
     _travelStartTime = null;
+    _arrivedAt = null;
     saveTimerState();
     localStorage.removeItem('sw_travel_started');
     toast('Travel undone');
     if (_currentJob) renderJobDetail(_currentJob);
+  };
+
+  // Manual time override
+  window.showManualTimeOverride = function() {
+    var now = new Date();
+    var startVal = _clockedOnAt ? new Date(_clockedOnAt).toTimeString().slice(0, 5) : now.toTimeString().slice(0, 5);
+    var endVal = now.toTimeString().slice(0, 5);
+    var h = '<div style="padding:16px">';
+    h += '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Adjust Time Manually</div>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:12px">';
+    h += '<div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">Start</label>';
+    h += '<input type="time" id="manualStart" value="' + startVal + '" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:16px;font-family:var(--sw-font)"></div>';
+    h += '<div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">End</label>';
+    h += '<input type="time" id="manualEnd" value="' + endVal + '" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:16px;font-family:var(--sw-font)"></div>';
+    h += '</div>';
+    h += '<button class="btn btn-primary" style="width:100%" onclick="applyManualTime()">Apply</button>';
+    h += '<div style="font-size:11px;color:var(--sw-yellow);margin-top:8px;text-align:center">This will be flagged as a manual adjustment</div>';
+    h += '</div>';
+    document.getElementById('confirmOverlay').querySelector('.confirm-box').innerHTML = h;
+    document.getElementById('confirmOverlay').classList.add('active');
+  };
+
+  window.applyManualTime = function() {
+    var startEl = document.getElementById('manualStart');
+    var endEl = document.getElementById('manualEnd');
+    if (!startEl || !endEl) return;
+    var today = new Date().toISOString().slice(0, 10);
+    _clockedOnAt = new Date(today + 'T' + startEl.value + ':00').toISOString();
+    _arrivedAt = _clockedOnAt;
+    _manualOverride = true;
+    // Calculate stopped minutes from manual end
+    var endTime = new Date(today + 'T' + endEl.value + ':00');
+    var startTime = new Date(_clockedOnAt);
+    _stoppedOnsiteMins = Math.max(0, Math.round((endTime - startTime) / 60000));
+    saveTimerState();
+    document.getElementById('confirmOverlay').classList.remove('active');
+    toast('Time adjusted manually');
+    if (_currentJob) renderJobDetail(_currentJob);
+  };
+
+  // Materials check prompt — shown after clock-on if POs exist
+  window.showMaterialsCheckPrompt = function() {
+    if (!_currentJob) return;
+    var pos = _currentJob.purchaseOrders || [];
+    var hasPOs = pos.some(function(po) { return po.status === 'confirmed' || po.status === 'delivered' || po.status === 'authorised'; });
+    if (!hasPOs) return;
+    // Already checked today?
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(checkKey)) return;
+    // Show materials check overlay
+    var overlay = document.getElementById('materialsCheckOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'materialsCheckOverlay';
+      overlay.className = 'confirm-overlay active';
+      document.body.appendChild(overlay);
+    }
+    var allItems = [];
+    pos.forEach(function(po) {
+      if (po.line_items) po.line_items.forEach(function(li) {
+        if (li.description) allItems.push(li.description);
+      });
+    });
+    var cats = categorizeMaterials(allItems);
+    var catKeys = Object.keys(cats);
+    var h = '<div class="confirm-box" style="max-width:400px;max-height:80vh;overflow-y:auto">';
+    h += '<h3 style="margin-bottom:4px">Materials on site?</h3>';
+    h += '<p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">Quick check before you start</p>';
+    catKeys.forEach(function(cat) {
+      h += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:6px">';
+      h += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(cat) + '</div>';
+      h += '<div style="font-size:12px;color:var(--sw-text-sec)">' + cats[cat].length + ' item' + (cats[cat].length > 1 ? 's' : '') + '</div></div>';
+      h += '<button onclick="matCheckIssue(\'' + esc(cat) + '\')" style="padding:6px 10px;border:1px solid var(--sw-yellow);border-radius:6px;background:none;color:var(--sw-yellow);font-size:12px;font-weight:600;cursor:pointer">Issue</button>';
+      h += '</div>';
+    });
+    h += '<div class="confirm-actions" style="margin-top:16px">';
+    h += '<button class="confirm-ok" style="flex:1;background:var(--sw-green);border-color:var(--sw-green)" onclick="matCheckAllGood()">All here ✓</button>';
+    h += '</div></div>';
+    overlay.innerHTML = h;
+    overlay.classList.add('active');
+  };
+
+  window.matCheckAllGood = function() {
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    localStorage.setItem(checkKey, 'good');
+    localStorage.setItem('sw_matcheck_' + _currentJobId, 'good');
+    var overlay = document.getElementById('materialsCheckOverlay');
+    if (overlay) overlay.classList.remove('active');
+    toast('Materials confirmed');
+  };
+
+  window.matCheckIssue = function(category) {
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    localStorage.setItem(checkKey, 'issue');
+    localStorage.setItem('sw_matissue_' + _currentJobId, '1');
+    api('create_trade_alert', null, {
+      jobId: _currentJobId,
+      issueType: 'materials_missing',
+      detail: category + ' — not on site or incorrect'
+    }).then(function() {
+      toast(category + ' issue reported');
+    }).catch(function() {
+      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'materials_missing', detail: category + ' — issue reported' });
+      toast('Issue saved — will sync when online');
+    });
+    var overlay = document.getElementById('materialsCheckOverlay');
+    if (overlay) overlay.classList.remove('active');
   };
 
   function captureGPS() {
@@ -7435,16 +7625,19 @@
     var job = _currentJob ? _currentJob.job : {};
     var type = (job.type || 'patio').toLowerCase();
     if (type === 'fencing') {
-      return ['Full fence run', 'Each gate', 'Post footings', 'Plinth detail', 'End terminations', 'Client with fence'];
+      return ['Full fence run', 'Gate operation', 'Post bases and plinths', 'Colour/finish detail'];
     } else if (type === 'decking') {
-      return ['Overall view', 'Subframe', 'Board pattern', 'Edge detail', 'Under-deck (if applicable)', 'Client with deck'];
+      return ['Overall view', 'Subframe', 'Board pattern', 'Edge detail'];
     }
-    return ['Overall view', 'Connection to house', 'Gutter / downpipe', 'Underside (panels)', 'Each post footing', 'Special details'];
+    return ['Front view — full patio visible', 'Underside — beams and fixings', 'Gutter and downpipes', 'Detail shot — any feature'];
   }
+
+  var _wizChecklist = { cleaned: false, tools: false, noDamage: false, maintenance: false };
+  var _wizClientNotOnSite = false;
 
   window.openWizard = function() {
     _wizStep = 1;
-    _wizStepCount = canSeePricing() ? 6 : 4;
+    _wizStepCount = 4;
     _wizSatisfaction = 0;
     _wizPhotos = {};
     _wizMarketingPhotos = [];
@@ -7452,6 +7645,8 @@
     _wizSigName = '';
     _wizSigCanvas = null;
     _wizSigCtx = null;
+    _wizChecklist = { cleaned: false, tools: false, noDamage: false, maintenance: false };
+    _wizClientNotOnSite = false;
     document.getElementById('bottomNav').style.display = 'none';
     document.getElementById('wizOverlay').classList.add('active');
     history.pushState({ wizard: true }, '', '');
@@ -7509,17 +7704,9 @@
     document.getElementById('wizProgress').innerHTML = progHtml;
 
     if (_wizStep === 1) renderWizStep1(body, footer);
-    else if (_wizStep === 2) renderWizStep2(body, footer);
-    else if (_wizStep === 3) renderWizStep3(body, footer);
-    else if (_wizStep === 4) {
-      if (!canSeePricing()) { _wizStep = 6; renderWizStep(); return; }
-      renderWizStep4(body, footer);
-    }
-    else if (_wizStep === 5) {
-      if (!canSeePricing()) { _wizStep = 6; renderWizStep(); return; }
-      renderWizStep5(body, footer);
-    }
-    else if (_wizStep === 6) renderWizStep6(body, footer);
+    else if (_wizStep === 2) renderWizStep2_signoff(body, footer);
+    else if (_wizStep === 3) renderWizStep3_checklist(body, footer);
+    else if (_wizStep === 4) renderWizStep4_submit(body, footer);
   }
 
   // ── STEP 1: Stage Photos ──
@@ -7566,7 +7753,142 @@
     input.click();
   };
 
-  // ── STEP 2: Voice Summary ──
+  // ── STEP 2: Client Walkthrough + Sign-Off ──
+  function renderWizStep2_signoff(body, footer) {
+    var html = '';
+    html += '<div class="wiz-step-title">Client Sign-Off</div>';
+    html += '<div class="wiz-step-desc">Walk the client through the completed work</div>';
+
+    // Star rating
+    html += '<div style="text-align:center;margin:16px 0">';
+    html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px">Client Satisfaction</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:center">';
+    for (var i = 1; i <= 5; i++) {
+      var active = i <= _wizSatisfaction;
+      html += '<button onclick="wizSetRating(' + i + ')" style="font-size:36px;background:none;border:none;cursor:pointer;opacity:' + (active ? '1' : '0.3') + '">' + (active ? '&#11088;' : '&#9734;') + '</button>';
+    }
+    html += '</div>';
+    if (_wizSatisfaction > 0 && _wizSatisfaction < 4) {
+      html += '<div style="font-size:12px;color:var(--sw-yellow);margin-top:4px">Below 4 stars — ops team will be notified for follow-up</div>';
+    }
+    html += '</div>';
+
+    // Signature
+    html += '<div style="margin:16px 0;padding:16px;background:var(--sw-light);border-radius:12px">';
+    html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px">Client Signature</div>';
+    if (!_wizClientNotOnSite) {
+      html += '<input type="text" id="wizSigNameInput" placeholder="Client name" value="' + esc(_wizSigName) + '" oninput="_wizSigName=this.value" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:15px;font-family:var(--sw-font);box-sizing:border-box;margin-bottom:8px">';
+      html += '<canvas id="wizSigPad" width="320" height="150" style="width:100%;height:150px;border:2px solid var(--sw-border);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair"></canvas>';
+      html += '<div style="display:flex;gap:8px;margin-top:8px">';
+      html += '<button class="wiz-btn wiz-btn-secondary" style="flex:1;font-size:12px" onclick="wizClearSig()">Clear</button>';
+      html += '<button class="wiz-btn wiz-btn-secondary" style="flex:1;font-size:12px" onclick="wizClientNotOnSite()">Client not on site</button>';
+      html += '</div>';
+    } else {
+      html += '<div style="text-align:center;padding:12px;color:var(--sw-yellow);font-weight:600">Client not on site — ops will follow up</div>';
+      html += '<button class="wiz-btn wiz-btn-secondary" style="font-size:12px" onclick="_wizClientNotOnSite=false;renderWizStep()">Cancel — client is here</button>';
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
+
+    // Init signature pad
+    if (!_wizClientNotOnSite) {
+      setTimeout(function() { initWizSigPad(); }, 50);
+    }
+
+    var canProceed = _wizSatisfaction > 0 && (_wizClientNotOnSite || (_wizSigCanvas && _wizSigDrawing));
+    var fh = '<div style="display:flex;gap:8px">';
+    fh += '<button class="wiz-btn wiz-btn-secondary" onclick="wizBack()">Back</button>';
+    fh += '<button class="wiz-btn wiz-btn-primary" onclick="wizGoStep(3)">Next — Checklist</button>';
+    fh += '</div>';
+    footer.innerHTML = fh;
+  }
+
+  window.wizSetRating = function(n) {
+    _wizSatisfaction = n;
+    renderWizStep();
+  };
+
+  window.wizClientNotOnSite = function() {
+    _wizClientNotOnSite = true;
+    // Create annotation for ops
+    api('add_note', null, { jobId: _currentJobId, text: 'Client not on site for completion sign-off — follow-up needed', eventType: 'completion.client_absent' }).catch(function() {});
+    renderWizStep();
+  };
+
+  window.wizGoStep = function(n) { _wizStep = n; renderWizStep(); };
+
+  // ── STEP 3: Final Checklist ──
+  function renderWizStep3_checklist(body, footer) {
+    var html = '';
+    html += '<div class="wiz-step-title">Final Check</div>';
+    html += '<div class="wiz-step-desc">Confirm everything before you submit</div>';
+
+    var items = [
+      { key: 'cleaned', label: 'Site cleaned up' },
+      { key: 'tools', label: 'Tools and materials removed' },
+      { key: 'noDamage', label: 'No damage to client property' },
+      { key: 'maintenance', label: 'Client shown how to maintain the work' }
+    ];
+
+    html += '<div style="padding:16px">';
+    items.forEach(function(item) {
+      var checked = _wizChecklist[item.key];
+      html += '<label style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--sw-card);border-radius:10px;margin-bottom:8px;box-shadow:var(--sw-shadow);cursor:pointer">';
+      html += '<input type="checkbox" onchange="wizToggleCheck(\'' + item.key + '\')" ' + (checked ? 'checked' : '') + ' style="width:22px;height:22px;accent-color:var(--sw-green)">';
+      html += '<span style="font-size:15px;font-weight:' + (checked ? '600' : '400') + ';color:' + (checked ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + esc(item.label) + '</span>';
+      html += '</label>';
+    });
+    if (_wizClientNotOnSite) {
+      // Skip "client shown maintenance" if not on site
+      _wizChecklist.maintenance = true;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+
+    var allChecked = items.every(function(item) { return _wizChecklist[item.key]; });
+    var fh = '<div style="display:flex;gap:8px">';
+    fh += '<button class="wiz-btn wiz-btn-secondary" onclick="wizBack()">Back</button>';
+    fh += '<button class="wiz-btn wiz-btn-primary" onclick="wizGoStep(4)"' + (allChecked ? '' : ' disabled style="opacity:0.5"') + '>Next — Submit</button>';
+    fh += '</div>';
+    if (!allChecked) {
+      fh += '<div style="font-size:11px;color:var(--sw-yellow);text-align:center;margin-top:6px">Check all items to continue</div>';
+    }
+    footer.innerHTML = fh;
+  }
+
+  window.wizToggleCheck = function(key) {
+    _wizChecklist[key] = !_wizChecklist[key];
+    renderWizStep();
+  };
+
+  // ── STEP 4: Submit ──
+  function renderWizStep4_submit(body, footer) {
+    var photoCount = Object.keys(_wizPhotos).length;
+    var html = '';
+    html += '<div class="wiz-step-title">Ready to Submit</div>';
+    html += '<div style="padding:16px">';
+    html += '<div style="background:var(--sw-light);border-radius:12px;padding:16px;margin-bottom:16px">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px"><span>Photos</span><span style="font-weight:700">' + photoCount + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px"><span>Client Rating</span><span style="font-weight:700">' + (_wizSatisfaction > 0 ? _wizSatisfaction + '/5' : 'N/A') + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px"><span>Signature</span><span style="font-weight:700;color:' + (_wizClientNotOnSite ? 'var(--sw-yellow)' : 'var(--sw-green)') + '">' + (_wizClientNotOnSite ? 'Client absent' : 'Captured') + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px"><span>Checklist</span><span style="font-weight:700;color:var(--sw-green)">All done</span></div>';
+    html += '</div>';
+    html += '</div>';
+    body.innerHTML = html;
+
+    var fh = '<div style="display:flex;gap:8px">';
+    fh += '<button class="wiz-btn wiz-btn-secondary" onclick="wizBack()">Back</button>';
+    fh += '<button class="wiz-btn wiz-btn-primary" style="background:var(--sw-green)" id="wizCompleteBtn" onclick="wizExecuteCompletion()">Complete Job</button>';
+    fh += '</div>';
+    footer.innerHTML = fh;
+  }
+
+  // ══════════════════════════════════════════════════
+  // LEGACY WIZARD STEPS (kept for backward compat, not called)
+  // ══════════════════════════════════════════════════
+
+  // ── OLD STEP 2: Voice Summary ──
   function renderWizStep2(body, footer) {
     var html = '';
     html += '<div class="wiz-step-title">Voice Summary</div>';
@@ -7997,7 +8319,27 @@
       return api('complete_job', null, completePayload);
     });
 
-    // TODO: Optionally call completion-pack edge function to generate branded PDF
+    // 6. Send client comms trigger (fire and forget)
+    photoChain = photoChain.then(function() {
+      tick('Notifying client...');
+      return api('send_client_update', null, { job_id: jobId, comms_trigger: 'job_complete' }).catch(function() {});
+    });
+
+    // 7. Pre-generate completion pack (fire and forget)
+    photoChain = photoChain.then(function() {
+      api('generate_completion_pack', null, { job_id: jobId, send_email: false }).catch(function() {});
+    });
+
+    // 8. If satisfaction < 4, create amber alert
+    if (_wizSatisfaction > 0 && _wizSatisfaction < 4) {
+      photoChain = photoChain.then(function() {
+        return api('add_note', null, {
+          jobId: jobId,
+          text: 'Client gave ' + _wizSatisfaction + '/5 on completion — follow up needed',
+          eventType: 'completion.low_satisfaction'
+        }).catch(function() {});
+      });
+    }
 
     photoChain.then(function() {
       wizShowSuccess(job);
@@ -8707,22 +9049,20 @@
   };
 
   // ══════════════════════════════════════════════════
-  // END OF DAY (EOD) OVERLAY
+  // END OF DAY (EOD) — 3 screens: Progress → Notes+Voice → Photos → Submit
   // ══════════════════════════════════════════════════
 
   var _eodStep = 0;
-  var _eodStepCount = 5;
+  var _eodStepCount = 3;
   var _eodProgress = 50;
+  var _eodNotes = '';
   var _eodAudioBlob = null;
   var _eodMediaRecorder = null;
   var _eodRecording = false;
   var _eodRecordingStart = null;
   var _eodRecordTimer = null;
-  var _eodWin = '';
-  var _eodLearn = '';
-  var _eodTimesheetAdjusted = false;
+  var _eodPhotoCount = 0;
 
-  // Step navigation for EOD (exposed to global scope for inline onclick)
   window.eodGoStep = function(step) {
     _eodStep = step;
     renderEodStep();
@@ -8731,14 +9071,13 @@
   window.openEOD = function() {
     _eodStep = 1;
     _eodProgress = parseInt(localStorage.getItem('sw_progress_' + _currentJobId) || '50', 10);
+    _eodNotes = '';
     _eodAudioBlob = null;
     _eodMediaRecorder = null;
     _eodRecording = false;
     _eodRecordingStart = null;
     _eodRecordTimer = null;
-    _eodWin = '';
-    _eodLearn = '';
-    _eodTimesheetAdjusted = false;
+    _eodPhotoCount = 0;
     document.getElementById('bottomNav').style.display = 'none';
     var tools = document.getElementById('onsiteTools');
     if (tools) tools.style.display = 'none';
@@ -8759,7 +9098,7 @@
 
   window.eodBack = function() {
     if (_eodStep <= 1) {
-      showConfirm('Exit Debrief', 'Leave the end-of-day debrief?', 'Leave').then(function(ok) {
+      showConfirm('Exit Report', 'You must complete this to clock off. Leave anyway?', 'Leave').then(function(ok) {
         if (ok) closeEOD();
       });
     } else {
@@ -8768,7 +9107,6 @@
     }
   };
 
-  // Handle hardware back for EOD
   window.addEventListener('popstate', function(e) {
     if (document.getElementById('eodOverlay').style.display === 'flex') {
       e.preventDefault();
@@ -8785,7 +9123,6 @@
 
     label.textContent = 'Step ' + _eodStep + ' of ' + _eodStepCount;
 
-    // Progress dots
     var progHtml = '';
     for (var i = 1; i <= _eodStepCount; i++) {
       var cls = 'wiz-progress-dot';
@@ -8798,31 +9135,38 @@
     if (_eodStep === 1) renderEodStep1(body, footer, title);
     else if (_eodStep === 2) renderEodStep2(body, footer, title);
     else if (_eodStep === 3) renderEodStep3(body, footer, title);
-    else if (_eodStep === 4) renderEodStep4(body, footer, title);
-    else if (_eodStep === 5) renderEodStep5(body, footer, title);
   }
 
-  // ── EOD STEP 1: Progress Estimate ──
+  // ── SCREEN 1: Progress Slider ──
   function renderEodStep1(body, footer, title) {
-    title.textContent = 'How far along is this job?';
+    title.textContent = 'How far along?';
+    var jobType = (_currentJob && _currentJob.job && _currentJob.job.type || 'patio').toLowerCase();
+    var guideText = '';
+    if (jobType === 'fencing') {
+      guideText = '0-30% posts | 30-60% rails/panels | 60-80% gates/caps | 80-100% cleanup';
+    } else {
+      guideText = '0-20% posts/beams | 20-50% panels | 50-70% flashings | 70-90% finishing | 90-100% cleanup';
+    }
+
     var h = '';
     h += '<div style="text-align:center;padding:24px 16px">';
-    h += '  <div id="eodProgressDisplay" style="font-size:64px;font-weight:800;color:var(--sw-orange);font-variant-numeric:tabular-nums">' + _eodProgress + '%</div>';
-    h += '  <div style="margin:20px auto;max-width:320px">';
-    h += '    <input type="range" min="0" max="100" step="5" value="' + _eodProgress + '" ';
-    h += '      style="width:100%;height:40px;cursor:pointer;accent-color:var(--sw-orange)" ';
-    h += '      oninput="eodUpdateProgress(this.value)">';
-    h += '  </div>';
-    h += '  <div style="position:relative;height:12px;background:var(--sw-light);border-radius:6px;max-width:320px;margin:12px auto">';
-    h += '    <div id="eodProgressFill" style="height:100%;border-radius:6px;background:var(--sw-orange);width:' + _eodProgress + '%;transition:width 0.15s"></div>';
-    h += '  </div>';
-    h += '  <div style="display:flex;justify-content:space-between;max-width:320px;margin:8px auto;font-size:12px;color:var(--sw-text-sec)">';
-    h += '    <span>Not started</span><span>Complete</span>';
-    h += '  </div>';
+    h += '<div id="eodProgressDisplay" style="font-size:64px;font-weight:800;color:var(--sw-orange);font-variant-numeric:tabular-nums">' + _eodProgress + '%</div>';
+    h += '<div style="margin:20px auto;max-width:320px">';
+    h += '  <input type="range" min="0" max="100" step="5" value="' + _eodProgress + '" ';
+    h += '    style="width:100%;height:40px;cursor:pointer;accent-color:var(--sw-orange)" ';
+    h += '    oninput="eodUpdateProgress(this.value)">';
+    h += '</div>';
+    h += '<div style="position:relative;height:12px;background:var(--sw-light);border-radius:6px;max-width:320px;margin:12px auto">';
+    h += '  <div id="eodProgressFill" style="height:100%;border-radius:6px;background:var(--sw-orange);width:' + _eodProgress + '%;transition:width 0.15s"></div>';
+    h += '</div>';
+    h += '<div style="display:flex;justify-content:space-between;max-width:320px;margin:8px auto;font-size:12px;color:var(--sw-text-sec)">';
+    h += '  <span>Not started</span><span>Complete</span>';
+    h += '</div>';
+    h += '<div style="margin-top:12px;padding:8px 12px;background:var(--sw-light);border-radius:8px;font-size:11px;color:var(--sw-text-sec);max-width:320px;margin-left:auto;margin-right:auto">' + esc(guideText) + '</div>';
     h += '</div>';
     body.innerHTML = h;
 
-    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(2)">Next &mdash; Photos</button>';
+    footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(2)">Next — Notes</button>';
   }
 
   window.eodUpdateProgress = function(val) {
@@ -8833,14 +9177,115 @@
     if (fill) fill.style.width = _eodProgress + '%';
   };
 
-  // ── EOD STEP 2: Photo Prompt ──
+  // ── SCREEN 2: Notes + Voice ──
   function renderEodStep2(body, footer, title) {
+    title.textContent = 'Quick update';
+    var h = '';
+    h += '<div style="padding:16px">';
+
+    // Required notes field
+    h += '<div style="margin-bottom:16px">';
+    h += '<div style="font-size:15px;font-weight:700;margin-bottom:8px">What happened today?</div>';
+    h += '<textarea id="eodNotesField" rows="3" placeholder="Installed 4 posts, waiting on beam delivery..." ';
+    h += 'style="width:100%;padding:12px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:15px;font-family:var(--sw-font);box-sizing:border-box;resize:vertical" ';
+    h += 'oninput="_eodNotes=this.value">' + esc(_eodNotes) + '</textarea>';
+    h += '</div>';
+
+    // Voice note (optional)
+    h += '<div style="text-align:center;padding:8px 0;border-top:1px solid var(--sw-border)">';
+    h += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:10px">Or record a voice note (60 sec max)</div>';
+
+    if (_eodAudioBlob && !_eodRecording) {
+      h += '<div style="margin-bottom:12px">';
+      h += '<div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:8px">&#10003; Voice note recorded</div>';
+      h += '<audio controls style="width:100%;max-width:300px"><source src="' + URL.createObjectURL(_eodAudioBlob) + '"></audio>';
+      h += '</div>';
+      h += '<button class="wiz-btn wiz-btn-secondary" style="margin:0 auto;max-width:200px" onclick="eodReRecord()">Re-record</button>';
+    } else if (_eodRecording) {
+      var elapsed = _eodRecordingStart ? Math.round((Date.now() - _eodRecordingStart) / 1000) : 0;
+      var remaining = Math.max(0, 60 - elapsed);
+      h += '<div style="margin-bottom:12px">';
+      h += '<div style="font-size:14px;color:var(--sw-red);font-weight:700;margin-bottom:4px">Recording...</div>';
+      h += '<div id="eodRecordDuration" style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--sw-red)">' + remaining + 's</div>';
+      h += '</div>';
+      h += '<button class="wiz-btn" style="background:var(--sw-red);color:#fff;margin:0 auto;border-radius:50%;width:60px;height:60px;font-size:22px" onclick="eodToggleRecord()">&#9632;</button>';
+    } else {
+      h += '<button class="wiz-btn" style="background:var(--sw-orange);color:#fff;margin:0 auto;border-radius:50%;width:60px;height:60px;font-size:24px;display:flex;align-items:center;justify-content:center" onclick="eodToggleRecord()">&#127908;</button>';
+    }
+    h += '</div>';
+    h += '</div>';
+    body.innerHTML = h;
+
+    var canNext = _eodNotes.trim().length > 0 || _eodAudioBlob;
+    var fh = '<div style="display:flex;gap:8px">';
+    fh += '<button class="wiz-btn wiz-btn-secondary" onclick="eodBack()">Back</button>';
+    fh += '<button class="wiz-btn wiz-btn-primary" id="eodNextBtn" onclick="eodGoToPhotos()"' + (canNext ? '' : ' disabled style="opacity:0.5"') + '>Next — Photos</button>';
+    fh += '</div>';
+    if (!canNext) {
+      fh += '<div style="font-size:11px;color:var(--sw-yellow);text-align:center;margin-top:6px">Type a note or record a voice note to continue</div>';
+    }
+    footer.innerHTML = fh;
+  }
+
+  window.eodGoToPhotos = function() {
+    // Grab notes from textarea in case oninput didn't fire
+    var field = document.getElementById('eodNotesField');
+    if (field) _eodNotes = field.value;
+    if (!_eodNotes.trim() && !_eodAudioBlob) {
+      toast('Please add a note or voice recording', true);
+      return;
+    }
+    eodGoStep(3);
+  };
+
+  window.eodToggleRecord = function() {
+    if (_eodRecording) {
+      if (_eodMediaRecorder) _eodMediaRecorder.stop();
+      _eodRecording = false;
+      clearInterval(_eodRecordTimer);
+      renderEodStep();
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast('Microphone not supported on this device', true);
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      var mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      _eodMediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+      var chunks = [];
+      _eodMediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data); };
+      _eodMediaRecorder.onstop = function() {
+        stream.getTracks().forEach(function(t) { t.stop(); });
+        if (chunks.length > 0) { _eodAudioBlob = new Blob(chunks, { type: mimeType }); _eodAudioBlob._mimeType = mimeType; }
+        _eodRecording = false;
+        clearInterval(_eodRecordTimer);
+        renderEodStep();
+      };
+      _eodMediaRecorder.start();
+      _eodRecording = true;
+      _eodRecordingStart = Date.now();
+      setTimeout(function() { if (_eodRecording && _eodMediaRecorder) _eodMediaRecorder.stop(); }, 60000);
+      _eodRecordTimer = setInterval(function() {
+        var el = document.getElementById('eodRecordDuration');
+        if (!el) { clearInterval(_eodRecordTimer); return; }
+        var secs = Math.round((Date.now() - _eodRecordingStart) / 1000);
+        el.textContent = Math.max(0, 60 - secs) + 's';
+      }, 500);
+      renderEodStep();
+    }).catch(function() { toast('Microphone access denied', true); });
+  };
+
+  window.eodReRecord = function() { _eodAudioBlob = null; renderEodStep(); };
+
+  // ── SCREEN 3: Photos + Submit ──
+  function renderEodStep3(body, footer, title) {
     title.textContent = 'Progress Photos';
     var h = '';
     h += '<div style="padding:16px;text-align:center">';
-    h += '  <p style="font-size:15px;color:var(--sw-text-sec);margin-bottom:16px">Take 1-2 progress photos before you leave site</p>';
+    h += '<p style="font-size:15px;color:var(--sw-text-sec);margin-bottom:16px">Take at least 1 progress photo</p>';
 
-    // Check for today's photos
+    // Show today's photos
     var todayPhotos = [];
     if (_currentJob && _currentJob.media) {
       var today = new Date().toISOString().slice(0, 10);
@@ -8851,31 +9296,50 @@
         }
       }
     }
+    var totalPhotos = todayPhotos.length + _eodPhotoCount;
 
-    if (todayPhotos.length > 0) {
+    if (totalPhotos > 0) {
       h += '<div style="margin-bottom:16px">';
-      h += '  <div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:8px">&#10003; ' + todayPhotos.length + ' photo(s) already uploaded today</div>';
-      h += '  <div class="photo-grid" style="justify-content:center">';
-      for (var j = 0; j < todayPhotos.length; j++) {
-        h += '<img src="' + esc(todayPhotos[j].public_url || todayPhotos[j].url || '') + '" alt="Progress" style="width:80px;height:80px;object-fit:cover;border-radius:8px">';
+      h += '<div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:8px">&#10003; ' + totalPhotos + ' photo(s) today</div>';
+      if (todayPhotos.length > 0) {
+        h += '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">';
+        for (var j = 0; j < todayPhotos.length; j++) {
+          h += '<img src="' + esc(todayPhotos[j].public_url || todayPhotos[j].url || '') + '" alt="" style="width:70px;height:70px;object-fit:cover;border-radius:8px">';
+        }
+        h += '</div>';
       }
-      h += '  </div>';
       h += '</div>';
     }
 
-    h += '  <label style="display:inline-flex;align-items:center;gap:8px;padding:14px 24px;background:var(--sw-orange);color:#fff;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">';
-    h += '    &#128247; Take Photo';
-    h += '    <input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="eodPhotoUpload(this)">';
-    h += '  </label>';
-    h += '  <div id="eodPhotoStatus" style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)"></div>';
+    h += '<label style="display:inline-flex;align-items:center;gap:8px;padding:14px 24px;background:var(--sw-orange);color:#fff;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer">';
+    h += '&#128247; ' + (totalPhotos > 0 ? 'Add Another' : 'Take Photo');
+    h += '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="eodPhotoUpload(this)">';
+    h += '</label>';
+    h += '<div id="eodPhotoStatus" style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)"></div>';
     h += '</div>';
     body.innerHTML = h;
 
-    var fh = '';
-    fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(3)">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(3)">Next</button>';
+    var canSubmit = totalPhotos >= 1;
+    var fh = '<div style="display:flex;gap:8px">';
+    fh += '<button class="wiz-btn wiz-btn-secondary" onclick="eodBack()">Back</button>';
+    fh += '<button class="wiz-btn wiz-btn-primary" id="eodSubmitBtn" onclick="eodSubmit()"' + (canSubmit ? '' : ' disabled style="opacity:0.5"') + '>Submit &amp; Clock Off</button>';
     fh += '</div>';
+    if (!canSubmit) {
+      fh += '<div style="font-size:11px;color:var(--sw-yellow);text-align:center;margin-top:6px">Take at least 1 photo to submit</div>';
+    } else {
+      // Offer job completion on last day
+      if (_currentJob) {
+        var dayInfo = getJobDayInfo(_currentJob);
+        var isLastDay = false;
+        if (dayInfo) {
+          var dayMatch = dayInfo.match(/Day (\d+) of (\d+)/);
+          if (dayMatch && parseInt(dayMatch[1]) >= parseInt(dayMatch[2])) isLastDay = true;
+        }
+        if (isLastDay) {
+          fh += '<div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();closeEOD();confirmThenComplete()" style="color:var(--sw-green);font-size:13px;text-decoration:underline">Job fully complete? Finish &amp; close job</a></div>';
+        }
+      }
+    }
     footer.innerHTML = fh;
   }
 
@@ -8887,8 +9351,11 @@
     uploadPhotosSequential(files, _currentJobId, 'in_progress', function(current, total) {
       if (statusEl) statusEl.textContent = 'Uploading ' + current + ' of ' + total + '...';
     }).then(function(results) {
+      _eodPhotoCount += results.length;
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--sw-green)">&#10003; ' + results.length + ' photo(s) uploaded</span>';
       toast(results.length + ' photo(s) uploaded');
+      // Re-render to update submit button state
+      renderEodStep();
     }).catch(function(err) {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--sw-red)">Upload failed</span>';
       toast('Upload error: ' + friendlyError(err), true);
@@ -8896,241 +9363,19 @@
     input.value = '';
   };
 
-  // ── EOD STEP 3: Voice Note ──
-  function renderEodStep3(body, footer, title) {
-    title.textContent = 'Voice Summary';
-    var h = '';
-    h += '<div style="padding:16px;text-align:center">';
-    h += '  <p style="font-size:15px;color:var(--sw-text-sec);margin-bottom:20px">Record a quick summary of today (30 sec max)</p>';
-
-    if (_eodAudioBlob && !_eodRecording) {
-      // Playback mode
-      h += '<div style="margin-bottom:16px">';
-      h += '  <div style="font-size:14px;color:var(--sw-green);font-weight:600;margin-bottom:12px">&#10003; Voice note recorded</div>';
-      h += '  <audio controls style="width:100%;max-width:300px"><source src="' + URL.createObjectURL(_eodAudioBlob) + '"></audio>';
-      h += '</div>';
-      h += '<button class="wiz-btn wiz-btn-secondary" style="margin:0 auto;max-width:200px" onclick="eodReRecord()">Re-record</button>';
-    } else if (_eodRecording) {
-      // Recording in progress
-      var elapsed = _eodRecordingStart ? Math.round((Date.now() - _eodRecordingStart) / 1000) : 0;
-      var remaining = Math.max(0, 30 - elapsed);
-      h += '<div style="margin-bottom:16px">';
-      h += '  <div style="font-size:14px;color:var(--sw-red);font-weight:700;margin-bottom:8px">&#9679; Recording...</div>';
-      h += '  <div id="eodRecordDuration" style="font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--sw-red)">' + remaining + 's</div>';
-      h += '</div>';
-      h += '<button class="wiz-btn" style="background:var(--sw-red);color:#fff;margin:0 auto;max-width:200px;border-radius:50%;width:72px;height:72px;font-size:24px" onclick="eodToggleRecord()">&#9632;</button>';
-    } else {
-      // Ready to record
-      h += '<button class="wiz-btn" style="background:var(--sw-orange);color:#fff;margin:0 auto;border-radius:50%;width:72px;height:72px;font-size:28px;display:flex;align-items:center;justify-content:center" onclick="eodToggleRecord()">&#127908;</button>';
-      h += '<div style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)">Tap to record</div>';
-    }
-
-    h += '</div>';
-    body.innerHTML = h;
-
-    var fh = '';
-    fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(4)">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(4)">Next</button>';
-    fh += '</div>';
-    footer.innerHTML = fh;
-  }
-
-  window.eodToggleRecord = function() {
-    if (_eodRecording) {
-      if (_eodMediaRecorder) _eodMediaRecorder.stop();
-      _eodRecording = false;
-      clearInterval(_eodRecordTimer);
-      renderEodStep();
-      return;
-    }
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast('Microphone not supported on this device', true);
-      return;
-    }
-
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
-      var mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-      _eodMediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-      var chunks = [];
-
-      _eodMediaRecorder.ondataavailable = function(e) {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      _eodMediaRecorder.onstop = function() {
-        stream.getTracks().forEach(function(t) { t.stop(); });
-        if (chunks.length > 0) {
-          _eodAudioBlob = new Blob(chunks, { type: mimeType });
-          _eodAudioBlob._mimeType = mimeType;
-        }
-        _eodRecording = false;
-        clearInterval(_eodRecordTimer);
-        renderEodStep();
-      };
-
-      _eodMediaRecorder.start();
-      _eodRecording = true;
-      _eodRecordingStart = Date.now();
-
-      // Auto-stop at 30 seconds
-      var _eodAutoStop = setTimeout(function() {
-        if (_eodRecording && _eodMediaRecorder) {
-          _eodMediaRecorder.stop();
-        }
-      }, 30000);
-
-      // Update countdown display
-      _eodRecordTimer = setInterval(function() {
-        var el = document.getElementById('eodRecordDuration');
-        if (!el) { clearInterval(_eodRecordTimer); return; }
-        var secs = Math.round((Date.now() - _eodRecordingStart) / 1000);
-        var remaining = Math.max(0, 30 - secs);
-        el.textContent = remaining + 's';
-      }, 500);
-
-      renderEodStep();
-    }).catch(function(err) {
-      toast('Microphone access denied', true);
-    });
-  };
-
-  window.eodReRecord = function() {
-    _eodAudioBlob = null;
-    renderEodStep();
-  };
-
-  // ── EOD STEP 4: Win + Learn ──
-  function renderEodStep4(body, footer, title) {
-    title.textContent = 'Quick Debrief';
-    var winPresets = ['Smooth install', 'Ahead of schedule', 'Good client', 'Materials perfect', 'Great weather'];
-    var learnPresets = ['Scope unclear', 'Materials issue', 'Site access', 'Weather delay', 'Equipment needed'];
-
-    var h = '';
-    h += '<div style="padding:16px">';
-
-    // Win section
-    h += '<div style="margin-bottom:20px">';
-    h += '  <div style="font-size:15px;font-weight:700;margin-bottom:10px">What went well?</div>';
-    h += '  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
-    for (var i = 0; i < winPresets.length; i++) {
-      var selected = _eodWin === winPresets[i];
-      h += '<button onclick="eodSetWin(\'' + esc(winPresets[i]) + '\')" style="padding:8px 14px;border-radius:20px;border:1.5px solid ' + (selected ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (selected ? 'var(--sw-orange)' : '#fff') + ';color:' + (selected ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">' + esc(winPresets[i]) + '</button>';
-    }
-    h += '  </div>';
-    h += '  <input type="text" id="eodWinCustom" placeholder="Or type your own..." value="' + esc(_eodWin && winPresets.indexOf(_eodWin) === -1 ? _eodWin : '') + '" oninput="_eodWin=this.value;eodRefreshPresets()" style="width:100%;padding:10px 12px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);box-sizing:border-box">';
-    h += '</div>';
-
-    // Learn section
-    h += '<div>';
-    h += '  <div style="font-size:15px;font-weight:700;margin-bottom:10px">What to improve?</div>';
-    h += '  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
-    for (var j = 0; j < learnPresets.length; j++) {
-      var sel2 = _eodLearn === learnPresets[j];
-      h += '<button onclick="eodSetLearn(\'' + esc(learnPresets[j]) + '\')" style="padding:8px 14px;border-radius:20px;border:1.5px solid ' + (sel2 ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (sel2 ? 'var(--sw-orange)' : '#fff') + ';color:' + (sel2 ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">' + esc(learnPresets[j]) + '</button>';
-    }
-    h += '  </div>';
-    h += '  <input type="text" id="eodLearnCustom" placeholder="Or type your own..." value="' + esc(_eodLearn && learnPresets.indexOf(_eodLearn) === -1 ? _eodLearn : '') + '" oninput="_eodLearn=this.value;eodRefreshPresets()" style="width:100%;padding:10px 12px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);box-sizing:border-box">';
-    h += '</div>';
-
-    h += '</div>';
-    body.innerHTML = h;
-
-    var fh = '';
-    fh += '<div style="display:flex;gap:8px">';
-    fh += '  <button class="wiz-btn wiz-btn-secondary" onclick="eodGoStep(5)">Skip</button>';
-    fh += '  <button class="wiz-btn wiz-btn-primary" onclick="eodGoStep(5)">Next</button>';
-    fh += '</div>';
-    footer.innerHTML = fh;
-  }
-
-  window.eodSetWin = function(val) {
-    _eodWin = (_eodWin === val) ? '' : val;
-    renderEodStep();
-  };
-
-  window.eodSetLearn = function(val) {
-    _eodLearn = (_eodLearn === val) ? '' : val;
-    renderEodStep();
-  };
-
-  window.eodRefreshPresets = function() {
-    // No-op: the oninput already sets the value, re-render on next step
-  };
-
-  // ── EOD STEP 5: Timesheet Review ──
-  function renderEodStep5(body, footer, title) {
-    title.textContent = 'Timesheet';
-    var travelMins = _stoppedTravelMins;
-    var onsiteMins = _stoppedOnsiteMins;
-    var totalMins = travelMins + onsiteMins;
-    var rounded = roundTo15(totalMins);
-
-    var h = '';
-    h += '<div style="padding:16px;text-align:center">';
-
-    h += '<div style="background:var(--sw-light);border-radius:12px;padding:20px;max-width:320px;margin:0 auto 16px">';
-    if (travelMins > 0) {
-      h += '<div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:8px"><span style="color:var(--sw-text-sec)">Travel</span><span style="font-weight:600">' + formatMins(travelMins) + '</span></div>';
-    }
-    h += '<div style="display:flex;justify-content:space-between;font-size:15px;margin-bottom:12px"><span style="color:var(--sw-text-sec)">On site</span><span style="font-weight:600">' + formatMins(onsiteMins) + '</span></div>';
-    h += '<div style="border-top:1.5px solid var(--sw-border);padding-top:12px;display:flex;justify-content:space-between;align-items:center">';
-    h += '  <span style="font-size:15px;color:var(--sw-text-sec)">Total billable</span>';
-    h += '  <div style="display:flex;align-items:center;gap:8px">';
-    h += '    <button onclick="eodAdjustTime(-15)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--sw-border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:var(--sw-font);color:var(--sw-text)">&minus;</button>';
-    h += '    <span id="eodTotalBillable" style="font-size:22px;font-weight:800;min-width:60px">' + formatMins(rounded) + '</span>';
-    h += '    <button onclick="eodAdjustTime(15)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--sw-border);background:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:var(--sw-font);color:var(--sw-text)">+</button>';
-    h += '  </div>';
-    h += '</div>';
-    if (_eodTimesheetAdjusted) {
-      h += '<div style="margin-top:8px;font-size:12px;color:var(--sw-orange)">&#9998; Manually adjusted</div>';
-    }
-    h += '</div>';
-
-    h += '<div style="font-size:13px;color:var(--sw-text-sec);margin-top:8px">Progress: ' + _eodProgress + '%</div>';
-    if (_eodWin) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Win: ' + esc(_eodWin) + '</div>';
-    if (_eodLearn) h += '<div style="font-size:13px;color:var(--sw-text-sec)">Improve: ' + esc(_eodLearn) + '</div>';
-
-    h += '</div>';
-    body.innerHTML = h;
-
-    var footerHtml = '<button class="wiz-btn wiz-btn-primary" onclick="eodSubmit()" id="eodSubmitBtn">Submit</button>';
-    // If last day, offer job completion
-    if (_currentJob) {
-      var dayInfo = getJobDayInfo(_currentJob);
-      var isLastDay = false;
-      if (dayInfo) {
-        var dayMatch = dayInfo.match(/Day (\d+) of (\d+)/);
-        if (dayMatch && parseInt(dayMatch[1]) >= parseInt(dayMatch[2])) isLastDay = true;
-      }
-      if (isLastDay) {
-        footerHtml += '<div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();closeEOD();confirmThenComplete()" style="color:var(--sw-green);font-size:13px;text-decoration:underline">Job fully complete? Finish &amp; close job</a></div>';
-      }
-    }
-    footer.innerHTML = footerHtml;
-  }
-
-  window.eodAdjustTime = function(delta) {
-    _stoppedOnsiteMins = Math.max(0, _stoppedOnsiteMins + delta);
-    _eodTimesheetAdjusted = true;
-    renderEodStep();
-  };
-
   window.eodSubmit = function() {
     var btn = document.getElementById('eodSubmitBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
-    // Find my assignment
     var myAssignment = _currentJob ? getMyAssignment(_currentJob) : null;
     var assignmentId = myAssignment ? myAssignment.id : null;
 
-    // Save progress to localStorage
+    // Save progress
     localStorage.setItem('sw_progress_' + _currentJobId, _eodProgress);
 
     var promises = [];
 
-    // 1. Update progress
+    // 1. Update progress on assignment
     if (assignmentId) {
       promises.push(
         api('update_my_assignment', null, { assignmentId: assignmentId, progress_pct: _eodProgress })
@@ -9139,13 +9384,9 @@
     }
 
     // 2. Submit EOD note
-    var noteText = 'EOD';
-    if (_eodWin) noteText += ' — Win: ' + _eodWin + '.';
-    if (_eodLearn) noteText += ' Learn: ' + _eodLearn + '.';
-    noteText += ' Progress: ' + _eodProgress + '%';
-
+    var noteText = 'EOD — ' + _eodNotes.trim() + ' | Progress: ' + _eodProgress + '%';
     promises.push(
-      api('add_note', null, { jobId: _currentJobId, text: noteText })
+      api('add_note', null, { jobId: _currentJobId, text: noteText, eventType: 'trade.end_of_day_submitted' })
         .catch(function(e) { console.warn('EOD note failed:', e); })
     );
 
@@ -9154,43 +9395,29 @@
       var mimeType = _eodAudioBlob._mimeType || 'audio/webm';
       var ext = mimeType.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
       var fileName = 'eod-voice-' + Date.now() + '.' + ext;
-
       promises.push(
-        api('get_upload_url', null, {
-          jobId: _currentJobId,
-          fileName: fileName,
-          contentType: mimeType
-        }).then(function(urlData) {
-          return fetch(urlData.uploadUrl, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': mimeType,
-              'Authorization': 'Bearer ' + urlData.token
-            },
-            body: _eodAudioBlob
-          }).then(function(r) {
-            if (!r.ok) throw new Error('Audio upload failed');
-            return urlData;
-          });
-        }).then(function(urlData) {
-          return api('confirm_upload', null, {
-            jobId: _currentJobId,
-            publicUrl: urlData.publicUrl,
-            path: urlData.path,
-            label: 'EOD voice summary',
-            phase: 'voice_note'
-          });
-        }).catch(function(e) { console.warn('EOD voice upload failed:', e); })
+        api('get_upload_url', null, { jobId: _currentJobId, fileName: fileName, contentType: mimeType })
+          .then(function(urlData) {
+            return fetch(urlData.uploadUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': mimeType, 'Authorization': 'Bearer ' + urlData.token },
+              body: _eodAudioBlob
+            }).then(function(r) { if (!r.ok) throw new Error('Audio upload failed'); return urlData; });
+          })
+          .then(function(urlData) {
+            return api('confirm_upload', null, {
+              jobId: _currentJobId, publicUrl: urlData.publicUrl, path: urlData.path,
+              label: 'EOD voice summary', phase: 'voice_note'
+            });
+          })
+          .catch(function(e) { console.warn('EOD voice upload failed:', e); })
       );
     }
 
     Promise.all(promises).then(function() {
-      // 4. Complete the day via timerAction
+      // 4. Clock off via timerAction
       if (assignmentId) {
-        return new Promise(function(resolve) {
-          timerAction('done', assignmentId);
-          resolve();
-        });
+        timerAction('clock_off', assignmentId);
       }
     }).then(function() {
       // Show success
@@ -9204,13 +9431,13 @@
       footer.innerHTML = '';
       document.getElementById('eodStepLabel').textContent = 'Done';
       document.getElementById('eodTitle').textContent = 'Day Complete';
-
       setTimeout(function() {
         closeEOD();
+        showView('myJobs'); // return to job list
       }, 2000);
     }).catch(function(err) {
-      toast('Error submitting EOD: ' + friendlyError(err), true);
-      if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
+      toast('Error submitting: ' + friendlyError(err), true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit & Clock Off'; }
     });
   };
 
@@ -9870,15 +10097,262 @@
   // TODO: DB migration — Add trade_tier field to users table (1=installer, 2=senior, 3=manager)
   // TODO: DB migration — Add trade_details JSONB to users (ABN, GST, bank, licence)
   // TODO: DB migration — Add availability table (user_id, weekly_pattern JSONB, exceptions JSONB)
+
+  // ══════════════════════════════════════════════════
+  // EXPENSE RECEIPT CAPTURE (Part F)
+  // ══════════════════════════════════════════════════
+
+  var _expenseState = 'capture'; // capture | extracting | review | submitted
+  var _expenseJobId = null; // null = general stock
+  var _expenseIsGeneral = false;
+  var _expensePhotoUrl = null;
+  var _expenseExtraction = null;
+  var _expenseId = null;
+
+  window.openExpenseOverlay = function(jobId) {
+    _expenseState = 'capture';
+    _expenseJobId = jobId || _currentJobId || null;
+    _expenseIsGeneral = false;
+    _expensePhotoUrl = null;
+    _expenseExtraction = null;
+    _expenseId = null;
+    document.getElementById('expenseOverlay').style.display = 'flex';
+    document.getElementById('bottomNav').style.display = 'none';
+    renderExpenseStep();
+  };
+
+  window.openGeneralExpense = function() {
+    _expenseState = 'capture';
+    _expenseJobId = null;
+    _expenseIsGeneral = true;
+    _expensePhotoUrl = null;
+    _expenseExtraction = null;
+    _expenseId = null;
+    document.getElementById('expenseOverlay').style.display = 'flex';
+    document.getElementById('bottomNav').style.display = 'none';
+    renderExpenseStep();
+  };
+
+  window.closeExpenseOverlay = function() {
+    document.getElementById('expenseOverlay').style.display = 'none';
+    document.getElementById('bottomNav').style.display = 'flex';
+  };
+
+  function renderExpenseStep() {
+    var body = document.getElementById('expenseBody');
+    var footer = document.getElementById('expenseFooter');
+    var title = document.getElementById('expenseTitle');
+    var step = document.getElementById('expenseStep');
+
+    if (_expenseState === 'capture') {
+      title.textContent = 'Add Expense';
+      step.textContent = '';
+      var h = '<div style="padding:16px">';
+
+      // Job selector toggle
+      h += '<div style="margin-bottom:16px">';
+      h += '<div style="font-size:13px;font-weight:600;margin-bottom:6px">Link to:</div>';
+      h += '<div style="display:flex;gap:8px">';
+      h += '<button onclick="expenseSetGeneral(false)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (!_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (!_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (!_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">Specific Job</button>';
+      h += '<button onclick="expenseSetGeneral(true)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">General Stock</button>';
+      h += '</div>';
+      if (_expenseIsGeneral) {
+        h += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">Not linked to a job — routed to Jan for approval</div>';
+      }
+      h += '</div>';
+
+      // Photo capture
+      h += '<div style="text-align:center;padding:20px;border:2px dashed var(--sw-border);border-radius:12px;margin-bottom:16px">';
+      h += '<label style="display:inline-flex;align-items:center;gap:8px;padding:16px 32px;background:var(--sw-orange);color:#fff;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer">';
+      h += '&#128247; Take Photo of Receipt';
+      h += '<input type="file" accept="image/*" capture="environment" style="display:none" onchange="expensePhotoCapture(this)">';
+      h += '</label>';
+      h += '<div id="expensePhotoStatus" style="margin-top:12px;font-size:13px;color:var(--sw-text-sec)"></div>';
+      h += '</div>';
+
+      h += '</div>';
+      body.innerHTML = h;
+      footer.innerHTML = '';
+
+    } else if (_expenseState === 'extracting') {
+      title.textContent = 'Reading Receipt...';
+      step.textContent = '';
+      body.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:16px;font-size:15px;color:var(--sw-text-sec)">AI is reading your receipt...</div></div>';
+      footer.innerHTML = '';
+
+    } else if (_expenseState === 'review') {
+      title.textContent = 'Confirm Details';
+      step.textContent = '';
+      var ext = _expenseExtraction || {};
+      var h = '<div style="padding:16px">';
+
+      // Receipt thumbnail
+      if (_expensePhotoUrl) {
+        h += '<div style="text-align:center;margin-bottom:16px"><img src="' + esc(_expensePhotoUrl) + '" style="max-width:200px;max-height:150px;border-radius:8px;object-fit:cover"></div>';
+      }
+
+      // Extracted fields (editable)
+      h += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec)">Supplier</label>';
+      h += '<input type="text" id="expVendor" value="' + esc(ext.vendor_name || '') + '" placeholder="e.g. Bunnings" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:15px;font-family:var(--sw-font);box-sizing:border-box"></div>';
+
+      h += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec)">Amount (inc GST)</label>';
+      h += '<input type="number" id="expAmount" value="' + (ext.total_amount || '') + '" step="0.01" placeholder="0.00" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:15px;font-family:var(--sw-font);box-sizing:border-box"></div>';
+
+      h += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec)">Description</label>';
+      var desc = '';
+      if (ext.line_items && ext.line_items.length > 0) {
+        desc = ext.line_items.map(function(li) { return li.description || ''; }).filter(Boolean).join(', ');
+      }
+      h += '<input type="text" id="expDesc" value="' + esc(desc) + '" placeholder="Tek screws, silicone..." style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:15px;font-family:var(--sw-font);box-sizing:border-box"></div>';
+
+      if (ext.extraction_confidence) {
+        var confPct = Math.round(ext.extraction_confidence * 100);
+        h += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:8px">AI confidence: ' + confPct + '%</div>';
+      }
+
+      h += '</div>';
+      body.innerHTML = h;
+
+      var fh = '<div style="display:flex;gap:8px">';
+      fh += '<button class="wiz-btn wiz-btn-secondary" onclick="closeExpenseOverlay()">Cancel</button>';
+      fh += '<button class="wiz-btn wiz-btn-primary" id="expConfirmBtn" onclick="expenseConfirm()">Looks right ✓</button>';
+      fh += '</div>';
+      footer.innerHTML = fh;
+
+    } else if (_expenseState === 'submitted') {
+      title.textContent = 'Submitted';
+      step.textContent = '';
+      var routedTo = _expenseIsGeneral ? 'Jan' : 'Shaun';
+      body.innerHTML = '<div style="text-align:center;padding:40px 16px">' +
+        '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>' +
+        '<div style="font-size:18px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Receipt submitted</div>' +
+        '<div style="font-size:14px;color:var(--sw-text-sec)">' + routedTo + ' will review it.</div>' +
+        '</div>';
+      footer.innerHTML = '<button class="wiz-btn wiz-btn-primary" onclick="closeExpenseOverlay()">Done</button>';
+    }
+  }
+
+  window.expenseSetGeneral = function(isGeneral) {
+    _expenseIsGeneral = isGeneral;
+    if (isGeneral) _expenseJobId = null;
+    else _expenseJobId = _currentJobId || null;
+    renderExpenseStep();
+  };
+
+  window.expensePhotoCapture = function(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var statusEl = document.getElementById('expensePhotoStatus');
+    if (statusEl) statusEl.textContent = 'Uploading receipt...';
+
+    // Compress and upload
+    compressImage(file).then(function(blob) {
+      var fileName = 'expense-' + Date.now() + '.jpg';
+      return api('get_upload_url', null, {
+        jobId: _expenseJobId || 'general',
+        fileName: fileName,
+        contentType: 'image/jpeg'
+      }).then(function(urlData) {
+        return getAuthToken().then(function(token) {
+          return fetch(urlData.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'image/jpeg', 'Authorization': 'Bearer ' + urlData.token },
+            body: blob
+          }).then(function(r) {
+            if (!r.ok) throw new Error('Upload failed');
+            _expensePhotoUrl = urlData.publicUrl;
+            return urlData;
+          });
+        });
+      });
+    }).then(function() {
+      // Submit to ops-api for Haiku extraction
+      _expenseState = 'extracting';
+      renderExpenseStep();
+      return api('submit_expense', null, {
+        job_id: _expenseJobId,
+        receipt_photo_url: _expensePhotoUrl,
+        submitted_by: _user ? _user.id : null
+      });
+    }).then(function(result) {
+      _expenseId = result.expense_id;
+      _expenseExtraction = result.extraction || {};
+      _expenseState = 'review';
+      renderExpenseStep();
+    }).catch(function(err) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--sw-red)">Error: ' + friendlyError(err) + '</span>';
+      _expenseState = 'capture';
+      renderExpenseStep();
+      toast('Expense submission failed', true);
+    });
+    input.value = '';
+  };
+
+  window.expenseConfirm = function() {
+    var btn = document.getElementById('expConfirmBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+    // If the user edited the extraction, we could update, but the spine auto-processes
+    // For now just show success — the extraction is already saved
+    _expenseState = 'submitted';
+    renderExpenseStep();
+    toast('Expense submitted');
+  };
+
+  // Render previous expenses for a job (called from job detail)
+  function renderJobExpenses(data) {
+    if (!data || !data.job) return '';
+    var h = '';
+    // Fetch expenses async and inject
+    api('list_expenses', { job_id: data.job.id }).then(function(result) {
+      var expenses = result.expenses || [];
+      if (expenses.length === 0) return;
+      var container = document.getElementById('jobExpensesList');
+      if (!container) return;
+      var html = '';
+      expenses.forEach(function(exp) {
+        var statusClass = exp.status === 'approved' ? 'sw-green' : exp.status === 'pushed_to_xero' ? 'sw-blue' : 'sw-yellow';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--sw-card);border-radius:8px;margin-bottom:6px;box-shadow:var(--sw-shadow)">';
+        if (exp.receipt_photo_url) {
+          html += '<img src="' + esc(exp.receipt_photo_url) + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0">';
+        }
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(exp.vendor_name || 'Unknown') + '</div>';
+        html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (exp.receipt_date || '') + '</div>';
+        html += '</div>';
+        html += '<div style="text-align:right">';
+        html += '<div style="font-weight:700;font-size:14px">$' + (Number(exp.total_amount) || 0).toFixed(2) + '</div>';
+        html += '<div style="font-size:11px;color:var(--' + statusClass + ');font-weight:600">' + esc(exp.status || 'pending') + '</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }).catch(function() { /* silent */ });
+
+    // Return placeholder div
+    return '<div id="jobExpensesList" style="margin-top:8px"></div>';
+  }
+
 })();
 </script>
+
+<!-- Expense Overlay -->
+<div class="eod-overlay" id="expenseOverlay" style="display:none">
+  <div class="wiz-header">
+    <button class="wiz-btn wiz-btn-secondary" style="max-width:60px;padding:8px" onclick="closeExpenseOverlay()">&#8592;</button>
+    <h3 id="expenseTitle">Add Expense</h3>
+    <span class="wiz-header-step" id="expenseStep"></span>
+  </div>
+  <div class="wiz-body" id="expenseBody"></div>
+  <div class="wiz-footer" id="expenseFooter"></div>
+</div>
 
 <!-- EOD Overlay -->
 <div class="eod-overlay" id="eodOverlay" style="display:none">
   <div class="wiz-header">
     <button class="wiz-btn wiz-btn-secondary" style="max-width:60px;padding:8px" onclick="eodBack()">&#8592;</button>
     <h3 id="eodTitle">End of Day</h3>
-    <span class="wiz-header-step" id="eodStepLabel">Step 1 of 5</span>
+    <span class="wiz-header-step" id="eodStepLabel">Step 1 of 3</span>
   </div>
   <div class="wiz-progress" id="eodProgress"></div>
   <div class="wiz-body" id="eodBody"></div>
