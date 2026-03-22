@@ -6560,8 +6560,22 @@
     });
   }
 
+  // Detect per-metre user (Henry) — check profile field or email fallback
+  function isPerMetreUser() {
+    if (_user && _user.invoice_type === 'per_metre') return true;
+    if (_user && _user.email && (/emeka|henry/i.test(_user.email))) return true;
+    return false;
+  }
+
   function renderHoursView(data) {
     var container = document.getElementById('hoursContent');
+
+    // Branch: per-metre users get a different view
+    if (isPerMetreUser()) {
+      renderPerMetreView(data);
+      return;
+    }
+
     var html = '';
 
     // Week navigator
@@ -6710,6 +6724,178 @@
       _tradeRate = rate;
       api('set_trade_rate', null, { hourly_rate: rate }).catch(function() {});
     }
+  };
+
+  // ── Per-Metre Invoice View (Henry) ──
+  function renderPerMetreView(data) {
+    var container = document.getElementById('hoursContent');
+    var html = '';
+
+    // Week navigator (same as hourly)
+    html += '<div class="hours-week-nav">';
+    html += '  <button onclick="shiftWeek(-1)">&larr;</button>';
+    html += '  <div class="hours-week-label">' + formatWeekRange(data.week_ending) + '</div>';
+    html += '  <button onclick="shiftWeek(1)">&rarr;</button>';
+    html += '</div>';
+
+    html += '<div style="background:var(--sw-orange);color:#fff;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;text-align:center;margin-bottom:12px">Per-Metre Invoicing</div>';
+
+    // Group assignments by job and calculate metres from scope_json
+    if (!data.assignments || data.assignments.length === 0) {
+      html += '<div class="hours-no-data">No completed jobs this week</div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    // Group by job
+    var jobMap = {};
+    data.assignments.forEach(function(a) {
+      var jobId = a.job_id || (a.jobs && a.jobs.id) || 'unknown';
+      if (!jobMap[jobId]) {
+        jobMap[jobId] = {
+          job: a.jobs || {},
+          assignments: [],
+          days: 0
+        };
+      }
+      jobMap[jobId].assignments.push(a);
+      jobMap[jobId].days++;
+    });
+
+    var defaultRate = 35; // $35/m default
+    var grandTotal = 0;
+
+    Object.keys(jobMap).forEach(function(jobId) {
+      var entry = jobMap[jobId];
+      var job = entry.job;
+      var jobNum = job.job_number || '';
+      var scope = job.scope_json;
+
+      // Calculate total metres from fencing scope: sum of runs[].lengthM
+      var totalMetres = 0;
+      if (scope) {
+        var s = typeof scope === 'string' ? JSON.parse(scope) : scope;
+        var jobData = s.job || s.config || s;
+        var runs = jobData.runs || [];
+        if (runs.length > 0) {
+          totalMetres = runs.reduce(function(sum, r) { return sum + (Number(r.lengthM) || Number(r.totalLength) || Number(r.length) || 0); }, 0);
+        }
+        // Fallback to config.totalLength or config.totalMetres
+        if (totalMetres === 0) {
+          totalMetres = Number(jobData.totalLength) || Number(jobData.totalMetres) || Number(s.config && s.config.totalLength) || 0;
+        }
+      }
+
+      var rate = defaultRate;
+      var jobTotal = totalMetres * rate;
+      grandTotal += jobTotal;
+
+      html += '<div style="padding:14px;background:var(--sw-card);border-radius:12px;margin-bottom:10px;box-shadow:var(--sw-shadow)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div>';
+      html += '<div style="font-weight:700;font-size:15px">' + esc(jobNum) + '</div>';
+      html += '<div style="font-size:13px;color:var(--sw-text-sec)">' + esc(job.client_name || '') + ' · ' + esc(job.site_suburb || '') + '</div>';
+      html += '</div>';
+      html += '<div style="text-align:right">';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec)">' + entry.days + ' day' + (entry.days > 1 ? 's' : '') + '</div>';
+      html += '</div>';
+      html += '</div>';
+
+      // Metres and rate
+      html += '<div style="margin-top:10px;background:var(--sw-light);border-radius:8px;padding:12px">';
+      html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px">';
+      html += '<span>Total metres</span>';
+      html += '<span style="display:flex;align-items:center;gap:6px">';
+      html += '<input type="number" step="0.1" min="0" value="' + totalMetres.toFixed(1) + '" id="pmMetres_' + esc(jobId) + '" onchange="recalcPerMetre()" style="width:70px;padding:4px 6px;border:1px solid var(--sw-border);border-radius:6px;font-size:14px;font-weight:600;text-align:right;font-family:var(--sw-font)">';
+      html += '<span style="font-size:12px;color:var(--sw-text-sec)">m</span>';
+      html += '</span></div>';
+
+      html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px">';
+      html += '<span>Rate</span><span style="font-weight:600">$' + rate.toFixed(2) + '/m</span></div>';
+
+      html += '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;border-top:1px solid var(--sw-border);padding-top:8px">';
+      html += '<span>Total</span><span id="pmTotal_' + esc(jobId) + '">$' + jobTotal.toFixed(2) + '</span></div>';
+      html += '</div>';
+
+      html += '</div>';
+    });
+
+    // Grand total
+    var gst = grandTotal * 0.1;
+    html += '<div style="padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow);margin-top:8px">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px"><span>Subtotal</span><span id="pmSubtotal">$' + grandTotal.toFixed(2) + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px"><span>GST (10%)</span><span id="pmGst">$' + gst.toFixed(2) + '</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;border-top:1.5px solid var(--sw-border);padding-top:8px"><span>Total</span><span id="pmGrandTotal">$' + (grandTotal + gst).toFixed(2) + '</span></div>';
+    html += '</div>';
+
+    // Submit button
+    if (data.already_submitted) {
+      html += '<div class="hours-submitted-pill">&#10003; Submitted to Xero' + (data.xero_bill_number ? ' — ' + esc(data.xero_bill_number) : '') + '</div>';
+    } else {
+      html += '<button class="hours-submit-btn" onclick="submitPerMetreInvoice()" style="background:var(--sw-orange)">Submit Invoice</button>';
+    }
+
+    // Lead can also verify crew hours
+    if (_user && (_user.role === 'lead_installer' || _userTier >= 2)) {
+      html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--sw-border)">';
+      html += '<button class="btn btn-secondary" style="width:100%;font-size:13px" onclick="openVerificationInbox()">Review Crew Hours</button>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.recalcPerMetre = function() {
+    // Recalculate totals from all per-metre inputs
+    var inputs = document.querySelectorAll('[id^="pmMetres_"]');
+    var rate = 35;
+    var grandTotal = 0;
+    inputs.forEach(function(input) {
+      var jobId = input.id.replace('pmMetres_', '');
+      var metres = parseFloat(input.value) || 0;
+      var total = metres * rate;
+      grandTotal += total;
+      var totalEl = document.getElementById('pmTotal_' + jobId);
+      if (totalEl) totalEl.textContent = '$' + total.toFixed(2);
+    });
+    var gst = grandTotal * 0.1;
+    var sub = document.getElementById('pmSubtotal');
+    var gstEl = document.getElementById('pmGst');
+    var grand = document.getElementById('pmGrandTotal');
+    if (sub) sub.textContent = '$' + grandTotal.toFixed(2);
+    if (gstEl) gstEl.textContent = '$' + gst.toFixed(2);
+    if (grand) grand.textContent = '$' + (grandTotal + gst).toFixed(2);
+  };
+
+  window.submitPerMetreInvoice = function() {
+    // Collect all metres from inputs
+    var inputs = document.querySelectorAll('[id^="pmMetres_"]');
+    var rate = 35;
+    var items = [];
+    var grandTotal = 0;
+    inputs.forEach(function(input) {
+      var jobId = input.id.replace('pmMetres_', '');
+      var metres = parseFloat(input.value) || 0;
+      items.push({ job_id: jobId, metres: metres, rate_per_metre: rate, total: metres * rate });
+      grandTotal += metres * rate;
+    });
+
+    var totalStr = '$' + (grandTotal * 1.1).toFixed(2);
+    showConfirm('Submit Invoice', 'Submit ' + totalStr + ' (inc GST) for this week?', 'Submit').then(function(ok) {
+      if (!ok) return;
+      api('submit_trade_invoice', null, {
+        week_ending: _hoursWeekEnd,
+        invoice_type: 'per_metre',
+        rate_per_metre: rate,
+        items: items,
+        notes: 'Per-metre invoice'
+      }).then(function(res) {
+        toast('Invoice submitted' + (res.xero_bill_number ? ' — ' + res.xero_bill_number : ''));
+        loadHoursView();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+      });
+    });
   };
 
   window.submitTradeHours = function() {
