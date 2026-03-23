@@ -1260,13 +1260,23 @@
     .job-detail-view {
       display: none;
       position: fixed;
-      inset: 0;
+      inset: 20px 32px;
       z-index: 200;
       background: var(--sw-bg);
       flex-direction: column;
       overflow: hidden;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
     }
     .job-detail-view.active { display: flex; }
+    .job-detail-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 199;
+      background: rgba(0,0,0,0.4);
+    }
+    .job-detail-backdrop.active { display: block; }
 
     /* Minimal Header */
     .jd-health {
@@ -2277,6 +2287,7 @@
   </div>
 
   <!-- ══════════ FULL JOB DETAIL VIEW ══════════ -->
+  <div class="job-detail-backdrop" id="jobDetailBackdrop" onclick="closeJobDetail()"></div>
   <div class="job-detail-view" id="jobDetailView">
     <!-- Minimal Header -->
     <div class="jd-health">

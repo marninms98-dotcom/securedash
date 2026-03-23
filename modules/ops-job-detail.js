@@ -453,10 +453,8 @@ async function openJobDetail(jobId) {
   if (jobsBody) sessionStorage.setItem('sw_kanban_scroll', jobsBody.scrollTop || window.scrollY);
 
   // Show the view
+  document.getElementById('jobDetailBackdrop').classList.add('active');
   document.getElementById('jobDetailView').classList.add('active');
-  document.querySelector('.header').style.display = 'none';
-  document.querySelector('.mobile-nav').style.display = 'none';
-  document.querySelector('.container').style.display = 'none';
 
   // Show loading
   document.getElementById('jdHealthTop').innerHTML = '<div class="loading" style="padding:8px;">Loading...</div>';
@@ -511,10 +509,8 @@ async function openJobDetailByRef(ref) {
 }
 
 function closeJobDetail(skipHistory) {
+  document.getElementById('jobDetailBackdrop').classList.remove('active');
   document.getElementById('jobDetailView').classList.remove('active');
-  document.querySelector('.header').style.display = '';
-  document.querySelector('.mobile-nav').style.display = '';
-  document.querySelector('.container').style.display = '';
   _currentJobData = null;
   _currentJobId = null;
 
