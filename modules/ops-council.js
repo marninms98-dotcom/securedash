@@ -246,3 +246,26 @@ function openCouncilEmailCompose(submissionId) {
     alert('Failed to send: ' + e.message);
   });
 }
+
+// Open council start modal from Approvals page (needs job picker)
+function openCouncilStartModalFromApprovals() {
+  // Build a quick job picker from _allJobs (patio jobs without council submissions)
+  var existingJobIds = _councilSubmissions.map(function(s) { return s.job_id; });
+  var patioJobs = (typeof _allJobs !== 'undefined' ? _allJobs : []).filter(function(j) {
+    return j.type === 'patio' && existingJobIds.indexOf(j.id) < 0 && ['cancelled', 'lost'].indexOf(j.status) < 0;
+  });
+
+  if (patioJobs.length === 0) {
+    alert('No patio jobs available for council process (all either have one started or are cancelled).');
+    return;
+  }
+
+  // Simple selection prompt — list jobs
+  var options = patioJobs.map(function(j) { return (j.job_number || '') + ' — ' + (j.client_name || '') + ' (' + (j.suburb || '') + ')'; });
+  var choice = prompt('Select a patio job (enter number):\n\n' + options.map(function(o, i) { return (i + 1) + '. ' + o; }).join('\n'));
+  if (!choice) return;
+  var idx = parseInt(choice, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= patioJobs.length) { alert('Invalid selection.'); return; }
+
+  openCouncilStartModal(patioJobs[idx].id);
+}

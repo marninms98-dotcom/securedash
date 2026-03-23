@@ -1575,23 +1575,23 @@ async function confirmAcceptance() {
 var _councilSteps = [];
 
 var COUNCIL_DEFAULT_STEPS = {
-  council_engineering: [
-    { name: 'Engineering Drawings' },
-    { name: 'Submit CDC Application' },
-    { name: 'Council Review' },
-    { name: 'Council Queries (if any)' },
-    { name: 'Permit Issued' },
+  full_building_permit: [
+    { name: 'Get Client House Plans' },
+    { name: 'Drafting (Patio Plans)' },
+    { name: 'Engineering Certification' },
+    { name: 'CDC (Private Building Surveyor)' },
+    { name: 'Submit to Council for Building Permit' },
+    { name: 'Building Permit Received' },
   ],
   engineering_only: [
-    { name: 'Engineering Drawings' },
-    { name: 'Engineering Review' },
-    { name: 'Engineering Certificate Issued' },
+    { name: 'Get Client House Plans' },
+    { name: 'Drafting (Patio Plans)' },
+    { name: 'Engineering Certification' },
   ],
-  council_cdc: [
-    { name: 'Submit CDC Application' },
-    { name: 'Council Review' },
-    { name: 'Council Queries (if any)' },
-    { name: 'Permit Issued' },
+  cdc_only: [
+    { name: 'CDC (Private Building Surveyor)' },
+    { name: 'Submit to Council for Building Permit' },
+    { name: 'Building Permit Received' },
   ],
   custom: [],
 };
@@ -1612,7 +1612,7 @@ function openCouncilStartModal(jobId) {
   } else {
     infoEl.textContent = jobId;
   }
-  document.getElementById('councilType').value = 'council_engineering';
+  document.getElementById('councilType').value = 'full_building_permit';
   updateCouncilDefaultSteps();
   document.getElementById('councilStartModal').classList.add('active');
 }

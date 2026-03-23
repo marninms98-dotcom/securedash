@@ -2275,7 +2275,10 @@
     <div id="viewApprovals" class="view">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <div class="section-heading">Council & Engineering Approvals</div>
-        <span id="approvalsCount" style="font-size:12px;color:var(--sw-text-sec);"></span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="approvalsCount" style="font-size:12px;color:var(--sw-text-sec);"></span>
+          <button class="btn btn-sm btn-primary" onclick="openCouncilStartModalFromApprovals()">+ New Council Process</button>
+        </div>
       </div>
       <div id="approvalsKanban" class="kanban-grid" style="grid-template-columns: repeat(4, 1fr);">
         <div class="loading" style="text-align:center;padding:40px;color:var(--sw-text-sec);grid-column:1/-1;">Loading...</div>
@@ -2884,9 +2887,9 @@
     <div class="form-group">
       <label class="form-label">Approval Type</label>
       <select class="form-select" id="councilType" onchange="updateCouncilDefaultSteps()">
-        <option value="council_engineering">Council + Engineering (CDC)</option>
+        <option value="full_building_permit">Full Building Permit Process</option>
         <option value="engineering_only">Engineering Only</option>
-        <option value="council_cdc">Council Approval (CDC)</option>
+        <option value="cdc_only">CDC + Council Only</option>
         <option value="custom">Other / Custom</option>
       </select>
     </div>
