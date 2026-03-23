@@ -1142,6 +1142,10 @@ function openInvoicePreview(inv) {
 
   // Action buttons
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+  if (isDraft) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;" onclick="closeInvoicePreview();approveInvoiceFromPreview(window._previewInvoice, false)">Approve</button>';
+    html += '<button class="btn btn-sm" style="background:#2196F3;color:#fff;" onclick="closeInvoicePreview();approveInvoiceFromPreview(window._previewInvoice, true)">Approve &amp; Send</button>';
+  }
   if (!isPaid && !isVoided) {
     html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="closeInvoicePreview();openEditInvoiceModal(window._previewInvoice)">Edit Invoice</button>';
   }
@@ -1170,6 +1174,31 @@ function closeInvoicePreview() {
 }
 
 // ── Invoice Action Helpers ──
+
+function approveInvoiceFromPreview(inv, sendEmail) {
+  if (!inv || !inv.xero_invoice_id) return;
+  var msg = sendEmail
+    ? 'Approve and send ' + (inv.invoice_number || 'this invoice') + ' (' + fmt$(inv.total) + ') to the client?'
+    : 'Approve ' + (inv.invoice_number || 'this invoice') + ' (' + fmt$(inv.total) + ')? It will be authorised in Xero but not sent yet.';
+  if (!confirm(msg)) return;
+
+  var action = sendEmail ? 'approve_and_send_invoice' : 'approve_invoice';
+  var payload = { xero_invoice_id: inv.xero_invoice_id };
+  if (sendEmail) {
+    var j = _currentJobData?.job || {};
+    payload.email_override = j.client_email || '';
+    payload.use_branded_email = true;
+  }
+
+  opsPost(action, payload).then(function(res) {
+    if (res.error) { alert('Error: ' + res.error); return; }
+    showToast('Invoice ' + (sendEmail ? 'approved and sent' : 'approved'), 'success');
+    if (_currentJobData?.job?.id) openJobDetail(_currentJobData.job.id);
+  }).catch(function(e) {
+    alert('Failed to approve: ' + e.message);
+  });
+}
+
 function confirmVoidInvoice(inv) {
   var action = inv.status === 'DRAFT' ? 'delete' : 'void';
   var msg = action === 'delete'
