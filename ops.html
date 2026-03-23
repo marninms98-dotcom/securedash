@@ -2297,6 +2297,18 @@
         </div>
       </div>
       <div id="inboxList"></div>
+
+      <!-- Email Inbox — supplier + council emails -->
+      <div style="margin-top:24px;">
+        <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0 0 12px 0;">Supplier &amp; Council Emails <span id="emailUnreadCount" style="font-size:12px;color:var(--sw-orange);font-weight:600"></span></h3>
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="inbox-chip active" onclick="loadEmailInbox('all',this)">All</button>
+          <button class="inbox-chip" onclick="loadEmailInbox('unread',this)">Unread</button>
+          <button class="inbox-chip" onclick="loadEmailInbox('po',this)">PO Only</button>
+          <button class="inbox-chip" onclick="loadEmailInbox('council',this)">Council Only</button>
+        </div>
+        <div id="emailInboxList"><div style="font-size:13px;color:var(--sw-text-sec);padding:12px;">Loading...</div></div>
+      </div>
     </div>
 
   </div><!-- /container -->

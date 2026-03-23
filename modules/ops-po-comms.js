@@ -1319,15 +1319,23 @@ async function sendPOEmail() {
 async function loadPOEmails(poId) {
   if (_poEmailCache[poId]) return _poEmailCache[poId];
   try {
-    var data = await opsFetch('read_po_emails', { po_id: poId });
+    // Use list_po_communications (new action) with fallback to read_po_emails (legacy)
+    var data = await opsFetch('list_po_communications', { po_id: poId });
     var emails = data.emails || data || [];
     if (!Array.isArray(emails)) emails = [];
     _poEmailCache[poId] = emails;
     return emails;
   } catch (e) {
-    // Endpoint not ready — return empty
-    _poEmailCache[poId] = [];
-    return [];
+    try {
+      var data2 = await opsFetch('read_po_emails', { po_id: poId });
+      var emails2 = data2.emails || data2 || [];
+      if (!Array.isArray(emails2)) emails2 = [];
+      _poEmailCache[poId] = emails2;
+      return emails2;
+    } catch (e2) {
+      _poEmailCache[poId] = [];
+      return [];
+    }
   }
 }
 
@@ -1336,20 +1344,59 @@ function renderPOEmailThread(emails, poId) {
   var html = '';
   emails.sort(function(a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
   emails.forEach(function(em, idx) {
-    var dir = em.direction === 'received' ? 'received' : 'sent';
-    var date = em.created_at ? new Date(em.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+    var isInbound = em.direction === 'inbound' || em.direction === 'received';
+    var dir = isInbound ? 'received' : 'sent';
+    var date = (em.created_at || em.sent_at || em.received_at) ? new Date(em.created_at || em.sent_at || em.received_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
     var subj = em.subject || em.summary || '';
-    var bodyText = em.body || em.summary || '';
+    var bodyText = em.body_text || em.body || em.summary || '';
     var firstLine = bodyText.split('\n')[0] || '';
-    if (firstLine.length > 80) firstLine = firstLine.substring(0, 80) + '...';
+    if (firstLine.length > 100) firstLine = firstLine.substring(0, 100) + '...';
 
-    html += '<div class="po-email-item ' + dir + '" onclick="this.classList.toggle(\'expanded\')" data-idx="' + idx + '">';
-    html += '<div class="po-email-date">' + date + ' &middot; ' + (dir === 'sent' ? 'Sent' : 'Received') + '</div>';
-    if (subj) html += '<div class="po-email-subject">' + escapeHtml(subj.length > 60 ? subj.substring(0, 60) + '...' : subj) + '</div>';
-    html += '<div class="po-email-preview">' + escapeHtml(firstLine) + '</div>';
-    html += '<div class="po-email-body">' + escapeHtml(bodyText) + '</div>';
-    if (dir === 'received') {
-      html += '<button class="po-email-reply-btn" onclick="event.stopPropagation();openPOEmailComposeReply(\'' + poId + '\',\'' + escapeHtml(subj).replace(/'/g, "\\'") + '\')">Reply</button>';
+    // Direction arrow + delivery status
+    var arrow = isInbound ? '<span style="color:var(--sw-blue, #3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
+    var statusBadge = '';
+    var ds = em.delivery_status || '';
+    if (!isInbound && ds) {
+      var badgeColor = ds === 'opened' ? 'var(--sw-green)' : ds === 'delivered' ? 'var(--sw-blue, #3498DB)' : ds === 'bounced' ? 'var(--sw-red)' : '#999';
+      statusBadge = '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + badgeColor + '20;color:' + badgeColor + ';font-weight:600;margin-left:6px">' + escapeHtml(ds) + '</span>';
+    }
+
+    // Unread indicator
+    var unreadDot = (isInbound && !em.read_at) ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sw-blue, #3498DB);margin-right:4px" title="Unread"></span>' : '';
+
+    // Auto-mark as read when rendered
+    if (isInbound && !em.read_at && em.id) {
+      opsPost('mark_email_read', { email_id: em.id }).catch(function() {});
+      em.read_at = new Date().toISOString(); // prevent re-marking
+    }
+
+    var bgColor = isInbound ? 'rgba(52,152,219,0.04)' : 'rgba(241,90,41,0.04)';
+    var borderLeft = isInbound ? '3px solid var(--sw-blue, #3498DB)' : '3px solid var(--sw-orange)';
+
+    html += '<div class="po-email-item ' + dir + '" style="padding:10px 12px;margin-bottom:6px;border-left:' + borderLeft + ';background:' + bgColor + ';border-radius:0 6px 6px 0;cursor:pointer" onclick="this.classList.toggle(\'expanded\')" data-idx="' + idx + '">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sw-text-sec)">';
+    html += '<span>' + unreadDot + arrow + ' ' + (isInbound ? 'From: ' + escapeHtml(em.from_email || '') : 'To: ' + escapeHtml(em.to_email || '')) + '</span>';
+    html += '<span>' + date + statusBadge + '</span>';
+    html += '</div>';
+    if (subj) html += '<div style="font-weight:600;font-size:12px;margin-top:3px">' + escapeHtml(subj.length > 70 ? subj.substring(0, 70) + '...' : subj) + '</div>';
+    html += '<div class="po-email-preview" style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">' + escapeHtml(firstLine) + '</div>';
+    html += '<div class="po-email-body" style="display:none;font-size:12px;margin-top:8px;white-space:pre-wrap;line-height:1.5">' + escapeHtml(bodyText) + '</div>';
+
+    // Attachments
+    var atts = em.attachments_json || em.attachments || [];
+    if (Array.isArray(atts) && atts.length > 0) {
+      html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">';
+      atts.forEach(function(att) {
+        var name = att.filename || att.name || 'Document';
+        var url = att.storage_url || att.url || '';
+        html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--sw-light);border-radius:4px;font-size:10px;color:var(--sw-mid);text-decoration:none;font-weight:600">';
+        html += '&#128206; ' + escapeHtml(name) + '</a>';
+      });
+      html += '</div>';
+    }
+
+    if (isInbound) {
+      html += '<button class="po-email-reply-btn" style="display:none;margin-top:6px;padding:4px 10px;background:var(--sw-dark);color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer" onclick="event.stopPropagation();openPOEmailComposeReply(\'' + poId + '\',\'' + escapeHtml(subj).replace(/'/g, "\\'") + '\')">Reply</button>';
     }
     html += '</div>';
   });
@@ -1454,4 +1501,96 @@ async function loadAutoCommsTimeline(jobId) {
     el.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:8px 0;">Could not load automated comms.</div>';
   }
 }
+
+// ══════════════════════════════════════════════════════
+// EMAIL INBOX — aggregated view of all supplier + council emails
+// ══════════════════════════════════════════════════════
+
+window.loadEmailInbox = async function(filter, btnEl) {
+  // Update active chip
+  if (btnEl) {
+    var chips = btnEl.parentElement.querySelectorAll('.inbox-chip');
+    chips.forEach(function(c) { c.classList.remove('active'); });
+    btnEl.classList.add('active');
+  }
+
+  var el = document.getElementById('emailInboxList');
+  if (!el) return;
+  el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec);padding:12px;">Loading...</div>';
+
+  try {
+    var params = { limit: '30' };
+    if (filter === 'unread') params.unread_only = 'true';
+    if (filter === 'po') params.type = 'po';
+    if (filter === 'council') params.type = 'council';
+
+    var data = await opsFetch('get_inbox', params);
+    var emails = data.emails || [];
+    var unreadCount = data.unread_count || 0;
+
+    // Update badges
+    var badge = document.getElementById('emailUnreadCount');
+    if (badge) badge.textContent = unreadCount > 0 ? '(' + unreadCount + ' unread)' : '';
+    var navBadge = document.getElementById('inboxBadge');
+    if (navBadge && unreadCount > 0) { navBadge.textContent = unreadCount; navBadge.style.display = ''; }
+    var navBadgeMobile = document.getElementById('inboxBadgeMobile');
+    if (navBadgeMobile && unreadCount > 0) { navBadgeMobile.textContent = unreadCount; navBadgeMobile.style.display = ''; }
+
+    if (emails.length === 0) {
+      el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec);padding:20px;text-align:center;">No emails found.</div>';
+      return;
+    }
+
+    var html = '';
+    var currentDay = '';
+    emails.forEach(function(em) {
+      var dateStr = (em.created_at || '').slice(0, 10);
+      var dayLabel = dateStr === new Date().toISOString().slice(0, 10) ? 'Today' : (dateStr === new Date(Date.now() - 86400000).toISOString().slice(0, 10) ? 'Yesterday' : dateStr);
+      if (dayLabel !== currentDay) {
+        currentDay = dayLabel;
+        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-text-sec);text-transform:uppercase;padding:8px 0 4px;border-bottom:1px solid var(--sw-border);margin-top:8px">' + dayLabel + '</div>';
+      }
+
+      var isInbound = em.direction === 'inbound' || em.direction === 'received';
+      var isUnread = isInbound && !em.read_at;
+      var arrow = isInbound ? '<span style="color:var(--sw-blue, #3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
+      var dot = isUnread ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sw-blue, #3498DB);margin-right:4px"></span>' : '';
+      var time = em.created_at ? new Date(em.created_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '';
+      var who = isInbound ? (em.from_email || '').split('@')[0] : 'You';
+      var jobNum = em.jobs ? em.jobs.job_number : '';
+      var subj = em.subject || '';
+      var preview = (em.body_text || '').split('\n')[0] || '';
+      if (preview.length > 80) preview = preview.substring(0, 80) + '...';
+
+      var jobId = em.job_id || '';
+      html += '<div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid var(--sw-border);cursor:pointer;' + (isUnread ? 'font-weight:600;' : '') + '" onclick="openJobDetailAndFocus(\'' + jobId + '\',\'' + (em.po_id || '') + '\')">';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="display:flex;justify-content:space-between;font-size:12px">';
+      html += '<span>' + dot + arrow + ' ' + escapeHtml(who) + (jobNum ? ' — ' + escapeHtml(jobNum) : '') + '</span>';
+      html += '<span style="color:var(--sw-text-sec);font-size:11px">' + time + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(subj) + '</div>';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(preview) + '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--sw-red);padding:12px;">Error loading emails: ' + (e.message || e) + '</div>';
+  }
+};
+
+// Navigate to job detail and focus on the PO/email
+window.openJobDetailAndFocus = function(jobId, poId) {
+  if (!jobId) return;
+  // Use the existing job detail navigation
+  if (typeof openJobDetail === 'function') {
+    openJobDetail(jobId);
+    // After load, switch to money tab (where PO threads live)
+    setTimeout(function() {
+      if (typeof switchJobTab === 'function') switchJobTab('money');
+    }, 500);
+  }
+};
 
