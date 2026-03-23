@@ -807,6 +807,9 @@ function renderOverviewView(data) {
   });
   html += '</div>';
 
+  // Section 4b: Council / Engineering (async-loaded)
+  html += '<div id="jdOverviewCouncil"></div>';
+
   // Section 5: Recent Activity
   html += '<div style="background:var(--sw-card);padding:14px;box-shadow:var(--sw-shadow);">';
   html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Recent Activity</div>';
@@ -826,6 +829,56 @@ function renderOverviewView(data) {
   html += '</div>';
 
   document.getElementById('jdOverview').innerHTML = html;
+
+  // Load council section async (shows button or status)
+  loadOverviewCouncilSection(j.id, j.type);
+}
+
+async function loadOverviewCouncilSection(jobId, jobType) {
+  var el = document.getElementById('jdOverviewCouncil');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_council_submissions', { job_id: jobId });
+    var subs = resp.submissions || [];
+    if (subs.length === 0) {
+      // Show start button for patio jobs only
+      if (jobType === 'patio') {
+        el.innerHTML = '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Council / Engineering</div>' +
+          '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:8px;">No council process started for this job.</div>' +
+          '<button class="btn btn-secondary" style="width:100%;font-size:12px;font-weight:600;" onclick="openCouncilStartModal(\'' + jobId + '\')">' +
+          '&#127970; Start Council / Engineering Process</button></div>';
+      }
+      return;
+    }
+    // Show council status summary
+    var sub = subs[0];
+    var steps = sub.steps || [];
+    var completed = steps.filter(function(s) { return s.status === 'complete'; }).length;
+    var html = '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Council / Engineering</div>';
+    html += '<div style="font-size:12px;margin-bottom:6px;color:var(--sw-dark);font-weight:600;">' + completed + '/' + steps.length + ' steps complete — ' + (sub.overall_status || '').replace(/_/g, ' ') + '</div>';
+    html += '<div style="display:flex;gap:2px;margin-bottom:8px;">';
+    steps.forEach(function(step) {
+      var c = step.status === 'complete' ? 'var(--sw-green)' : step.status === 'in_progress' ? 'var(--sw-mid)' : step.status === 'blocked' ? 'var(--sw-red)' : '#E0E0E0';
+      html += '<div title="' + escapeHtml(step.name) + '" style="flex:1;height:6px;border-radius:3px;background:' + c + ';"></div>';
+    });
+    html += '</div>';
+    steps.forEach(function(step) {
+      var icon = step.status === 'complete' ? '&#10003;' : step.status === 'in_progress' ? '&#9679;' : step.status === 'blocked' ? '&#10007;' : '&#9675;';
+      var color = step.status === 'complete' ? 'var(--sw-green)' : step.status === 'in_progress' ? 'var(--sw-mid)' : step.status === 'blocked' ? 'var(--sw-red)' : 'var(--sw-text-sec)';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;">';
+      html += '<span style="color:' + color + ';">' + icon + '</span>';
+      html += '<span>' + escapeHtml(step.name) + '</span>';
+      if (step.vendor) html += '<span style="color:var(--sw-text-sec);font-size:11px;">(' + escapeHtml(step.vendor) + ')</span>';
+      html += '</div>';
+    });
+    html += '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" style="font-size:11px;" onclick="showView(\'approvals\')">View in Approvals &#8594;</button></div>';
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
 }
 
 // ════════════════════════════════════════════════════════════
