@@ -833,6 +833,14 @@ async function pushPOToXero(poId) {
 
 // Unified invoice modal — replaces separate openInvoiceModal + openDepositModal
 var _uniInvSelectedQuoteDocs = [];
+var _currentRefSuffix = '';
+
+function updateRefSuffixDisplay() {
+  var refEl = document.getElementById('invReference');
+  if (!refEl || !_invJobCache) return;
+  var base = _invJobCache.job_number || '';
+  refEl.value = _currentRefSuffix ? base + '-' + _currentRefSuffix : base;
+}
 
 async function openUnifiedInvoiceModal(preSelectJobId) {
   resetUnifiedInvoiceModal();
@@ -1068,8 +1076,22 @@ function buildSmartInvoiceDescription(prefix, job) {
     parts.push((type.charAt(0).toUpperCase() + type.slice(1)) + ' Installation');
   }
 
+  // Line 1: Scope details (type, size, materials, colour, suburb)
   if (suburb) parts.push(suburb);
-  return parts.join(', ').replace(', —,', ' —');
+  var scopeLine = parts.join(', ').replace(', —,', ' —');
+
+  // Line 2: Client name + full address
+  var clientLine = job.client_name || '';
+  var addrParts = [job.site_address, job.site_suburb].filter(Boolean);
+  var addrLine = addrParts.join(', ');
+  if (clientLine && addrLine) clientLine += ', ' + addrLine;
+  else if (addrLine) clientLine = addrLine;
+
+  // Line 3: Job number + account code + GST note
+  var acLabel = accountCodeLabel(job.type || '');
+  var metaLine = (job.job_number || '') + ' | ' + acLabel + ' | GST Inclusive';
+
+  return scopeLine + '\n' + clientLine + '\n' + metaLine;
 }
 
 function addDepositPreset(pct) {
@@ -1080,7 +1102,9 @@ function addDepositPreset(pct) {
   if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
   var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
   var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
-  var desc = buildSmartInvoiceDescription(pct + '% Deposit', _invJobCache);
+  var desc = buildSmartInvoiceDescription(pct + '% Deposit (' + fmt$(totalIncGst) + ' inc GST)', _invJobCache);
+  _currentRefSuffix = 'DEP' + pct;
+  updateRefSuffixDisplay();
   addInvLine(desc, 1, depositExGst);
 }
 
@@ -1088,8 +1112,11 @@ function addCouncilFeePreset() {
   var defaultFee = Math.round((350 / 1.1) * 100) / 100; // $350 inc GST → ex GST
   var desc = 'Council Application Fee';
   if (_invJobCache) {
-    desc += ' — ' + (_invJobCache.site_address || _invJobCache.site_suburb || _invJobCache.client_name || '');
+    desc += ' — ' + [_invJobCache.site_address, _invJobCache.site_suburb, _invJobCache.client_name].filter(Boolean).join(', ');
+    desc += '\n' + (_invJobCache.job_number || '') + ' | ' + accountCodeLabel(_invJobCache.type || '') + ' | GST Inclusive';
   }
+  _currentRefSuffix = 'COUNCIL';
+  updateRefSuffixDisplay();
   addInvLine(desc, 1, defaultFee);
 }
 
@@ -1102,7 +1129,9 @@ function addBalancePreset() {
   var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
   if (remaining <= 0) { alert('This job appears to be fully invoiced. No remaining balance.'); return; }
   var exGst = Math.round((remaining / 1.1) * 100) / 100;
-  var desc = buildSmartInvoiceDescription('Final Balance', _invJobCache);
+  var desc = buildSmartInvoiceDescription('Final Balance (' + fmt$(remaining) + ' inc GST)', _invJobCache);
+  _currentRefSuffix = 'BAL';
+  updateRefSuffixDisplay();
   addInvLine(desc, 1, exGst);
 }
 
@@ -1221,6 +1250,7 @@ async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail, openIn
 
   invData.line_items = invData.line_items_override;
   invData.reference = _invJobCache ? _invJobCache.job_number : '';
+  invData.reference_suffix = _currentRefSuffix || undefined;
   invData.contact_name = _invJobCache ? _invJobCache.client_name : '';
   invData.xero_contact_id = _invJobCache ? _invJobCache.xero_contact_id : undefined;
 
@@ -1280,6 +1310,7 @@ function resetUnifiedInvoiceModal() {
   _invJobCache = null;
   _invJobDetailCache = null;
   _uniInvSelectedQuoteDocs = [];
+  _currentRefSuffix = '';
   hideUnifiedInvoiceSections();
 }
 
