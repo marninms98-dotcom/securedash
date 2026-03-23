@@ -2847,43 +2847,55 @@
 <!-- ══════════ PO EMAIL COMPOSE MODAL ══════════ -->
 <div class="modal-overlay" id="poEmailComposeModal">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title" id="poComposeTitle">Email Supplier</div>
-    <div class="form-group">
-      <label class="form-label">To</label>
-      <div class="po-compose-to">
-        <input type="email" class="form-input" id="poComposeTo" placeholder="supplier@example.com">
+    <!-- Compose form -->
+    <div id="poComposeFormView">
+      <div class="modal-title" id="poComposeTitle">Email Supplier</div>
+      <div class="form-group">
+        <label class="form-label">To</label>
+        <div class="po-compose-to">
+          <input type="email" class="form-input" id="poComposeTo" placeholder="supplier@example.com">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <input type="text" class="form-input" id="poComposeSubject" placeholder="Subject line">
+      </div>
+      <div class="form-group po-compose-template">
+        <label class="form-label">Template</label>
+        <select class="form-select" id="poComposeTemplate" onchange="applyPOEmailTemplate(this.value)" style="padding:8px 10px;">
+          <option value="new_order">New Order</option>
+          <option value="delivery_change">Delivery Change</option>
+          <option value="order_query">Order Query</option>
+          <option value="cancellation">Cancellation</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Body</label>
+        <textarea class="form-textarea" id="poComposeBody" rows="6" style="min-height:120px;resize:vertical;" placeholder="Email body..."></textarea>
+      </div>
+      <div class="po-compose-attach">
+        <label><input type="checkbox" id="poComposeAttachPDF"> Attach PO PDF</label>
+        <label style="border:1px solid var(--sw-border);border-radius:3px;padding:3px 8px;font-size:11px;">
+          Attach files <input type="file" id="poComposeFiles" multiple style="display:none;" onchange="updatePOComposeFileList()">
+        </label>
+      </div>
+      <div class="po-compose-files" id="poComposeFileList"></div>
+      <input type="hidden" id="poComposePoId">
+      <input type="hidden" id="poComposeJobId">
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal('poEmailComposeModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="previewPOEmail()">&#9993; Preview &amp; Send</button>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Subject</label>
-      <input type="text" class="form-input" id="poComposeSubject" placeholder="Subject line">
-    </div>
-    <div class="form-group po-compose-template">
-      <label class="form-label">Template</label>
-      <select class="form-select" id="poComposeTemplate" onchange="applyPOEmailTemplate(this.value)" style="padding:8px 10px;">
-        <option value="new_order">New Order</option>
-        <option value="delivery_change">Delivery Change</option>
-        <option value="order_query">Order Query</option>
-        <option value="cancellation">Cancellation</option>
-        <option value="custom">Custom</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Body</label>
-      <textarea class="form-textarea" id="poComposeBody" rows="6" style="min-height:120px;resize:vertical;" placeholder="Email body..."></textarea>
-    </div>
-    <div class="po-compose-attach">
-      <label><input type="checkbox" id="poComposeAttachPDF"> Attach PO PDF</label>
-      <label style="border:1px solid var(--sw-border);border-radius:3px;padding:3px 8px;font-size:11px;">
-        Attach files <input type="file" id="poComposeFiles" multiple style="display:none;" onchange="updatePOComposeFileList()">
-      </label>
-    </div>
-    <div class="po-compose-files" id="poComposeFileList"></div>
-    <input type="hidden" id="poComposePoId">
-    <input type="hidden" id="poComposeJobId">
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('poEmailComposeModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="sendPOEmail()">&#9993; Send Email</button>
+    <!-- Preview view (toggled) -->
+    <div id="poComposePreviewView" style="display:none;">
+      <div class="modal-title">Preview Email</div>
+      <div id="poPreviewContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="backFromPOPreview()">&#8592; Go Back</button>
+        <button class="btn btn-primary" onclick="sendPOEmail()" style="background:var(--sw-green)">&#9993; Send Now</button>
+      </div>
     </div>
   </div>
 </div>

@@ -1105,6 +1105,12 @@ var _poEmailTemplates = {
 };
 
 function openPOEmailCompose(poId) {
+  // Reset preview/form toggle (always start on compose form)
+  var formView = document.getElementById('poComposeFormView');
+  var previewView = document.getElementById('poComposePreviewView');
+  if (formView) formView.style.display = '';
+  if (previewView) previewView.style.display = 'none';
+
   if (!poId) { showToast('No PO selected', 'warning'); return; }
 
   var po = _allPOs.find(function(p) { return p.id === poId; });
@@ -1196,6 +1202,69 @@ function updatePOComposeFileList() {
   for (var i = 0; i < input.files.length; i++) names.push(input.files[i].name);
   list.textContent = names.join(', ');
 }
+
+// ── Email Preview Step ──
+window.previewPOEmail = function() {
+  var to = (document.getElementById('poComposeTo').value || '').trim();
+  var subject = (document.getElementById('poComposeSubject').value || '').trim();
+  var body = (document.getElementById('poComposeBody').value || '').trim();
+  var attachPDF = document.getElementById('poComposeAttachPDF').checked;
+  var poId = document.getElementById('poComposePoId').value;
+
+  // Validate
+  if (!to) { showToast('Recipient email is required', 'warning'); return; }
+  if (!to.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email address', 'warning'); return; }
+  if (!subject) { showToast('Subject is required', 'warning'); return; }
+  if (!body) { showToast('Email body is required', 'warning'); return; }
+
+  // Build preview
+  var fromAddr = 'orders@secureworksgroup.app';
+  var html = '';
+  html += '<div style="border:1px solid var(--sw-border);border-radius:8px;overflow:hidden;margin-bottom:12px">';
+
+  // Header
+  html += '<div style="background:#293C46;padding:14px 16px;color:#fff">';
+  html += '<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:2px">From: ' + escapeHtml(fromAddr) + '</div>';
+  html += '<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px">To: ' + escapeHtml(to) + '</div>';
+  html += '<div style="font-size:14px;font-weight:700">' + escapeHtml(subject) + '</div>';
+  html += '</div>';
+
+  // Body
+  html += '<div style="padding:16px;background:#fff;font-size:13px;line-height:1.6;white-space:pre-wrap;font-family:Helvetica,Arial,sans-serif;min-height:100px;max-height:250px;overflow-y:auto">';
+  html += escapeHtml(body);
+  html += '</div>';
+
+  // Attachments
+  var atts = [];
+  if (attachPDF && poId) atts.push('PO PDF (auto-generated)');
+  var files = document.getElementById('poComposeFiles');
+  if (files && files.files) {
+    for (var i = 0; i < files.files.length; i++) atts.push(files.files[i].name);
+  }
+  if (atts.length > 0) {
+    html += '<div style="padding:10px 16px;background:var(--sw-light);border-top:1px solid var(--sw-border);font-size:12px">';
+    html += '<strong>Attachments:</strong><br>';
+    atts.forEach(function(a) { html += '<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 0">&#128206; ' + escapeHtml(a) + '</span><br>'; });
+    html += '</div>';
+  }
+
+  // Footer
+  html += '<div style="padding:10px 16px;background:#f5f5f7;border-top:1px solid var(--sw-border);font-size:10px;color:#999">';
+  html += 'SecureWorks Group Pty Ltd | ABN 64 689 223 416';
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;margin-top:4px">This is how the recipient will see your email</div>';
+
+  document.getElementById('poPreviewContent').innerHTML = html;
+  document.getElementById('poComposeFormView').style.display = 'none';
+  document.getElementById('poComposePreviewView').style.display = '';
+};
+
+window.backFromPOPreview = function() {
+  document.getElementById('poComposePreviewView').style.display = 'none';
+  document.getElementById('poComposeFormView').style.display = '';
+};
 
 async function sendPOEmail() {
   var to = (document.getElementById('poComposeTo').value || '').trim();
