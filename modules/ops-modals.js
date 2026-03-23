@@ -842,8 +842,11 @@ function updateRefSuffixDisplay() {
   refEl.value = _currentRefSuffix ? base + '-' + _currentRefSuffix : base;
 }
 
-async function openUnifiedInvoiceModal(preSelectJobId) {
+var _invSelectedContactId = null; // Track selected contact for multi-neighbour jobs
+
+async function openUnifiedInvoiceModal(preSelectJobId, preSelectContactId) {
   resetUnifiedInvoiceModal();
+  _invSelectedContactId = preSelectContactId || null;
   document.getElementById('unifiedInvoiceModal').classList.add('active');
 
   // Set default due date to 14 days from now
@@ -1099,11 +1102,22 @@ function addDepositPreset(pct) {
   var pricing = _invJobCache.pricing_json;
   if (typeof pricing === 'string') pricing = JSON.parse(pricing);
   var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
+
+  // Per-contact amount: use contact's quote_value if selected
+  var contactLabel = '';
+  if (_invSelectedContactId && _invJobDetailCache && _invJobDetailCache.job_contacts) {
+    var contact = _invJobDetailCache.job_contacts.find(function(c) { return c.id === _invSelectedContactId; });
+    if (contact && contact.quote_value_ex_gst > 0) {
+      totalIncGst = contact.quote_value_ex_gst * 1.1;
+      contactLabel = contact.contact_label || '';
+    }
+  }
+
   if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
   var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
   var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
   var desc = buildSmartInvoiceDescription(pct + '% Deposit (' + fmt$(totalIncGst) + ' inc GST)', _invJobCache);
-  _currentRefSuffix = 'DEP' + pct;
+  _currentRefSuffix = (contactLabel ? contactLabel + '-' : '') + 'DEP' + pct;
   updateRefSuffixDisplay();
   addInvLine(desc, 1, depositExGst);
 }
@@ -1125,12 +1139,30 @@ function addBalancePreset() {
   var pricing = _invJobCache.pricing_json;
   if (typeof pricing === 'string') pricing = JSON.parse(pricing);
   var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
-  var invSummary = _invJobDetailCache.invoice_summary;
-  var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
-  if (remaining <= 0) { alert('This job appears to be fully invoiced. No remaining balance.'); return; }
+
+  // Per-contact balance: use contact's quoted amount and their invoiced total
+  var contactLabel = '';
+  var remaining;
+  if (_invSelectedContactId && _invJobDetailCache.job_contacts) {
+    var contact = _invJobDetailCache.job_contacts.find(function(c) { return c.id === _invSelectedContactId; });
+    if (contact) {
+      totalIncGst = contact.quote_value_ex_gst * 1.1;
+      var contactInvoiced = (_invJobDetailCache.invoices || [])
+        .filter(function(inv) { return inv.job_contact_id === _invSelectedContactId && ['VOIDED','DELETED'].indexOf(inv.status) < 0; })
+        .reduce(function(s, inv) { return s + (parseFloat(inv.total) || 0); }, 0);
+      remaining = Math.max(0, totalIncGst - contactInvoiced);
+      contactLabel = contact.contact_label || '';
+    }
+  }
+  if (remaining === undefined) {
+    var invSummary = _invJobDetailCache.invoice_summary;
+    remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
+  }
+
+  if (remaining <= 0) { alert('This contact appears fully invoiced.'); return; }
   var exGst = Math.round((remaining / 1.1) * 100) / 100;
   var desc = buildSmartInvoiceDescription('Final Balance (' + fmt$(remaining) + ' inc GST)', _invJobCache);
-  _currentRefSuffix = 'BAL';
+  _currentRefSuffix = (contactLabel ? contactLabel + '-' : '') + 'BAL';
   updateRefSuffixDisplay();
   addInvLine(desc, 1, exGst);
 }
@@ -1151,11 +1183,26 @@ function gatherInvoiceData() {
 
   if (lineItems.length === 0) { alert('Please add at least one line item.'); return null; }
 
-  return {
+  var invData = {
     job_id: jobId,
     line_items_override: lineItems,
     due_date: document.getElementById('invDueDate').value || undefined,
   };
+
+  // Include contact ID if selected (multi-neighbour jobs)
+  if (_invSelectedContactId) {
+    invData.job_contact_id = _invSelectedContactId;
+    // Also resolve the contact's Xero contact ID and name
+    if (_invJobDetailCache && _invJobDetailCache.job_contacts) {
+      var contact = _invJobDetailCache.job_contacts.find(function(c) { return c.id === _invSelectedContactId; });
+      if (contact) {
+        if (contact.xero_contact_id) invData.xero_contact_id = contact.xero_contact_id;
+        invData.contact_name = contact.client_name;
+      }
+    }
+  }
+
+  return invData;
 }
 
 function confirmUnifiedInvoiceSend() {

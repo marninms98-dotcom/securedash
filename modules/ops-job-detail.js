@@ -1260,6 +1260,17 @@ function approveInvoiceFromPreview(inv, sendEmail) {
   });
 }
 
+// Sync fencing neighbours from scope/pricing → job_contacts
+window.syncFencingNeighbours = function(jobId) {
+  showToast('Syncing neighbours...', 'info');
+  opsPost('sync_fencing_neighbours', { job_id: jobId }).then(function(res) {
+    showToast('Synced ' + (res.synced_count || 0) + ' contacts', 'success');
+    if (_currentJobId) refreshJobDetail(_currentJobId);
+  }).catch(function(err) {
+    showToast('Sync failed: ' + (err.message || err), 'error');
+  });
+};
+
 function confirmVoidInvoice(inv) {
   var action = inv.status === 'DRAFT' ? 'delete' : 'void';
   var msg = action === 'delete'
@@ -1370,6 +1381,47 @@ function renderMoneyView(data) {
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Collected</span><strong style="color:var(--sw-green)">' + fmt$(invoicePaid) + '</strong></div></div>';
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Still to Invoice</span><strong style="color:' + (quoteVal - invoicedTotal > 0 ? 'var(--sw-orange)' : 'var(--sw-green)') + '">' + fmt$(Math.max(0, quoteVal - invoicedTotal)) + '</strong></div></div>';
 
+  // ── Job Contacts panel (multi-neighbour fencing) ──
+  var jobContacts = data.job_contacts || [];
+  var isMultiContact = jobContacts.length > 1;
+  var hasNeighbourData = j.pricing_json && j.pricing_json.neighbour_splits && j.pricing_json.neighbour_splits.neighbours && j.pricing_json.neighbour_splits.neighbours.length > 0;
+
+  if (isMultiContact) {
+    html += '<div style="margin-top:10px;padding:12px;background:var(--sw-card);border-radius:10px;box-shadow:var(--sw-shadow);border-left:4px solid var(--sw-orange)">';
+    html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">JOB CONTACTS — ' + jobContacts.length + ' payers</div>';
+    jobContacts.forEach(function(c) {
+      var invoicedForContact = salesInvoices.filter(function(inv) { return inv.job_contact_id === c.id; }).reduce(function(s, inv) { return s + (parseFloat(inv.total) || 0); }, 0);
+      var paidForContact = salesInvoices.filter(function(inv) { return inv.job_contact_id === c.id; }).reduce(function(s, inv) { return s + (parseFloat(inv.amount_paid) || 0); }, 0);
+      var remaining = Math.max(0, (c.quote_value_ex_gst * 1.1) - invoicedForContact);
+      var label = c.contact_label || '?';
+      var isPrimary = c.is_primary;
+      var typeLabel = isPrimary ? 'primary' : 'neighbour';
+      var runs = c.assigned_runs || [];
+
+      html += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--sw-border);">';
+      html += '<div style="width:28px;height:28px;border-radius:50%;background:' + (isPrimary ? 'var(--sw-dark)' : 'var(--sw-orange)') + ';color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + escapeHtml(label) + '</div>';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="font-weight:600;font-size:13px">' + escapeHtml(c.client_name || 'Unknown') + ' <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px">(' + typeLabel + ')</span></div>';
+      if (runs.length > 0) html += '<div style="font-size:11px;color:var(--sw-text-sec)">Runs: ' + runs.join(', ') + '</div>';
+      html += '<div style="font-size:11px;margin-top:2px">';
+      html += '<span style="color:var(--sw-text-sec)">Quoted:</span> <strong>' + fmt$(c.quote_value_ex_gst * 1.1) + '</strong>';
+      html += ' &nbsp;|&nbsp; <span style="color:var(--sw-text-sec)">Invoiced:</span> <strong>' + fmt$(invoicedForContact) + '</strong>';
+      html += ' &nbsp;|&nbsp; <span style="color:var(--sw-text-sec)">Paid:</span> <strong style="color:var(--sw-green)">' + fmt$(paidForContact) + '</strong>';
+      if (remaining > 0) html += ' &nbsp;|&nbsp; <span style="color:var(--sw-orange);font-weight:600">Remaining: ' + fmt$(remaining) + '</span>';
+      html += '</div>';
+      html += '</div>';
+      html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;font-size:10px;white-space:nowrap" onclick="openUnifiedInvoiceModal(\'' + j.id + '\',\'' + c.id + '\')">+ Invoice</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else if (!isMultiContact && hasNeighbourData && jobContacts.length === 0) {
+    // Neighbours in scope but no job_contacts — offer sync
+    html += '<div style="margin-top:10px;padding:12px;background:#FEF3CD;border-radius:10px;font-size:12px;color:#92400E;display:flex;align-items:center;gap:8px">';
+    html += '<span>This fencing job has neighbours in the scope but no contacts set up.</span>';
+    html += '<button class="btn btn-sm" style="background:var(--sw-orange);color:#fff" onclick="syncFencingNeighbours(\'' + j.id + '\')">Set Up Contacts</button>';
+    html += '</div>';
+  }
+
   // Individual invoices — table view
   _currentInvoices = salesInvoices;
   if (salesInvoices.length > 0) {
@@ -1378,6 +1430,7 @@ function renderMoneyView(data) {
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
     html += '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">';
     html += '<th style="padding:4px 6px;">Invoice</th>';
+    if (isMultiContact) html += '<th style="padding:4px 6px;">Contact</th>';
     html += '<th style="padding:4px 6px;">Description</th>';
     html += '<th style="padding:4px 6px;">Status</th>';
     html += '<th style="padding:4px 6px;">Due</th>';
@@ -1421,6 +1474,11 @@ function renderMoneyView(data) {
 
       html += '<tr style="border-bottom:1px solid var(--sw-border);cursor:pointer;' + rowBg + '" onclick="openInvoicePreview(_currentInvoices[' + i + '])">';
       html += '<td style="padding:6px;font-weight:600;' + rowStyle + '">' + (inv.invoice_number || 'Draft') + '</td>';
+      if (isMultiContact) {
+        var contactMatch = jobContacts.find(function(c) { return c.id === inv.job_contact_id; });
+        var contactLabel = contactMatch ? (contactMatch.contact_label + ' — ' + (contactMatch.client_name || '').split(' ')[0]) : '';
+        html += '<td style="padding:6px;font-size:11px;' + rowStyle + '">' + escapeHtml(contactLabel) + '</td>';
+      }
       html += '<td style="padding:6px;color:var(--sw-text-sec);' + rowStyle + '">' + escapeHtml(firstDesc) + '</td>';
       html += '<td style="padding:6px;"><span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;background:' + statusBg + ';color:' + statusColor + ';' + (isVoided ? 'text-decoration:line-through;' : '') + '">' + statusLabel + '</span></td>';
       html += '<td style="padding:6px;white-space:nowrap;">' + (inv.due_date ? fmtDate(inv.due_date) : '-') + '</td>';
