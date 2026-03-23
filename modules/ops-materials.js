@@ -453,20 +453,29 @@ function renderMaterialsKanban() {
       }
       html += '</div>';
 
-      // PO Email Thread preview + toggle
+      // PO Email summary + expand for thread
       var emailCount = (po.communications || po.email_threads || []).length;
       var lastEmail = emailCount > 0 ? (po.communications || po.email_threads)[emailCount - 1] : null;
+      var hasUnread = (po.communications || po.email_threads || []).some(function(e) { return (e.direction === 'inbound' || e.direction === 'received') && !e.read_at; });
       if (emailCount > 0 && lastEmail) {
-        var emailDir = lastEmail.direction === 'inbound' ? '&#8601;' : '&#8599;';
-        var emailPreview = (lastEmail.subject || lastEmail.body_text || '').slice(0, 60);
-        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;padding:3px 0;border-top:1px solid var(--sw-border);">';
-        html += emailDir + ' ' + emailCount + ' email' + (emailCount > 1 ? 's' : '') + ' — last: ' + escapeHtml(emailPreview);
+        var emailDir = (lastEmail.direction === 'inbound' || lastEmail.direction === 'received') ? '&#8601;' : '&#8599;';
+        var emailPreview = (lastEmail.subject || lastEmail.body_text || '').slice(0, 50);
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;padding:4px 0;border-top:1px solid var(--sw-border);display:flex;align-items:center;gap:4px;">';
+        if (hasUnread) html += '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--sw-blue,#3498DB);"></span>';
+        html += '<span>&#128233; ' + emailCount + '</span>';
+        html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + emailDir + ' "' + escapeHtml(emailPreview) + '"</span>';
+        html += '<button onclick="event.stopPropagation();togglePOCardExpand(\'' + po.id + '\')" style="font-size:10px;padding:1px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9660;</button>';
+        html += '</div>';
+      } else if (po.status !== 'draft') {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;padding:4px 0;border-top:1px solid var(--sw-border);">';
+        html += '&#128233; No emails yet';
         html += '</div>';
       }
-      html += '<div class="po-email-thread-toggle" onclick="event.stopPropagation();togglePOEmailThread(\'' + po.id + '\', this)">';
-      html += 'Supplier Emails <span class="po-email-count" id="poEmailCount_' + po.id + '">(' + emailCount + ')</span>';
+      // Expandable email thread + inline reply (accordion via togglePOCardExpand)
+      html += '<div id="poCardBody_' + po.id + '" style="display:' + (_expandedPOCardId === po.id ? 'block' : 'none') + ';margin-top:6px;padding-top:6px;border-top:1px solid var(--sw-border);">';
+      html += '<div id="poCardThread_' + po.id + '"><div style="font-size:11px;color:var(--sw-text-sec);">Loading emails...</div></div>';
+      if (typeof renderInlineReplyBar === 'function') html += renderInlineReplyBar(po.id, 'po', lastEmail);
       html += '</div>';
-      html += '<div class="po-email-thread" id="poThread_' + po.id + '" style="display:none;"></div>';
 
       html += '</div>';
     });

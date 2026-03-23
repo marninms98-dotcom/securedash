@@ -2182,12 +2182,61 @@ function renderFilesView(data) {
   html += '<button class="btn btn-primary btn-sm" onclick="submitJobNote()">Add</button>';
   html += '</div>';
 
+  // ── Thread Documents (from PO and council email attachments) ──
+  html += '<div id="jdThreadDocs"></div>';
+
   if (!readiness && jobPhotos.length === 0 && receiptPhotos.length === 0 && (data.documents || []).length === 0 && noteEvents.length === 0) {
     html = '<div class="empty-state"><div class="empty-state-icon">&#128247;</div><div class="empty-state-text">No files or notes yet</div></div>' + html.slice(html.lastIndexOf('<div class="jd-note-input-wrap">'));
   }
 
   document.getElementById('jdFiles').innerHTML = html;
+
+  // Async-load thread documents
+  loadThreadDocuments(j.id);
 }
+
+async function loadThreadDocuments(jobId) {
+  var el = document.getElementById('jdThreadDocs');
+  if (!el) return;
+  try {
+    var data = await opsFetch('list_po_communications', { job_id: jobId });
+    var comms = data.emails || data || [];
+    if (!Array.isArray(comms)) comms = [];
+
+    // Extract all attachments across all threads
+    var docs = [];
+    comms.forEach(function(em) {
+      var atts = em.attachments_json || em.attachments || [];
+      if (!Array.isArray(atts)) return;
+      atts.forEach(function(att) {
+        var isInbound = em.direction === 'inbound' || em.direction === 'received';
+        docs.push({
+          filename: att.filename || att.name || 'Attachment',
+          url: att.storage_url || att.url || att.publicUrl || '',
+          who: isInbound ? ('From ' + (em.from_email || '').split('@')[0]) : ('Sent to ' + (em.to_email || '').split('@')[0]),
+          date: em.created_at || em.sent_at || '',
+          type: em.communication_type || 'purchase_order',
+        });
+      });
+    });
+
+    if (docs.length === 0) { el.innerHTML = ''; return; }
+
+    var html = '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Thread Documents</div>';
+    docs.forEach(function(doc) {
+      var dateStr = doc.date ? new Date(doc.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+      var typeBadge = doc.type === 'council' ? '<span style="font-size:9px;padding:1px 4px;border-radius:2px;background:rgba(128,0,255,0.1);color:#8B5CF6;margin-right:4px;">Council</span>' : '';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px;">';
+      html += '<span>&#128206;</span>';
+      html += '<span style="flex:1;">' + typeBadge + (doc.url ? '<a href="' + escapeHtml(doc.url) + '" target="_blank" style="color:var(--sw-mid);text-decoration:none;">' + escapeHtml(doc.filename) + '</a>' : escapeHtml(doc.filename)) + '</span>';
+      html += '<span style="color:var(--sw-text-sec);font-size:11px;">' + escapeHtml(doc.who) + '</span>';
+      html += '<span style="color:var(--sw-text-sec);font-size:11px;">' + dateStr + '</span>';
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
 
 window.handleDocDrop = function(e) {
   var files = e.dataTransfer.files;

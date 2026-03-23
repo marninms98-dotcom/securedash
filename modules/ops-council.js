@@ -123,12 +123,14 @@ function toggleCouncilCard(subId) {
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
+var _expandedCouncilStepKey = null; // 'subId_stepIdx'
+
 function renderCouncilCardDetail(sub) {
   var html = '';
   var steps = sub.steps || [];
   var emails = sub.email_threads || [];
 
-  // Full step list
+  // Full step list with per-step email counts and expandable threads
   html += '<div style="font-size:11px;font-weight:600;color:var(--sw-dark);margin-bottom:4px;">Steps</div>';
   steps.forEach(function(step, idx) {
     var statusIcon = step.status === 'complete' ? '<span style="color:var(--sw-green);">&#10003;</span>' :
@@ -136,37 +138,83 @@ function renderCouncilCardDetail(sub) {
                      step.status === 'blocked' ? '<span style="color:var(--sw-red);">&#10007;</span>' :
                      '<span style="color:var(--sw-text-sec);">&#9675;</span>';
 
-    html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid var(--sw-border);">';
+    // Count emails for this step (match by step_index in reply-to encoding or by timing)
+    var stepEmails = emails.filter(function(em) {
+      // Best effort: match by subject containing step name, or by council_step_index if available
+      return (em.subject && em.subject.indexOf(step.name) >= 0) || em.council_step_index === idx;
+    });
+    var stepEmailCount = stepEmails.length;
+
+    // Days in this step
+    var daysInStep = 0;
+    if (step.started_at && step.status !== 'complete') {
+      daysInStep = Math.floor((Date.now() - new Date(step.started_at).getTime()) / 86400000);
+    }
+
+    var stepKey = sub.id + '_' + idx;
+    var isStepExpanded = _expandedCouncilStepKey === stepKey;
+
+    html += '<div style="border-bottom:1px solid var(--sw-border);">';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;cursor:pointer;" onclick="event.stopPropagation();toggleCouncilStepExpand(\'' + sub.id + '\',' + idx + ')">';
     html += statusIcon;
     html += '<span style="flex:1;' + (step.status === 'complete' ? 'text-decoration:line-through;color:var(--sw-text-sec);' : '') + '">' + escapeHtml(step.name) + '</span>';
-    if (step.vendor) html += '<span style="color:var(--sw-text-sec);">' + escapeHtml(step.vendor) + '</span>';
-    if (step.completed_at) html += '<span style="color:var(--sw-green);font-size:10px;">' + fmtDate(step.completed_at) + '</span>';
-
-    // Update status dropdown
+    if (stepEmailCount > 0) html += '<span style="font-size:10px;color:var(--sw-text-sec);">&#128233; ' + stepEmailCount + '</span>';
+    if (daysInStep > 0) html += '<span style="font-size:10px;color:' + (daysInStep > 7 ? 'var(--sw-red)' : 'var(--sw-text-sec)') + ';">' + daysInStep + 'd</span>';
     if (step.status !== 'complete') {
-      html += '<select style="font-size:10px;padding:1px 4px;border:1px solid var(--sw-border);border-radius:3px;" onchange="updateCouncilStep(\'' + sub.id + '\',' + idx + ',this.value)">';
-      html += '<option value="">Update...</option>';
+      html += '<select style="font-size:10px;padding:1px 4px;border:1px solid var(--sw-border);border-radius:3px;" onclick="event.stopPropagation()" onchange="event.stopPropagation();updateCouncilStep(\'' + sub.id + '\',' + idx + ',this.value)">';
+      html += '<option value="">...</option>';
       html += '<option value="in_progress">In Progress</option>';
       html += '<option value="complete">Complete</option>';
       html += '<option value="blocked">Blocked</option>';
       html += '</select>';
     }
+    html += '<span style="font-size:10px;color:var(--sw-text-sec);">' + (isStepExpanded ? '&#9650;' : '&#9660;') + '</span>';
     html += '</div>';
-  });
 
-  // Email thread for this submission
-  if (emails.length > 0) {
-    html += '<div style="font-size:11px;font-weight:600;color:var(--sw-dark);margin:8px 0 4px;">Email Thread (' + emails.length + ')</div>';
-    emails.forEach(function(em) {
-      var dir = em.direction === 'inbound' ? '&#8601;' : '&#8599;';
-      html += '<div style="padding:3px 0;border-bottom:1px solid var(--sw-border);font-size:11px;">';
-      html += '<span style="color:var(--sw-mid);">' + dir + '</span> ';
-      html += '<span style="color:var(--sw-text-sec);">' + fmtDate(em.created_at) + '</span> ';
-      if (em.from_email) html += '<span style="color:var(--sw-text-sec);">' + escapeHtml(em.from_email) + '</span> ';
-      html += '<span style="color:var(--sw-dark);">' + escapeHtml(em.subject || em.body_text?.slice(0, 60) || '') + '</span>';
+    // Expanded step: email thread + compose/reply
+    html += '<div id="councilStep_' + stepKey + '" style="display:' + (isStepExpanded ? 'block' : 'none') + ';padding:6px 0 8px 20px;">';
+
+    if (stepEmails.length > 0) {
+      // Show emails for this step
+      stepEmails.forEach(function(em) {
+        var isInbound = em.direction === 'inbound' || em.direction === 'received';
+        var dir = isInbound ? '&#8601;' : '&#8599;';
+        var date = em.created_at ? new Date(em.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        var bgColor = isInbound ? 'rgba(52,152,219,0.04)' : 'rgba(241,90,41,0.04)';
+        var borderColor = isInbound ? 'var(--sw-blue,#3498DB)' : 'var(--sw-orange)';
+        html += '<div style="padding:6px 8px;margin-bottom:4px;border-left:2px solid ' + borderColor + ';background:' + bgColor + ';border-radius:0 4px 4px 0;">';
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);display:flex;justify-content:space-between;">';
+        html += '<span>' + dir + ' ' + escapeHtml(isInbound ? (em.from_email || '') : (em.to_email || '')) + '</span>';
+        html += '<span>' + date + '</span></div>';
+        if (em.subject) html += '<div style="font-size:11px;font-weight:600;margin-top:2px;">' + escapeHtml(em.subject) + '</div>';
+        var bodyPreview = (em.body_text || '').slice(0, 200);
+        if (bodyPreview) html += '<div style="font-size:11px;color:var(--sw-text);margin-top:3px;white-space:pre-wrap;line-height:1.4;">' + escapeHtml(bodyPreview) + (em.body_text && em.body_text.length > 200 ? '...' : '') + '</div>';
+        html += '</div>';
+      });
+
+      // Inline reply bar
+      var lastStepEmail = stepEmails[stepEmails.length - 1];
+      var lastIsInbound = lastStepEmail && (lastStepEmail.direction === 'inbound' || lastStepEmail.direction === 'received');
+      var replyTo = lastIsInbound ? (lastStepEmail.from_email || '') : (lastStepEmail.to_email || step.vendor_email || '');
+      html += '<div style="display:flex;gap:4px;margin-top:4px;align-items:flex-end;">';
+      html += '<textarea id="councilReply_' + stepKey + '" placeholder="Reply to ' + escapeHtml(replyTo) + '..." rows="1" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:4px;font-size:11px;font-family:inherit;resize:none;min-height:30px;" onfocus="this.rows=3" onblur="if(!this.value)this.rows=1" onclick="event.stopPropagation()"></textarea>';
+      html += '<button class="btn btn-sm btn-primary" style="font-size:10px;height:30px;" onclick="event.stopPropagation();sendCouncilStepReply(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(replyTo).replace(/'/g, "\\'") + '\')">Send &#8599;</button>';
       html += '</div>';
-    });
-  }
+    } else {
+      // No emails — first contact compose
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:4px;">No emails for this step yet.</div>';
+      html += '<div style="margin-bottom:4px;">';
+      html += '<input type="email" id="councilTo_' + stepKey + '" placeholder="Recipient email..." value="' + escapeHtml(step.vendor_email || '') + '" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:4px;font-size:11px;font-family:inherit;" onclick="event.stopPropagation()">';
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px;align-items:flex-end;">';
+      html += '<textarea id="councilReply_' + stepKey + '" placeholder="Type your message..." rows="2" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:4px;font-size:11px;font-family:inherit;resize:none;" onclick="event.stopPropagation()"></textarea>';
+      html += '<button class="btn btn-sm btn-primary" style="font-size:10px;height:30px;" onclick="event.stopPropagation();sendCouncilStepFirstEmail(\'' + sub.id + '\',' + idx + ',\'' + stepKey + '\')">Send &#8599;</button>';
+      html += '</div>';
+    }
+
+    html += '</div>'; // step expand
+    html += '</div>'; // step wrapper
+  });
 
   // Action buttons
   var hasIncompleteSteps = steps.some(function(s) { return s.status !== 'complete'; });
@@ -217,6 +265,96 @@ function onCouncilDrop(event, targetStatus) {
   if (!newStepStatus) return;
 
   updateCouncilStep(subId, sub.current_step_index, newStepStatus);
+}
+
+function toggleCouncilStepExpand(subId, stepIdx) {
+  var stepKey = subId + '_' + stepIdx;
+  var wasExpanded = _expandedCouncilStepKey === stepKey;
+
+  // Collapse previous
+  if (_expandedCouncilStepKey) {
+    var prevEl = document.getElementById('councilStep_' + _expandedCouncilStepKey);
+    if (prevEl) prevEl.style.display = 'none';
+  }
+
+  if (wasExpanded) {
+    _expandedCouncilStepKey = null;
+  } else {
+    _expandedCouncilStepKey = stepKey;
+    var el = document.getElementById('councilStep_' + stepKey);
+    if (el) el.style.display = 'block';
+  }
+}
+
+async function sendCouncilStepReply(submissionId, stepIndex, toEmail) {
+  var stepKey = submissionId + '_' + stepIndex;
+  var textEl = document.getElementById('councilReply_' + stepKey);
+  if (!textEl) return;
+  var body = textEl.value.trim();
+  if (!body) { showToast('Type a message first', 'warning'); return; }
+
+  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
+  var step = sub ? (sub.steps || [])[stepIndex] : null;
+  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks WA';
+
+  textEl.value = '';
+  textEl.rows = 1;
+
+  try {
+    await opsPost('send_council_email', {
+      submission_id: submissionId,
+      step_index: stepIndex,
+      to_email: toEmail,
+      subject: 'Re: ' + subject,
+      body_text: body,
+    });
+    showToast('Email sent to ' + toEmail, 'success');
+    loadApprovals();
+  } catch (e) {
+    showToast('Failed to send: ' + e.message, 'warning');
+  }
+}
+
+async function sendCouncilStepFirstEmail(submissionId, stepIndex, stepKey) {
+  var toEl = document.getElementById('councilTo_' + stepKey);
+  var textEl = document.getElementById('councilReply_' + stepKey);
+  if (!toEl || !textEl) return;
+
+  var toEmail = toEl.value.trim();
+  var body = textEl.value.trim();
+  if (!toEmail) { showToast('Enter recipient email', 'warning'); return; }
+  if (!toEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email', 'warning'); return; }
+  if (!body) { showToast('Type a message first', 'warning'); return; }
+
+  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
+  var step = sub ? (sub.steps || [])[stepIndex] : null;
+  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks WA';
+
+  textEl.value = '';
+
+  try {
+    await opsPost('send_council_email', {
+      submission_id: submissionId,
+      step_index: stepIndex,
+      to_email: toEmail,
+      subject: subject,
+      body_text: body,
+    });
+
+    // Save vendor_email on the step for next time
+    try {
+      await opsPost('update_council_status', {
+        submission_id: submissionId,
+        step_index: stepIndex,
+        vendor_email: toEmail,
+      });
+    } catch (e2) { /* non-critical */ }
+
+    showToast('Email sent to ' + toEmail, 'success');
+    loadApprovals();
+  } catch (e) {
+    showToast('Failed to send: ' + e.message, 'warning');
+  }
 }
 
 function openCouncilEmailCompose(submissionId, stepIndex) {

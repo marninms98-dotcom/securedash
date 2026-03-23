@@ -1863,7 +1863,8 @@ window.loadEmailInbox = async function(filter, btnEl) {
       if (preview.length > 80) preview = preview.substring(0, 80) + '...';
 
       var jobId = em.job_id || '';
-      html += '<div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid var(--sw-border);cursor:pointer;' + (isUnread ? 'font-weight:600;' : '') + '" onclick="openJobDetailAndFocus(\'' + jobId + '\',\'' + (em.po_id || '') + '\')">';
+      var commType = em.communication_type || 'purchase_order';
+      html += '<div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid var(--sw-border);cursor:pointer;' + (isUnread ? 'font-weight:600;' : '') + '" onclick="openJobDetailAndFocus(\'' + jobId + '\',\'' + (em.po_id || '') + '\',\'' + commType + '\')">';
       html += '<div style="flex:1;min-width:0">';
       html += '<div style="display:flex;justify-content:space-between;font-size:12px">';
       html += '<span>' + dot + arrow + ' ' + escapeHtml(who) + (jobNum ? ' — ' + escapeHtml(jobNum) : '') + '</span>';
@@ -1881,15 +1882,25 @@ window.loadEmailInbox = async function(filter, btnEl) {
   }
 };
 
-// Navigate to job detail and focus on the PO/email
-window.openJobDetailAndFocus = function(jobId, poId) {
+// Navigate to job detail and focus on the PO/council email
+window.openJobDetailAndFocus = function(jobId, poId, commType) {
   if (!jobId) return;
-  // Use the existing job detail navigation
   if (typeof openJobDetail === 'function') {
     openJobDetail(jobId);
-    // After load, switch to money tab (where PO threads live)
     setTimeout(function() {
-      if (typeof switchJobTab === 'function') switchJobTab('money');
+      if (commType === 'council' || commType === 'engineering') {
+        // Council email — switch to overview tab (where council section lives)
+        if (typeof showJobSubView === 'function') showJobSubView('overview');
+      } else if (poId) {
+        // PO email — switch to build tab and auto-expand the PO
+        if (typeof showJobSubView === 'function') showJobSubView('build');
+        // Auto-expand the relevant PO card after render
+        setTimeout(function() {
+          if (typeof togglePOCardExpand === 'function') togglePOCardExpand(poId);
+        }, 300);
+      } else {
+        if (typeof showJobSubView === 'function') showJobSubView('build');
+      }
     }, 500);
   }
 };
