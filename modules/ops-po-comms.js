@@ -1097,7 +1097,7 @@ var _poEmailCache = {};
 var _poComposeData = null; // temp PO data for template replacements
 
 var _poEmailTemplates = {
-  new_order: 'Hi {supplier_name},\n\nPlease find attached PO {po_number} for job {site_address}.\n\nDelivery required by: {delivery_date}\n\n{line_items_summary}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
+  new_order: 'Hi {supplier_name},\n\nPlease find attached PO {po_number} for job {job_number} at {site_address}.\n\nDelivery required by: {delivery_date}\n\n{line_items_summary}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
   delivery_change: 'Hi {supplier_name},\n\nRegarding PO {po_number} for job {job_number} — we need to change the delivery details.\n\nNew delivery date: {delivery_date}\nDelivery address: {site_address}\n\nPlease confirm this change.\n\nThanks,\nSecureWorks WA',
   order_query: 'Hi {supplier_name},\n\nJust following up on PO {po_number} for job {job_number}.\n\nCould you please provide an update on the order status and expected delivery?\n\nThanks,\nSecureWorks WA',
   cancellation: 'Hi {supplier_name},\n\nPlease cancel PO {po_number} for job {job_number}.\n\nPlease confirm cancellation at your earliest convenience.\n\nThanks,\nSecureWorks WA',
@@ -1150,7 +1150,14 @@ function openPOEmailCompose(poId) {
   // Resolve job address from current job data or PO
   var jobAddress = po.delivery_address || '';
   if (!jobAddress && _currentJobData && _currentJobData.job) {
-    jobAddress = [_currentJobData.job.site_address, _currentJobData.job.site_suburb].filter(Boolean).join(', ');
+    var addr = _currentJobData.job.site_address || '';
+    var suburb = _currentJobData.job.site_suburb || '';
+    // Avoid duplicating suburb if it's already in the address string
+    if (suburb && addr && addr.toLowerCase().indexOf(suburb.toLowerCase()) >= 0) {
+      jobAddress = addr;
+    } else {
+      jobAddress = [addr, suburb].filter(Boolean).join(', ');
+    }
   }
 
   // Store PO data for template replacements
@@ -1167,7 +1174,10 @@ function openPOEmailCompose(poId) {
 
   document.getElementById('poComposeTitle').textContent = 'Email Supplier \u2014 ' + (po.po_number || 'PO');
   document.getElementById('poComposeTo').value = supplierEmail;
-  document.getElementById('poComposeSubject').value = 'PO ' + (po.po_number || '') + ' \u2014 ' + (jobAddress || po.job_number || '') + ' \u2014 SecureWorks WA';
+  var subjectPO = (po.po_number || '');
+  if (subjectPO && !subjectPO.toUpperCase().startsWith('PO')) subjectPO = 'PO ' + subjectPO;
+  var subjectDesc = [po.description || lineItems.map(function(li) { return li.description || ''; }).filter(Boolean).join(', ').slice(0, 40), po.job_number || ''].filter(Boolean).join(' \u2014 ');
+  document.getElementById('poComposeSubject').value = subjectPO + (subjectDesc ? ' \u2014 ' + subjectDesc : '') + ' \u2014 SecureWorks WA';
   document.getElementById('poComposePoId').value = po.id;
   document.getElementById('poComposeJobId').value = po.job_id || '';
   document.getElementById('poComposeTemplate').value = 'new_order';
@@ -1310,9 +1320,29 @@ async function sendPOEmail() {
     }
   }
 
-  // Try to send via edge function
+  // Council email routing — use send_council_email if council context is set
+  var councilCtx = window._councilComposeContext || null;
+  window._councilComposeContext = null; // Clear after reading
+
   try {
-    var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
+    var resp;
+    if (councilCtx && councilCtx.submission_id) {
+      // Route through council email endpoint
+      resp = await opsPost('send_council_email', {
+        submission_id: councilCtx.submission_id,
+        step_index: councilCtx.step_index,
+        to_email: to,
+        subject: subject,
+        body_text: body,
+        body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
+      });
+      showToast('Council email sent to ' + to, 'success');
+      closeModal('poEmailComposeModal');
+      if (typeof loadApprovals === 'function') loadApprovals();
+      return;
+    }
+
+    resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
       body: JSON.stringify({

@@ -687,6 +687,9 @@ async function openPOEdit(poId) {
       var matchedJob = _poJobList.find(function(j) { return j.id === po.job_id; });
       if (matchedJob) {
         document.getElementById('poJobSearch').value = (matchedJob.job_number || '') + ' — ' + (matchedJob.client_name || '');
+      } else {
+        // Fallback: show reference or job_number from PO data
+        document.getElementById('poJobSearch').value = po.reference || po.job_number || po.job_id || '';
       }
     }
 

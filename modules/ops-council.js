@@ -219,32 +219,36 @@ function onCouncilDrop(event, targetStatus) {
   updateCouncilStep(subId, sub.current_step_index, newStepStatus);
 }
 
-function openCouncilEmailCompose(submissionId) {
+function openCouncilEmailCompose(submissionId, stepIndex) {
   var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
   if (!sub) return;
-  var currentStep = (sub.steps || [])[sub.current_step_index] || {};
-  var toEmail = currentStep.vendor_email || '';
-  var subject = 'Re: ' + (sub.job_number || '') + ' — ' + (currentStep.name || 'Council Application');
+  var idx = (stepIndex !== undefined) ? stepIndex : sub.current_step_index;
+  var step = (sub.steps || [])[idx] || {};
+  var toEmail = step.vendor_email || '';
+  var subject = (sub.job_number || '') + ' — ' + (step.name || 'Council Application') + ' — SecureWorks WA';
+  var body = 'Hi,\n\nRegarding the ' + (step.name || 'application') + ' for ' + (sub.job_number || '') + ' — ' + (sub.client_name || '') + '.\n\n\n\nThanks,\nSecureWorks WA';
 
-  // Use the existing compose modal pattern if available
-  var body = 'Hi,\n\nRegarding the ' + (currentStep.name || 'application') + ' for ' + (sub.job_number || '') + ' ' + escapeHtml(sub.client_name || '') + '.\n\n';
+  // Use the PO email compose modal (repurposed for council)
+  document.getElementById('poComposeTitle').textContent = 'Email — ' + (step.name || 'Council Step');
+  document.getElementById('poComposeTo').value = toEmail;
+  document.getElementById('poComposeSubject').value = subject;
+  document.getElementById('poComposeBody').value = body;
+  document.getElementById('poComposePoId').value = '';
+  document.getElementById('poComposeJobId').value = sub.job_id || '';
+  document.getElementById('poComposeAttachPDF').checked = false;
+  document.getElementById('poComposeTemplate').value = 'custom';
+  document.getElementById('poComposeFiles').value = '';
+  document.getElementById('poComposeFileList').textContent = '';
 
-  // Simple prompt-based compose for now
-  var userBody = prompt('Email body to ' + (toEmail || 'council/engineer') + ':', body);
-  if (!userBody) return;
+  // Store council context for send handler
+  window._councilComposeContext = { submission_id: submissionId, step_index: idx };
 
-  opsPost('send_council_email', {
-    submission_id: submissionId,
-    step_index: sub.current_step_index,
-    to_email: toEmail,
-    subject: subject,
-    body_text: userBody,
-  }).then(function() {
-    alert('Email sent');
-    loadApprovals();
-  }).catch(function(e) {
-    alert('Failed to send: ' + e.message);
-  });
+  var formView = document.getElementById('poComposeFormView');
+  var previewView = document.getElementById('poComposePreviewView');
+  if (formView) formView.style.display = '';
+  if (previewView) previewView.style.display = 'none';
+
+  document.getElementById('poEmailComposeModal').classList.add('active');
 }
 
 // Open council start modal from Approvals page (needs job picker)
