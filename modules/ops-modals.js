@@ -999,9 +999,8 @@ async function onInvJobSelect(jobId) {
     // Show presets
     document.getElementById('uniInvPresets').style.display = '';
 
-    // Start with empty line items — user uses presets or adds manually
+    // Start clean — user adds items via presets or manually
     container.innerHTML = '';
-    addInvLine();
   } catch (e) {
     infoEl.textContent = 'Error loading job: ' + e.message;
   }
@@ -1022,6 +1021,57 @@ function updateSelectedQuoteDocs() {
   });
 }
 
+function buildSmartInvoiceDescription(prefix, job) {
+  if (!job) return prefix;
+  var scope = job.scope_json;
+  if (typeof scope === 'string') try { scope = JSON.parse(scope); } catch(e) { scope = null; }
+  var type = (job.type || '').toLowerCase();
+  var suburb = job.site_suburb || job.site_address || '';
+  var parts = [prefix + ' —'];
+
+  if (type === 'patio' || type === 'decking') {
+    // Patio/decking: size, roof type, panel, colour
+    if (scope) {
+      var size = '';
+      if (scope.length && scope.width) size = scope.length + 'm x ' + scope.width + 'm ';
+      else if (scope.area) size = scope.area + 'm² ';
+      var roofType = scope.roofType || scope.roof_type || '';
+      var panel = scope.panelType || scope.panel_type || scope.sheeting || '';
+      var colour = scope.colour || scope.roofColour || scope.roof_colour || '';
+      parts.push((type === 'decking' ? 'Composite Decking' : 'Insulated Patio') + ' Installation');
+      if (size) parts.push(size.trim());
+      if (roofType) parts.push(roofType.charAt(0).toUpperCase() + roofType.slice(1));
+      if (panel) parts.push(panel);
+      if (colour) parts.push(colour);
+    } else {
+      parts.push((type === 'decking' ? 'Decking' : 'Patio') + ' Installation');
+    }
+  } else if (type === 'fencing') {
+    // Fencing: metres, panel type, colour
+    if (scope) {
+      var totalMetres = 0;
+      if (Array.isArray(scope.runs)) {
+        scope.runs.forEach(function(r) { totalMetres += parseFloat(r.lengthM || r.length || 0); });
+      } else if (scope.totalMetres || scope.total_metres) {
+        totalMetres = scope.totalMetres || scope.total_metres;
+      }
+      var panelType = scope.panelType || scope.panel_type || 'Colorbond';
+      var fenceColour = scope.colour || scope.panelColour || '';
+      parts.push('Colorbond Fencing Installation');
+      if (totalMetres > 0) parts.push(Math.round(totalMetres) + 'm');
+      if (fenceColour) parts.push(fenceColour);
+      if (panelType && panelType !== 'Colorbond') parts.push(panelType);
+    } else {
+      parts.push('Colorbond Fencing Installation');
+    }
+  } else {
+    parts.push((type.charAt(0).toUpperCase() + type.slice(1)) + ' Installation');
+  }
+
+  if (suburb) parts.push(suburb);
+  return parts.join(', ').replace(', —,', ' —');
+}
+
 function addDepositPreset(pct) {
   if (!_invJobCache) return;
   var pricing = _invJobCache.pricing_json;
@@ -1030,17 +1080,17 @@ function addDepositPreset(pct) {
   if (totalIncGst <= 0) { alert('No pricing data on this job.'); return; }
   var depositIncGst = Math.round(totalIncGst * (pct / 100) * 100) / 100;
   var depositExGst = Math.round((depositIncGst / 1.1) * 100) / 100;
-  var desc = pct + '% Deposit — ' + (_invJobCache.job_number || '') + ' (' + fmt$(totalIncGst) + ' inc GST)' +
-    '\n' + (_invJobCache.client_name || '') +
-    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
-    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
-    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
+  var desc = buildSmartInvoiceDescription(pct + '% Deposit', _invJobCache);
   addInvLine(desc, 1, depositExGst);
 }
 
 function addCouncilFeePreset() {
   var defaultFee = Math.round((350 / 1.1) * 100) / 100; // $350 inc GST → ex GST
-  addInvLine('Council/Permit Application Fee', 1, defaultFee);
+  var desc = 'Council Application Fee';
+  if (_invJobCache) {
+    desc += ' — ' + (_invJobCache.site_address || _invJobCache.site_suburb || _invJobCache.client_name || '');
+  }
+  addInvLine(desc, 1, defaultFee);
 }
 
 function addBalancePreset() {
@@ -1050,14 +1100,10 @@ function addBalancePreset() {
   var totalIncGst = pricing ? (pricing.totalIncGST || pricing.total || 0) : 0;
   var invSummary = _invJobDetailCache.invoice_summary;
   var remaining = invSummary ? invSummary.remaining_to_invoice : totalIncGst;
-  if (remaining <= 0) { alert('No remaining balance to invoice.'); return; }
+  if (remaining <= 0) { alert('This job appears to be fully invoiced. No remaining balance.'); return; }
   var exGst = Math.round((remaining / 1.1) * 100) / 100;
-  var balDesc = 'Balance Due — ' + (_invJobCache.job_number || '') +
-    '\n' + (_invJobCache.client_name || '') +
-    (_invJobCache.site_address ? '\n' + _invJobCache.site_address : '') +
-    (_invJobCache.site_suburb ? ', ' + _invJobCache.site_suburb : '') +
-    (_invJobCache.type ? '\n' + _invJobCache.type.charAt(0).toUpperCase() + _invJobCache.type.slice(1) : '');
-  addInvLine(balDesc, 1, exGst);
+  var desc = buildSmartInvoiceDescription('Final Balance', _invJobCache);
+  addInvLine(desc, 1, exGst);
 }
 
 function gatherInvoiceData() {
@@ -1239,6 +1285,187 @@ function resetUnifiedInvoiceModal() {
 
 // Backward compat
 function resetInvoiceModal() { resetUnifiedInvoiceModal(); }
+
+// ════════════════════════════════════════════════════════════
+// EDIT INVOICE MODAL
+// ════════════════════════════════════════════════════════════
+
+function openEditInvoiceModal(inv) {
+  if (!inv) return;
+  var isPaid = inv.status === 'PAID';
+  var isVoided = inv.status === 'VOIDED' || inv.status === 'DELETED';
+  if (isPaid || isVoided) {
+    alert(isPaid ? 'This invoice has been paid and cannot be edited.' : 'This invoice has been voided and cannot be edited.');
+    return;
+  }
+
+  var isSent = inv.status === 'SENT' || inv.status === 'SUBMITTED';
+  window._editInvoiceData = inv;
+
+  // Build the edit modal HTML
+  var modalEl = document.getElementById('editInvoiceModal');
+  if (!modalEl) {
+    modalEl = document.createElement('div');
+    modalEl.id = 'editInvoiceModal';
+    modalEl.className = 'modal-overlay';
+    document.body.appendChild(modalEl);
+  }
+
+  var lineItems = inv.line_items || [];
+  var html = '<div class="modal-panel" style="max-width:700px;max-height:90vh;overflow-y:auto;">';
+  html += '<div class="modal-header"><span>Edit Invoice — ' + (inv.invoice_number || 'DRAFT') + '</span>';
+  html += '<button class="modal-close" onclick="closeEditInvoiceModal()">&times;</button></div>';
+  html += '<div class="modal-body">';
+
+  // Invoice info (read-only)
+  html += '<div style="display:flex;gap:16px;margin-bottom:12px;font-size:12px;">';
+  html += '<div><span style="color:var(--sw-text-sec);">Invoice #:</span> <strong>' + (inv.invoice_number || 'DRAFT') + '</strong></div>';
+  html += '<div><span style="color:var(--sw-text-sec);">Reference:</span> <strong>' + escapeHtml(inv.reference || '') + '</strong></div>';
+  html += '<div><span style="color:var(--sw-text-sec);">Contact:</span> <strong>' + escapeHtml(inv.contact_name || '') + '</strong></div>';
+  html += '</div>';
+
+  // Due date
+  html += '<div style="margin-bottom:12px;">';
+  html += '<label style="font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px;">Due Date</label>';
+  html += '<input type="date" id="editInvDueDate" class="form-input" value="' + (inv.due_date || '') + '" style="font-size:13px;padding:6px 8px;margin-top:2px;">';
+  html += '</div>';
+
+  if (isSent) {
+    html += '<div style="padding:8px 12px;background:#FFF3E0;border:1px solid #FFB74D;font-size:12px;margin-bottom:12px;color:#E65100;">The client has already received this invoice. Saving changes will update the version they see.</div>';
+  }
+
+  // Line items
+  html += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;">Line Items</div>';
+  html += '<div id="editInvLineItems">';
+
+  if (Array.isArray(lineItems) && lineItems.length > 0) {
+    lineItems.forEach(function(li, idx) {
+      html += renderEditInvLineRow(li, idx);
+    });
+  } else {
+    html += renderEditInvLineRow({}, 0);
+  }
+
+  html += '</div>';
+  html += '<button class="btn btn-sm btn-secondary" style="margin-top:6px;font-size:11px;" onclick="addEditInvLine()">+ Add Line</button>';
+
+  // Totals
+  html += '<div style="display:flex;justify-content:flex-end;margin-top:12px;">';
+  html += '<div style="min-width:200px;font-size:13px;">';
+  html += '<div style="display:flex;justify-content:space-between;padding:3px 0;"><span>Subtotal:</span><span id="editInvSubtotal">-</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:3px 0;"><span>GST:</span><span id="editInvGst">-</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-weight:700;border-top:2px solid var(--sw-dark);"><span>Total:</span><span id="editInvTotal">-</span></div>';
+  html += '</div></div>';
+
+  html += '</div>'; // modal-body
+
+  // Footer buttons
+  html += '<div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--sw-border);">';
+  html += '<button class="btn btn-secondary" onclick="closeEditInvoiceModal()">Cancel</button>';
+  html += '<button class="btn" style="background:var(--sw-dark);color:#fff;" onclick="saveEditedInvoice(false)">Save Changes</button>';
+  if (!inv.status || inv.status === 'DRAFT' || inv.status === 'AUTHORISED' || isSent) {
+    html += '<button class="btn" style="background:var(--sw-green);color:#fff;" onclick="saveEditedInvoice(true)">Save & Resend</button>';
+  }
+  html += '</div>';
+
+  html += '</div>'; // modal-panel
+  modalEl.innerHTML = html;
+  modalEl.classList.add('active');
+  recalcEditInvTotals();
+}
+
+function renderEditInvLineRow(li, idx) {
+  var desc = li.Description || li.description || '';
+  var qty = li.Quantity || li.quantity || 1;
+  var price = li.UnitAmount || li.unit_price || 0;
+  var account = li.AccountCode || li.account_code || '200';
+
+  var html = '<div class="edit-inv-line" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;padding:6px 0;border-bottom:1px solid var(--sw-border);">';
+  html += '<textarea data-field="description" style="flex:3;min-height:36px;resize:vertical;font-size:12px;padding:4px 6px;border:1px solid var(--sw-border);" oninput="recalcEditInvTotals()">' + escapeHtml(desc) + '</textarea>';
+  html += '<input type="number" data-field="quantity" value="' + qty + '" style="width:50px;font-size:12px;padding:4px 6px;border:1px solid var(--sw-border);text-align:center;" oninput="recalcEditInvTotals()" step="any">';
+  html += '<input type="number" data-field="unit_price" value="' + price + '" style="width:90px;font-size:12px;padding:4px 6px;border:1px solid var(--sw-border);text-align:right;" oninput="recalcEditInvTotals()" step="0.01">';
+  html += '<input type="text" data-field="account_code" value="' + escapeHtml(account) + '" style="width:50px;font-size:12px;padding:4px 6px;border:1px solid var(--sw-border);text-align:center;">';
+  html += '<button onclick="this.parentElement.remove();recalcEditInvTotals();" style="background:none;border:none;cursor:pointer;color:var(--sw-red);font-size:16px;padding:4px;" title="Remove">&times;</button>';
+  html += '</div>';
+  return html;
+}
+
+function addEditInvLine() {
+  var container = document.getElementById('editInvLineItems');
+  if (!container) return;
+  var idx = container.querySelectorAll('.edit-inv-line').length;
+  container.insertAdjacentHTML('beforeend', renderEditInvLineRow({}, idx));
+}
+
+function recalcEditInvTotals() {
+  var rows = document.querySelectorAll('#editInvLineItems .edit-inv-line');
+  var subtotal = 0;
+  rows.forEach(function(row) {
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 0;
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    subtotal += qty * price;
+  });
+  var gst = Math.round(subtotal * 0.1 * 100) / 100;
+  var total = Math.round((subtotal + gst) * 100) / 100;
+  var subEl = document.getElementById('editInvSubtotal');
+  var gstEl = document.getElementById('editInvGst');
+  var totEl = document.getElementById('editInvTotal');
+  if (subEl) subEl.textContent = fmt$(subtotal);
+  if (gstEl) gstEl.textContent = fmt$(gst);
+  if (totEl) totEl.textContent = fmt$(total);
+}
+
+function closeEditInvoiceModal() {
+  var modal = document.getElementById('editInvoiceModal');
+  if (modal) modal.classList.remove('active');
+  window._editInvoiceData = null;
+}
+
+async function saveEditedInvoice(resend) {
+  var inv = window._editInvoiceData;
+  if (!inv) return;
+
+  var isSent = inv.status === 'SENT' || inv.status === 'SUBMITTED';
+  if (isSent && resend && !confirm('The client has already received this invoice. Save changes and resend?')) return;
+
+  // Gather edited line items
+  var rows = document.querySelectorAll('#editInvLineItems .edit-inv-line');
+  var lineItems = [];
+  rows.forEach(function(row) {
+    var desc = row.querySelector('[data-field="description"]').value;
+    var qty = parseFloat(row.querySelector('[data-field="quantity"]').value) || 1;
+    var price = parseFloat(row.querySelector('[data-field="unit_price"]').value) || 0;
+    var account = row.querySelector('[data-field="account_code"]').value || '200';
+    if (desc || price > 0) {
+      lineItems.push({ description: desc, quantity: qty, unit_price: price, account_code: account });
+    }
+  });
+
+  if (lineItems.length === 0) { alert('At least one line item is required.'); return; }
+
+  var dueDate = document.getElementById('editInvDueDate').value || undefined;
+
+  try {
+    var result = await opsPost('update_invoice', {
+      xero_invoice_id: inv.xero_invoice_id,
+      line_items: lineItems,
+      due_date: dueDate,
+      resend_email: resend || false,
+    });
+
+    if (result.error) { alert('Error: ' + result.error); return; }
+
+    closeEditInvoiceModal();
+    showToast('Invoice updated' + (resend ? ' and resent' : ''), 'success');
+
+    // Refresh job detail
+    if (_currentJobData?.job?.id) {
+      openJobDetail(_currentJobData.job.id);
+    }
+  } catch (e) {
+    alert('Failed to update invoice: ' + e.message);
+  }
+}
 
 async function sendWO(woId) {
   if (!confirm('Mark this work order as sent?')) return;

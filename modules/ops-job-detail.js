@@ -1025,6 +1025,204 @@ function getTimelineColor(source) {
 
 // ── Money View ──
 
+var _currentInvoices = [];
+
+// ── Invoice Preview Overlay ──
+function openInvoicePreview(inv) {
+  var overlay = document.getElementById('invoicePreviewOverlay');
+  if (!overlay) {
+    // Create overlay container if it doesn't exist
+    overlay = document.createElement('div');
+    overlay.id = 'invoicePreviewOverlay';
+    overlay.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;background:#fff;z-index:50;overflow-y:auto;padding:20px;display:none;';
+    document.getElementById('jdMoney').parentElement.appendChild(overlay);
+  }
+
+  var j = _currentJobData?.job || {};
+  var isPaid = inv.status === 'PAID';
+  var isVoided = inv.status === 'VOIDED' || inv.status === 'DELETED';
+  var isDraft = inv.status === 'DRAFT';
+  var isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && ['AUTHORISED','SUBMITTED','SENT'].indexOf(inv.status) >= 0;
+  var xeroLink = inv.xero_invoice_id ? 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + inv.xero_invoice_id : '';
+
+  var statusBg, statusColor;
+  if (isOverdue) { statusBg = 'var(--sw-red)'; statusColor = '#fff'; }
+  else if (isDraft) { statusBg = '#e0e0e0'; statusColor = '#333'; }
+  else if (inv.status === 'AUTHORISED') { statusBg = '#2196F3'; statusColor = '#fff'; }
+  else if (inv.status === 'SENT' || inv.status === 'SUBMITTED') { statusBg = 'var(--sw-orange)'; statusColor = '#fff'; }
+  else if (isPaid) { statusBg = 'var(--sw-green)'; statusColor = '#fff'; }
+  else if (isVoided) { statusBg = '#e0e0e0'; statusColor = 'var(--sw-text-sec)'; }
+  else { statusBg = '#e0e0e0'; statusColor = '#333'; }
+
+  var html = '';
+
+  // Close button
+  html += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">';
+  html += '<button onclick="closeInvoicePreview()" style="background:none;border:none;cursor:pointer;font-size:24px;color:var(--sw-text-sec);padding:4px 8px;">&times;</button>';
+  html += '</div>';
+
+  // Header
+  html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">';
+  html += '<div>';
+  html += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);">' + (inv.invoice_number || 'DRAFT') + '</div>';
+  html += '<div style="font-size:13px;color:var(--sw-text-sec);">' + escapeHtml(inv.contact_name || j.client_name || '') + ' — ' + (j.job_number || inv.reference || '') + ' ' + (j.type || '').toUpperCase() + '</div>';
+  html += '<div style="font-size:12px;color:var(--sw-text-sec);">' + (j.site_suburb || j.site_address || '') + '</div>';
+  html += '</div>';
+  html += '<div style="text-align:right;">';
+  html += '<span style="display:inline-block;padding:4px 12px;border-radius:3px;font-size:12px;font-weight:700;background:' + statusBg + ';color:' + statusColor + ';">' + (isOverdue ? 'OVERDUE' : inv.status) + '</span>';
+  if (inv.due_date) html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px;">Due: ' + fmtDate(inv.due_date) + '</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Line items table
+  var lineItems = inv.line_items || [];
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">';
+  html += '<thead><tr style="border-bottom:2px solid var(--sw-dark);text-align:left;">';
+  html += '<th style="padding:8px 6px;">DESCRIPTION</th>';
+  html += '<th style="padding:8px 6px;text-align:right;width:60px;">QTY</th>';
+  html += '<th style="padding:8px 6px;text-align:right;width:100px;">UNIT PRICE</th>';
+  html += '<th style="padding:8px 6px;text-align:right;width:100px;">TOTAL</th>';
+  html += '<th style="padding:8px 6px;text-align:right;width:80px;">ACCOUNT</th>';
+  html += '</tr></thead><tbody>';
+
+  if (Array.isArray(lineItems) && lineItems.length > 0) {
+    lineItems.forEach(function(li) {
+      var desc = li.Description || li.description || '';
+      var qty = li.Quantity || li.quantity || 1;
+      var unitPrice = li.UnitAmount || li.unit_price || 0;
+      var lineTotal = li.LineAmount || li.total || (qty * unitPrice);
+      var account = li.AccountCode || li.account_code || '';
+
+      html += '<tr style="border-bottom:1px solid var(--sw-border);">';
+      html += '<td style="padding:8px 6px;">' + escapeHtml(desc) + '</td>';
+      html += '<td style="padding:8px 6px;text-align:right;">' + qty + '</td>';
+      html += '<td style="padding:8px 6px;text-align:right;">' + fmt$(unitPrice) + '</td>';
+      html += '<td style="padding:8px 6px;text-align:right;font-weight:600;">' + fmt$(lineTotal) + '</td>';
+      html += '<td style="padding:8px 6px;text-align:right;color:var(--sw-text-sec);">' + account + '</td>';
+      html += '</tr>';
+    });
+  } else {
+    html += '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--sw-text-sec);font-style:italic;">No line item data available</td></tr>';
+  }
+
+  html += '</tbody></table>';
+
+  // Totals
+  var subTotal = parseFloat(inv.sub_total) || 0;
+  var totalTax = parseFloat(inv.total_tax) || 0;
+  var total = parseFloat(inv.total) || 0;
+  var amountPaid = parseFloat(inv.amount_paid) || 0;
+  var amountDue = parseFloat(inv.amount_due) || (total - amountPaid);
+
+  html += '<div style="display:flex;justify-content:flex-end;margin-bottom:16px;">';
+  html += '<div style="min-width:250px;">';
+  html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span>Subtotal:</span><span>' + fmt$(subTotal) + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span>GST:</span><span>' + fmt$(totalTax) + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:15px;font-weight:700;border-top:2px solid var(--sw-dark);"><span>Total:</span><span>' + fmt$(total) + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:var(--sw-green);"><span>Paid:</span><span>' + fmt$(amountPaid) + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px;font-weight:700;color:' + (amountDue > 0 && isOverdue ? 'var(--sw-red)' : 'var(--sw-dark)') + '"><span>Amount Due:</span><span>' + fmt$(amountDue) + '</span></div>';
+  html += '</div></div>';
+
+  // Status timeline
+  html += '<div style="display:flex;align-items:center;gap:6px;padding:12px 0;border-top:1px solid var(--sw-border);border-bottom:1px solid var(--sw-border);margin-bottom:16px;font-size:12px;">';
+  var steps = [
+    { label: 'Created', done: true, date: inv.created_at || inv.invoice_date },
+    { label: 'Approved', done: ['AUTHORISED','SENT','SUBMITTED','PAID'].indexOf(inv.status) >= 0 },
+    { label: 'Sent', done: ['SENT','SUBMITTED'].indexOf(inv.status) >= 0 || isPaid },
+    { label: 'Paid', done: isPaid, date: inv.fully_paid_on },
+  ];
+  steps.forEach(function(step, idx) {
+    if (idx > 0) html += '<span style="color:var(--sw-text-sec);">&rarr;</span>';
+    var color = step.done ? 'var(--sw-green)' : 'var(--sw-text-sec)';
+    html += '<span style="color:' + color + ';">' + (step.done ? '&#10003; ' : '') + step.label;
+    if (step.date) html += ' ' + fmtDate(step.date);
+    html += '</span>';
+  });
+  html += '</div>';
+
+  // Action buttons
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+  if (!isPaid && !isVoided) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="closeInvoicePreview();openEditInvoiceModal(window._previewInvoice)">Edit Invoice</button>';
+  }
+  if (!isPaid && !isVoided) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-red);color:#fff;" onclick="closeInvoicePreview();confirmVoidInvoice(window._previewInvoice)">Void Invoice</button>';
+  }
+  if (!isPaid && !isVoided && !isDraft) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;" onclick="closeInvoicePreview();markInvoiceAsPaid(window._previewInvoice)">Mark as Paid</button>';
+  }
+  if (!isDraft && !isVoided && (inv.status === 'AUTHORISED' || inv.status === 'SENT')) {
+    html += '<button class="btn btn-sm btn-secondary" onclick="resendInvoice(window._previewInvoice)">Resend to Client</button>';
+  }
+  if (xeroLink) {
+    html += '<a href="' + xeroLink + '" target="_blank" class="btn btn-sm btn-secondary" style="text-decoration:none;">Open in Xero &#8599;</a>';
+  }
+  html += '</div>';
+
+  window._previewInvoice = inv;
+  overlay.innerHTML = html;
+  overlay.style.display = 'block';
+}
+
+function closeInvoicePreview() {
+  var overlay = document.getElementById('invoicePreviewOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+// ── Invoice Action Helpers ──
+function confirmVoidInvoice(inv) {
+  var action = inv.status === 'DRAFT' ? 'delete' : 'void';
+  var msg = action === 'delete'
+    ? 'Delete draft invoice ' + (inv.invoice_number || '') + ' (' + fmt$(inv.total) + ')? This will be permanently removed from Xero.'
+    : 'Void invoice ' + (inv.invoice_number || '') + ' (' + fmt$(inv.total) + ')? This cannot be undone.';
+
+  if (!confirm(msg)) return;
+
+  opsPost('void_invoice', {
+    xero_invoice_id: inv.xero_invoice_id,
+    void: action === 'void'
+  }).then(function(res) {
+    if (res.success || res.status) {
+      // Refresh job detail to update invoice list
+      openJobDetail(_currentJobData.job.id);
+    }
+  }).catch(function(e) {
+    alert('Failed to ' + action + ' invoice: ' + e.message);
+  });
+}
+
+function markInvoiceAsPaid(inv) {
+  var today = new Date().toISOString().slice(0, 10);
+  var dateStr = prompt('Mark ' + (inv.invoice_number || 'this invoice') + ' as paid? Enter payment date:', today);
+  if (!dateStr) return;
+
+  opsPost('mark_invoice_paid', {
+    xero_invoice_id: inv.xero_invoice_id,
+    payment_date: dateStr,
+    amount: inv.total,
+  }).then(function(res) {
+    if (res.success) {
+      openJobDetail(_currentJobData.job.id);
+    }
+  }).catch(function(e) {
+    alert('Failed to mark as paid: ' + e.message);
+  });
+}
+
+function resendInvoice(inv) {
+  if (!confirm('Resend invoice ' + (inv.invoice_number || '') + ' to the client?')) return;
+
+  opsPost('send_invoice_email', {
+    xero_invoice_id: inv.xero_invoice_id,
+  }).then(function(res) {
+    if (res.success) {
+      alert('Invoice resent');
+    }
+  }).catch(function(e) {
+    alert('Failed to resend: ' + e.message);
+  });
+}
+
 function togglePODetailExpand(poId) {
   var el = document.getElementById('poDetail_' + poId);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -1082,18 +1280,78 @@ function renderMoneyView(data) {
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Collected</span><strong style="color:var(--sw-green)">' + fmt$(invoicePaid) + '</strong></div></div>';
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Still to Invoice</span><strong style="color:' + (quoteVal - invoicedTotal > 0 ? 'var(--sw-orange)' : 'var(--sw-green)') + '">' + fmt$(Math.max(0, quoteVal - invoicedTotal)) + '</strong></div></div>';
 
-  // Individual invoices
+  // Individual invoices — table view
+  _currentInvoices = salesInvoices;
   if (salesInvoices.length > 0) {
     html += '<div style="margin-top:8px;font-size:12px;font-weight:600;color:var(--sw-text-sec);">Invoices</div>';
-    salesInvoices.forEach(function(inv) {
-      var statusColor = inv.status === 'PAID' ? 'var(--sw-green)' : inv.status === 'AUTHORISED' ? 'var(--sw-orange)' : 'var(--sw-text-sec)';
-      html += '<div class="jd-money-card"><div class="jd-money-card-head">';
-      html += '<span>' + (inv.invoice_number || 'Draft') + '</span>';
-      html += '<strong>' + fmt$(inv.total) + '</strong></div>';
-      html += '<div class="jd-money-card-sub"><span style="color:' + statusColor + '">' + (inv.status || '') + '</span>';
-      if (inv.due_date) html += ' &middot; Due ' + fmtDate(inv.due_date);
-      html += '</div></div>';
+    html += '<div class="inv-table-wrap" style="overflow-x:auto;margin-top:4px;">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    html += '<thead><tr style="border-bottom:2px solid var(--sw-border);text-align:left;">';
+    html += '<th style="padding:4px 6px;">Invoice</th>';
+    html += '<th style="padding:4px 6px;">Description</th>';
+    html += '<th style="padding:4px 6px;">Status</th>';
+    html += '<th style="padding:4px 6px;">Due</th>';
+    html += '<th style="padding:4px 6px;text-align:right;">Total</th>';
+    html += '<th style="padding:4px 6px;text-align:right;">Paid</th>';
+    html += '<th style="padding:4px 6px;text-align:right;">Owing</th>';
+    html += '<th style="padding:4px 6px;">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    salesInvoices.forEach(function(inv, i) {
+      var isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && ['AUTHORISED','SUBMITTED','SENT'].indexOf(inv.status) >= 0;
+      var isPaid = inv.status === 'PAID';
+      var isVoided = inv.status === 'VOIDED' || inv.status === 'DELETED';
+      var amountDue = parseFloat(inv.amount_due) || (parseFloat(inv.total) - parseFloat(inv.amount_paid || 0));
+      var amountPaid = parseFloat(inv.amount_paid) || 0;
+
+      // First line item description (truncated)
+      var lineItems = inv.line_items || [];
+      var firstDesc = '';
+      if (Array.isArray(lineItems) && lineItems.length > 0) {
+        firstDesc = lineItems[0].Description || lineItems[0].description || '';
+        if (firstDesc.length > 40) firstDesc = firstDesc.slice(0, 40) + '...';
+      }
+
+      // Status badge colors
+      var statusBg, statusColor;
+      if (isOverdue) { statusBg = 'var(--sw-red)'; statusColor = '#fff'; }
+      else if (inv.status === 'DRAFT') { statusBg = '#e0e0e0'; statusColor = '#333'; }
+      else if (inv.status === 'AUTHORISED') { statusBg = '#2196F3'; statusColor = '#fff'; }
+      else if (inv.status === 'SENT' || inv.status === 'SUBMITTED') { statusBg = 'var(--sw-orange)'; statusColor = '#fff'; }
+      else if (isPaid) { statusBg = 'var(--sw-green)'; statusColor = '#fff'; }
+      else if (isVoided) { statusBg = 'transparent'; statusColor = 'var(--sw-text-sec)'; }
+      else { statusBg = '#e0e0e0'; statusColor = '#333'; }
+
+      var statusLabel = isOverdue ? 'OVERDUE' : inv.status;
+      var rowStyle = isVoided ? 'text-decoration:line-through;color:var(--sw-text-sec);' : '';
+      var rowBg = isOverdue ? 'background:rgba(244,67,54,0.05);' : '';
+
+      // Xero link
+      var xeroLink = inv.xero_invoice_id ? 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + inv.xero_invoice_id : '';
+
+      html += '<tr style="border-bottom:1px solid var(--sw-border);cursor:pointer;' + rowBg + '" onclick="openInvoicePreview(_currentInvoices[' + i + '])">';
+      html += '<td style="padding:6px;font-weight:600;' + rowStyle + '">' + (inv.invoice_number || 'Draft') + '</td>';
+      html += '<td style="padding:6px;color:var(--sw-text-sec);' + rowStyle + '">' + escapeHtml(firstDesc) + '</td>';
+      html += '<td style="padding:6px;"><span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;background:' + statusBg + ';color:' + statusColor + ';' + (isVoided ? 'text-decoration:line-through;' : '') + '">' + statusLabel + '</span></td>';
+      html += '<td style="padding:6px;white-space:nowrap;">' + (inv.due_date ? fmtDate(inv.due_date) : '-') + '</td>';
+      html += '<td style="padding:6px;text-align:right;font-weight:600;' + rowStyle + '">' + fmt$(inv.total) + '</td>';
+      html += '<td style="padding:6px;text-align:right;color:var(--sw-green);">' + fmt$(amountPaid) + '</td>';
+      html += '<td style="padding:6px;text-align:right;' + (isOverdue ? 'color:var(--sw-red);font-weight:600;' : '') + '">' + (isVoided ? '-' : fmt$(amountDue)) + '</td>';
+      html += '<td style="padding:6px;white-space:nowrap;" onclick="event.stopPropagation();">';
+      // Action buttons
+      html += '<button onclick="openInvoicePreview(_currentInvoices[' + i + '])" title="Preview" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">&#128065;</button>';
+      if (!isPaid && !isVoided) {
+        html += '<button onclick="openEditInvoiceModal(_currentInvoices[' + i + '])" title="Edit" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">&#9998;</button>';
+        html += '<button onclick="confirmVoidInvoice(_currentInvoices[' + i + '])" title="Void/Delete" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;color:var(--sw-red);">&#10005;</button>';
+      }
+      if (xeroLink) {
+        html += '<a href="' + xeroLink + '" target="_blank" title="Open in Xero" style="text-decoration:none;font-size:14px;padding:2px;">&#8599;</a>';
+      }
+      html += '</td>';
+      html += '</tr>';
     });
+
+    html += '</tbody></table></div>';
   }
   // Unified invoice button
   html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">';
