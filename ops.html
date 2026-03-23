@@ -2535,7 +2535,6 @@
     <!-- Mode 1: New PO actions -->
     <div class="modal-actions" id="poActionsNew">
       <button class="btn btn-secondary" onclick="closeModal('poModal')">Cancel</button>
-      <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Email Supplier</button>
       <button class="btn btn-secondary" onclick="submitPO('quote_requested')" style="border-color:#E67E22; color:#E67E22;">Send to Supplier (No Prices)</button>
       <button class="btn btn-primary" onclick="submitPO('draft')">Save Draft</button>
       <button class="btn btn-secondary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
@@ -2543,7 +2542,6 @@
     <!-- Mode 2: Pricing PO actions (when editing quote_requested PO) -->
     <div class="modal-actions" id="poActionsPricing" style="display:none;">
       <button class="btn btn-secondary" onclick="closeModal('poModal')">Cancel</button>
-      <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Email Supplier</button>
       <button class="btn btn-secondary" onclick="savePOPrices()">Save Prices</button>
       <button class="btn btn-primary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
     </div>

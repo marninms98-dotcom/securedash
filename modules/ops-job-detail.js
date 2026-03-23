@@ -1859,16 +1859,10 @@ function renderBuildView(data) {
         html += '</div>';  // po-review-body
         html += '</div>';  // po-review-card
       } else {
-        // Non-draft POs — standard one-line rendering
-        html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
-        html += '<div style="flex:1;">';
-        html += '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ';
-        html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
-        html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
-        html += '</div>';
-        html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email Supplier</button>';
-        html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
-        html += '</div>';
+        // Non-draft POs — shared compact card with expand/thread/reply
+        html += (typeof renderPOCardCompact === 'function') ? renderPOCardCompact(po) :
+          '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;">' +
+          '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ' + fmt$(po.total) + '</div>';
       }
     });
   }

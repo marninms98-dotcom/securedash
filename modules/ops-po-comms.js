@@ -1090,6 +1090,207 @@ async function submitPOEmailLog() {
 }
 
 // ════════════════════════════════════════════════════════════
+// SHARED PO CARD COMPONENT (used by Materials kanban + Money tab)
+// ════════════════════════════════════════════════════════════
+
+var _expandedPOCardId = null;
+
+function renderPOCardCompact(po, options) {
+  options = options || {};
+  var emails = po.communications || po.email_threads || [];
+  var emailCount = emails.length;
+  var lastEmail = emailCount > 0 ? emails[emailCount - 1] : null;
+
+  // Status mapping
+  var statusLabels = { draft: 'DRAFT', approved: 'APPROVED', submitted: 'SENT', quote_requested: 'QUOTED', authorised: 'CONFIRMED', billed: 'DELIVERED' };
+  var statusColors = { draft: '#95A5A6', approved: '#2980B9', submitted: '#3498DB', quote_requested: '#8E44AD', authorised: '#E67E22', billed: '#27AE60' };
+  var statusLabel = statusLabels[po.status] || (po.status || '').toUpperCase();
+  var statusColor = statusColors[po.status] || '#95A5A6';
+
+  // Job reference
+  var jobRef = '';
+  if (po.job_number || po.reference) jobRef = po.job_number || po.reference || '';
+
+  // Description from first line item
+  var desc = po.description || '';
+  if (!desc) {
+    var items = po.line_items || po.items || [];
+    if (Array.isArray(items) && items.length > 0) {
+      desc = items.map(function(li) { return li.description || ''; }).filter(Boolean).join(', ');
+      if (desc.length > 50) desc = desc.slice(0, 50) + '...';
+    }
+  }
+
+  var isExpanded = _expandedPOCardId === po.id;
+  var cardId = 'poCardShared_' + po.id;
+
+  var html = '<div class="po-card-shared" id="' + cardId + '" style="background:var(--sw-card,#fff);padding:12px;margin-bottom:8px;box-shadow:var(--sw-shadow,0 1px 3px rgba(0,0,0,0.08));border-left:3px solid ' + statusColor + ';">';
+
+  // Row 1: Supplier + Amount + Status
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+  html += '<span style="font-weight:700;font-size:13px;color:var(--sw-dark);">' + escapeHtml(po.supplier_name || 'No supplier') + '</span>';
+  html += '<div style="display:flex;align-items:center;gap:8px;">';
+  html += '<span style="font-weight:600;font-family:var(--sw-font-num);font-size:13px;">' + fmt$(po.total) + '</span>';
+  html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:' + statusColor + '18;color:' + statusColor + ';font-weight:700;letter-spacing:0.5px;">' + statusLabel + '</span>';
+  html += '</div></div>';
+
+  // Row 2: PO number + description + job number
+  var metaParts = [po.po_number || '', desc, jobRef].filter(Boolean);
+  if (metaParts.length > 0) {
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:3px;">' + escapeHtml(metaParts.join(' · ')) + '</div>';
+  }
+
+  // Row 3: Email summary OR "Send PO" button
+  if (emailCount > 0 && lastEmail) {
+    var emailDir = (lastEmail.direction === 'inbound' || lastEmail.direction === 'received') ? '&#8601;' : '&#8599;';
+    var emailPreview = (lastEmail.subject || lastEmail.body_text || '').slice(0, 50);
+    var hasUnread = emails.some(function(e) { return (e.direction === 'inbound' || e.direction === 'received') && !e.read_at; });
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:6px;display:flex;align-items:center;gap:4px;">';
+    if (hasUnread) html += '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--sw-blue,#3498DB);"></span>';
+    html += '<span>&#128233; ' + emailCount + ' email' + (emailCount > 1 ? 's' : '') + '</span>';
+    html += '<span style="color:var(--sw-text-sec);">· "' + escapeHtml(emailPreview) + '"</span>';
+    html += '</div>';
+  } else if (po.status !== 'draft') {
+    html += '<div style="margin-top:6px;">';
+    html += '<button class="btn btn-sm btn-secondary" style="font-size:11px;" onclick="event.stopPropagation();openPOEmailCompose(\'' + po.id + '\')">&#9993; Send PO</button>';
+    html += '</div>';
+  }
+
+  // Row 4: Expand/Collapse toggle
+  html += '<div style="margin-top:6px;display:flex;justify-content:flex-end;">';
+  html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:none;border:1px solid var(--sw-border);color:var(--sw-text-sec);" onclick="event.stopPropagation();togglePOCardExpand(\'' + po.id + '\')">' + (isExpanded ? '&#9650; Hide' : '&#9660; Expand') + '</button>';
+  html += '</div>';
+
+  // Expanded section
+  html += '<div id="poCardBody_' + po.id + '" style="display:' + (isExpanded ? 'block' : 'none') + ';margin-top:10px;padding-top:10px;border-top:1px solid var(--sw-border);">';
+  html += '<div style="display:flex;gap:6px;margin-bottom:8px;">';
+  html += '<button class="btn btn-sm btn-secondary" style="font-size:11px;" onclick="event.stopPropagation();openPOEdit(\'' + po.id + '\')">Edit PO</button>';
+  if (po.job_id) html += '<button class="btn btn-sm btn-secondary" style="font-size:11px;" onclick="event.stopPropagation();openJobQuickView(\'' + po.id.replace(/'/g, '') + '\')">View Job</button>';
+  html += '</div>';
+
+  // Email thread placeholder (loaded async)
+  html += '<div id="poCardThread_' + po.id + '"><div style="font-size:11px;color:var(--sw-text-sec);">Loading emails...</div></div>';
+
+  // Inline reply bar
+  html += renderInlineReplyBar(po.id, 'po', lastEmail);
+
+  html += '</div>'; // expanded body
+  html += '</div>'; // card
+  return html;
+}
+
+function togglePOCardExpand(poId) {
+  var wasExpanded = _expandedPOCardId === poId;
+
+  // Collapse previously expanded card
+  if (_expandedPOCardId) {
+    var prevBody = document.getElementById('poCardBody_' + _expandedPOCardId);
+    if (prevBody) prevBody.style.display = 'none';
+  }
+
+  if (wasExpanded) {
+    _expandedPOCardId = null;
+    return;
+  }
+
+  // Expand new card
+  _expandedPOCardId = poId;
+  var body = document.getElementById('poCardBody_' + poId);
+  if (body) {
+    body.style.display = 'block';
+    // Load email thread
+    loadPOEmails(poId).then(function(emails) {
+      var threadEl = document.getElementById('poCardThread_' + poId);
+      if (threadEl) threadEl.innerHTML = renderPOEmailThread(emails, poId);
+    });
+  }
+}
+
+function renderInlineReplyBar(entityId, type, lastEmail) {
+  var replyTo = '';
+  var replySubject = '';
+  if (lastEmail) {
+    var isInbound = lastEmail.direction === 'inbound' || lastEmail.direction === 'received';
+    replyTo = isInbound ? (lastEmail.from_email || '') : (lastEmail.to_email || '');
+    replySubject = 'Re: ' + (lastEmail.subject || '');
+  }
+  var placeholder = replyTo ? 'Reply to ' + replyTo + '...' : 'Type a message...';
+  var barId = 'replyBar_' + type + '_' + entityId;
+
+  var html = '<div id="' + barId + '" style="margin-top:8px;display:flex;gap:6px;align-items:flex-end;">';
+  html += '<textarea id="replyText_' + type + '_' + entityId + '" placeholder="' + escapeHtml(placeholder) + '" rows="1" style="flex:1;padding:8px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;resize:none;min-height:36px;" onfocus="this.rows=3" onblur="if(!this.value)this.rows=1"></textarea>';
+  html += '<button class="btn btn-sm btn-primary" style="font-size:11px;white-space:nowrap;height:36px;" onclick="sendInlineReply(\'' + entityId + '\',\'' + type + '\',\'' + escapeHtml(replyTo).replace(/'/g, "\\'") + '\',\'' + escapeHtml(replySubject).replace(/'/g, "\\'") + '\')">Send &#8599;</button>';
+  html += '</div>';
+  return html;
+}
+
+async function sendInlineReply(entityId, type, toEmail, subject) {
+  var textEl = document.getElementById('replyText_' + type + '_' + entityId);
+  if (!textEl) return;
+  var body = textEl.value.trim();
+  if (!body) { showToast('Type a message first', 'warning'); return; }
+  if (!toEmail) {
+    toEmail = prompt('Enter recipient email:');
+    if (!toEmail) return;
+  }
+
+  // Optimistic UI — show message immediately
+  var threadEl = document.getElementById('poCardThread_' + entityId);
+  if (threadEl) {
+    var tempHtml = '<div style="padding:8px 12px;margin-bottom:6px;border-left:3px solid var(--sw-orange);background:rgba(241,90,41,0.04);border-radius:0 6px 6px 0;opacity:0.7;">';
+    tempHtml += '<div style="font-size:11px;color:var(--sw-text-sec);">&#8599; Sending to ' + escapeHtml(toEmail) + '...</div>';
+    tempHtml += '<div style="font-size:12px;margin-top:4px;white-space:pre-wrap;">' + escapeHtml(body) + '</div>';
+    tempHtml += '</div>';
+    threadEl.innerHTML += tempHtml;
+  }
+  textEl.value = '';
+  textEl.rows = 1;
+
+  try {
+    if (type === 'council') {
+      // Council email — need submission_id + step_index from context
+      // For now, use the compose modal for council (full inline in Phase 3)
+      await opsPost('send_council_email', {
+        submission_id: entityId,
+        to_email: toEmail,
+        subject: subject || 'Council Application — SecureWorks WA',
+        body_text: body,
+      });
+    } else {
+      // PO email
+      await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
+        body: JSON.stringify({
+          po_id: entityId,
+          to_email: toEmail,
+          subject: subject || 'SecureWorks WA',
+          body_text: body,
+          body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>',
+        })
+      }).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function(d) { if (d.error) throw new Error(d.error); });
+    }
+
+    showToast('Email sent', 'success');
+    // Refresh thread
+    if (_poEmailCache[entityId]) delete _poEmailCache[entityId];
+    loadPOEmails(entityId).then(function(emails) {
+      if (threadEl) threadEl.innerHTML = renderPOEmailThread(emails, entityId);
+    });
+  } catch (e) {
+    showToast('Failed to send: ' + e.message, 'warning');
+    // Update optimistic UI to show error
+    if (threadEl) {
+      var lastChild = threadEl.lastElementChild;
+      if (lastChild && lastChild.style.opacity === '0.7') {
+        lastChild.style.borderLeftColor = 'var(--sw-red)';
+        lastChild.querySelector('div').innerHTML = '&#10007; Failed to send — <a href="#" onclick="event.preventDefault();sendInlineReply(\'' + entityId + '\',\'' + type + '\',\'' + toEmail + '\',\'' + subject + '\')">Retry</a>';
+      }
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 // PO EMAIL COMPOSE + THREAD
 // ════════════════════════════════════════════════════════════
 
