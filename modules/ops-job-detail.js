@@ -242,7 +242,15 @@ async function loadJobCouncilSection(jobId) {
     var resp = await opsFetch('list_council_submissions', { job_id: jobId });
     var subs = resp.submissions || [];
     if (subs.length === 0) {
-      el.innerHTML = '';
+      // Show "Start Council Process" button for patio jobs
+      var jd = _currentJobData ? _currentJobData.job : null;
+      if (jd && jd.type === 'patio') {
+        el.innerHTML = '<div style="margin-top:12px;">' +
+          '<button class="btn btn-secondary" style="width:100%;font-size:12px;font-weight:600;" onclick="openCouncilStartModal(\'' + jobId + '\')">' +
+          '&#127970; Start Council / Engineering Process</button></div>';
+      } else {
+        el.innerHTML = '';
+      }
       return;
     }
     var sub = subs[0];

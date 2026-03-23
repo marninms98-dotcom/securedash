@@ -1568,3 +1568,208 @@ async function confirmAcceptance() {
   }
 }
 
+// ════════════════════════════════════════════════════════════
+// COUNCIL / ENGINEERING START MODAL
+// ════════════════════════════════════════════════════════════
+
+var _councilSteps = [];
+
+var COUNCIL_DEFAULT_STEPS = {
+  council_engineering: [
+    { name: 'Engineering Drawings' },
+    { name: 'Submit CDC Application' },
+    { name: 'Council Review' },
+    { name: 'Council Queries (if any)' },
+    { name: 'Permit Issued' },
+  ],
+  engineering_only: [
+    { name: 'Engineering Drawings' },
+    { name: 'Engineering Review' },
+    { name: 'Engineering Certificate Issued' },
+  ],
+  council_cdc: [
+    { name: 'Submit CDC Application' },
+    { name: 'Council Review' },
+    { name: 'Council Queries (if any)' },
+    { name: 'Permit Issued' },
+  ],
+  custom: [],
+};
+
+function openCouncilStartModal(jobId) {
+  var job = null;
+  // Find job from current data
+  if (typeof _currentJobData !== 'undefined' && _currentJobData && _currentJobData.job) {
+    job = _currentJobData.job;
+  } else if (typeof _allJobs !== 'undefined') {
+    job = _allJobs.find(function(j) { return j.id === jobId; });
+  }
+  document.getElementById('councilJobId').value = jobId;
+  var infoEl = document.getElementById('councilJobInfo');
+  if (job) {
+    infoEl.innerHTML = escapeHtml((job.job_number || '') + ' — ' + (job.client_name || '')) +
+      '<div style="font-size:11px;color:var(--sw-text-sec);font-weight:400;">' + escapeHtml((job.site_address || '') + (job.suburb ? ', ' + job.suburb : '')) + '</div>';
+  } else {
+    infoEl.textContent = jobId;
+  }
+  document.getElementById('councilType').value = 'council_engineering';
+  updateCouncilDefaultSteps();
+  document.getElementById('councilStartModal').classList.add('active');
+}
+
+function updateCouncilDefaultSteps() {
+  var type = document.getElementById('councilType').value;
+  _councilSteps = (COUNCIL_DEFAULT_STEPS[type] || []).map(function(s) { return { name: s.name, vendor: s.vendor || '', vendor_email: s.vendor_email || '' }; });
+  renderCouncilStepsList();
+}
+
+function renderCouncilStepsList() {
+  var el = document.getElementById('councilStepsList');
+  if (!el) return;
+  if (_councilSteps.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec);padding:8px;">No steps — add steps below or select a type above.</div>';
+    return;
+  }
+  var html = '';
+  _councilSteps.forEach(function(step, idx) {
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--sw-border);">';
+    html += '<span style="font-size:11px;color:var(--sw-text-sec);min-width:20px;">' + (idx + 1) + '.</span>';
+    html += '<input type="text" class="form-input" value="' + escapeHtml(step.name) + '" onchange="_councilSteps[' + idx + '].name=this.value" style="flex:1;padding:4px 8px;font-size:12px;">';
+    if (idx > 0) html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:none;color:var(--sw-text-sec);" onclick="moveCouncilStep(' + idx + ',-1)" title="Move up">&#9650;</button>';
+    if (idx < _councilSteps.length - 1) html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:none;color:var(--sw-text-sec);" onclick="moveCouncilStep(' + idx + ',1)" title="Move down">&#9660;</button>';
+    html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:none;color:var(--sw-red);" onclick="removeCouncilStep(' + idx + ')" title="Remove">&#10005;</button>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function addCouncilStep() {
+  var nameEl = document.getElementById('councilNewStepName');
+  var name = (nameEl.value || '').trim();
+  if (!name) return;
+  _councilSteps.push({ name: name, vendor: '', vendor_email: '' });
+  nameEl.value = '';
+  renderCouncilStepsList();
+}
+
+function removeCouncilStep(idx) {
+  _councilSteps.splice(idx, 1);
+  renderCouncilStepsList();
+}
+
+function moveCouncilStep(idx, direction) {
+  var newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= _councilSteps.length) return;
+  var tmp = _councilSteps[idx];
+  _councilSteps[idx] = _councilSteps[newIdx];
+  _councilSteps[newIdx] = tmp;
+  renderCouncilStepsList();
+}
+
+async function submitCouncilStart() {
+  var jobId = document.getElementById('councilJobId').value;
+  var type = document.getElementById('councilType').value;
+  if (!jobId) return;
+  if (_councilSteps.length === 0) { alert('Add at least one step.'); return; }
+
+  try {
+    await opsPost('create_council_submission', {
+      job_id: jobId,
+      template_type: type,
+      steps: _councilSteps,
+    });
+    closeModal('councilStartModal');
+    showToast('Council process started — ' + _councilSteps.length + ' steps', 'success');
+    // Reload the job detail to show council status
+    if (typeof openJobPeek === 'function') openJobPeek(jobId);
+    if (typeof loadApprovals === 'function') loadApprovals();
+    refreshActiveView();
+  } catch (e) {
+    alert('Failed to start council process: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// COUNCIL STEP ADVANCE CONFIRMATION
+// ════════════════════════════════════════════════════════════
+
+function openCouncilAdvanceModal(submissionId, stepIndex) {
+  var sub = (_councilSubmissions || []).find(function(s) { return s.id === submissionId; });
+  if (!sub) return;
+  var steps = sub.steps || [];
+  var currentStep = steps[stepIndex];
+  var nextStep = steps[stepIndex + 1];
+
+  document.getElementById('councilAdvanceSubId').value = submissionId;
+  document.getElementById('councilAdvanceStepIdx').value = stepIndex;
+  document.getElementById('councilAdvanceNotes').value = '';
+  document.getElementById('councilAdvanceSMS').checked = true;
+
+  var infoHtml = '<div style="margin-bottom:8px;">';
+  infoHtml += '<div style="font-size:12px;color:var(--sw-text-sec);">Completing:</div>';
+  infoHtml += '<div style="font-weight:600;">' + escapeHtml(currentStep ? currentStep.name : 'Step ' + (stepIndex + 1)) + '</div>';
+  if (nextStep) {
+    infoHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:6px;">Next step auto-starts:</div>';
+    infoHtml += '<div style="font-weight:600;">' + escapeHtml(nextStep.name) + '</div>';
+  } else {
+    infoHtml += '<div style="font-size:12px;color:var(--sw-green);margin-top:6px;font-weight:600;">This is the final step — process will be marked complete.</div>';
+  }
+  infoHtml += '</div>';
+  document.getElementById('councilAdvanceInfo').innerHTML = infoHtml;
+
+  var clientName = sub.client_name || sub.jobs?.client_name || 'there';
+  var jobNum = sub.job_number || sub.jobs?.job_number || '';
+  var nextStepName = nextStep ? nextStep.name : 'Complete';
+  var smsText = 'Hi ' + clientName + ', your council application for ' + jobNum + ' has progressed. Current status: ' + nextStepName + '. — SecureWorks WA';
+  document.getElementById('councilAdvanceSMSPreview').textContent = smsText;
+
+  document.getElementById('councilAdvanceModal').classList.add('active');
+}
+
+async function confirmCouncilAdvance() {
+  var subId = document.getElementById('councilAdvanceSubId').value;
+  var stepIdx = parseInt(document.getElementById('councilAdvanceStepIdx').value, 10);
+  var notes = document.getElementById('councilAdvanceNotes').value;
+  var sendSMS = document.getElementById('councilAdvanceSMS').checked;
+
+  try {
+    // Complete current step
+    await opsPost('update_council_status', {
+      submission_id: subId,
+      step_index: stepIdx,
+      status: 'complete',
+      notes: notes || undefined,
+    });
+
+    // Auto-advance next step to in_progress
+    var sub = (_councilSubmissions || []).find(function(s) { return s.id === subId; });
+    var steps = sub ? sub.steps || [] : [];
+    if (stepIdx + 1 < steps.length) {
+      await opsPost('update_council_status', {
+        submission_id: subId,
+        step_index: stepIdx + 1,
+        status: 'in_progress',
+      });
+    }
+
+    // Send SMS via GHL if checked
+    if (sendSMS && sub) {
+      var smsText = document.getElementById('councilAdvanceSMSPreview').textContent;
+      try {
+        await opsPost('send_council_sms', {
+          job_id: sub.job_id,
+          message: smsText,
+        });
+      } catch (smsErr) {
+        console.warn('Council SMS failed (non-blocking):', smsErr);
+      }
+    }
+
+    closeModal('councilAdvanceModal');
+    showToast('Step completed — advancing to next step', 'success');
+    loadApprovals();
+  } catch (e) {
+    alert('Failed to advance step: ' + e.message);
+  }
+}
+

@@ -2873,6 +2873,64 @@
   </div>
 </div>
 
+<!-- ══════════ COUNCIL START MODAL ══════════ -->
+<div class="modal-overlay" id="councilStartModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">Start Council / Engineering Process</div>
+    <div class="form-group">
+      <label class="form-label">Job</label>
+      <div id="councilJobInfo" style="font-size:13px;font-weight:600;color:var(--sw-dark);padding:6px 0;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Approval Type</label>
+      <select class="form-select" id="councilType" onchange="updateCouncilDefaultSteps()">
+        <option value="council_engineering">Council + Engineering (CDC)</option>
+        <option value="engineering_only">Engineering Only</option>
+        <option value="council_cdc">Council Approval (CDC)</option>
+        <option value="custom">Other / Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Steps</label>
+      <div id="councilStepsList" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" class="form-input" id="councilNewStepName" placeholder="Add a step..." style="flex:1;">
+        <button class="btn btn-sm btn-secondary" onclick="addCouncilStep()">+ Add</button>
+      </div>
+    </div>
+    <input type="hidden" id="councilJobId">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('councilStartModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCouncilStart()">Start Process</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ COUNCIL STEP ADVANCE CONFIRMATION ══════════ -->
+<div class="modal-overlay" id="councilAdvanceModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title">Advance Council Step</div>
+    <div id="councilAdvanceInfo" style="font-size:13px;margin-bottom:12px;"></div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="councilAdvanceSMS" checked>
+        Send SMS update to client
+      </label>
+      <div id="councilAdvanceSMSPreview" style="font-size:11px;color:var(--sw-text-sec);padding:6px 8px;margin-top:4px;background:var(--sw-light);border-radius:4px;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (optional)</label>
+      <textarea class="form-textarea" id="councilAdvanceNotes" rows="2" placeholder="Any notes about this step..."></textarea>
+    </div>
+    <input type="hidden" id="councilAdvanceSubId">
+    <input type="hidden" id="councilAdvanceStepIdx">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('councilAdvanceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmCouncilAdvance()">Confirm & Advance</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ QUICK QUOTE MODAL ══════════ -->
 <div class="qq-overlay" id="qqOverlay" onclick="if(event.target===this)closeQuickQuote()">
   <div class="qq-modal">
