@@ -309,7 +309,10 @@ async function approveInvoice(xeroId, invNumber, jobRef, total) {
 }
 
 // Restore invActionModal buttons to default single-button layout after close
-var _origInvActionClose = closeModal;
+var _origInvActionClose = typeof closeModal === 'function' ? closeModal : function(id) {
+  var el = document.getElementById(id);
+  if (el) el.classList.remove('active');
+};
 closeModal = function(id) {
   _origInvActionClose(id);
   if (id === 'invActionModal') {

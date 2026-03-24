@@ -2237,6 +2237,7 @@ async function loadThreadDocuments(jobId) {
   } catch (e) {
     el.innerHTML = '';
   }
+}
 
 window.handleDocDrop = function(e) {
   var files = e.dataTransfer.files;
