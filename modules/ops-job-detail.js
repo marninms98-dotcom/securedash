@@ -2,6 +2,12 @@
 // JOB DETAIL SLIDE PANEL (legacy peek — used by Today/Calendar)
 // ════════════════════════════════════════════════════════════
 
+function confirmEditScope(url) {
+  if (confirm('This will open the scope in the live editor with current pricing.\n\nAuto-save is active \u2014 any changes will overwrite the original scope.\n\nContinue?')) {
+    window.open(url, '_blank');
+  }
+}
+
 async function openJobPeek(jobId) {
   document.getElementById('slidePanel').classList.add('open');
   document.getElementById('slideBackdrop').classList.add('open');
@@ -38,7 +44,8 @@ function renderJobPeek(data) {
   }
   if (j.type !== 'miscellaneous') {
     var scopeToolUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
-    html += '<a href="' + scopeToolUrl + '?jobId=' + j.id + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none;">Open Scope &#8599;</a>';
+    html += '<a href="' + scopeToolUrl + '?jobId=' + j.id + '&mode=readonly" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none;">View Scope &#8599;</a>';
+    html += '<a href="#" onclick="confirmEditScope(\'' + scopeToolUrl + '?jobId=' + j.id + '\');return false;" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none; color:var(--sw-orange);">Edit Scope &#9998;</a>';
   }
   html += '</div>';
   if (j.site_address) html += '<div style="font-size:13px; margin-bottom:4px;">' + j.site_address + '</div>';
@@ -738,7 +745,8 @@ function renderOverviewView(data) {
   html += '<div style="margin-top:8px;font-size:11px;display:flex;gap:12px;">';
   if (j.type !== 'miscellaneous') {
     var scopeUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
-    html += '<a href="' + scopeUrl + '?jobId=' + j.id + '" target="_blank" style="color:var(--sw-mid);">Open Scope &#8599;</a>';
+    html += '<a href="' + scopeUrl + '?jobId=' + j.id + '&mode=readonly" target="_blank" style="color:var(--sw-mid);">View Scope &#8599;</a>';
+    html += '<a href="#" onclick="confirmEditScope(\'' + scopeUrl + '?jobId=' + j.id + '\');return false;" style="color:var(--sw-orange);">Edit Scope &#9998;</a>';
   }
   if (j.ghl_opportunity_id) html += '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" style="color:var(--sw-mid);">View in GHL &#8599;</a>';
   html += '</div></div>';
