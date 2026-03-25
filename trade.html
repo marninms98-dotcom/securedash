@@ -1876,6 +1876,14 @@
       background: rgba(255,255,255,0.2);
       color: var(--sw-yellow);
     }
+    .onsite-tool-btn.ot-expense {
+      background: rgba(255,255,255,0.2);
+      color: var(--sw-green, #4CAF50);
+    }
+    .onsite-tool-btn.ot-more {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
 
     /* Variation Quick Presets */
     .variation-presets {
@@ -2177,6 +2185,11 @@
 <div id="viewJob" class="view">
   <div class="container" id="jobDetailContent">
     <div class="loading-screen"><div class="spinner"></div>Loading job...</div>
+  </div>
+  <div id="stickyTimerBar" style="display:none;position:fixed;top:0;left:0;right:0;height:40px;background:var(--sw-dark);color:#fff;z-index:400;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;font-weight:600;">
+    <span id="stickyTimerText">⏱ 0m</span>
+    <span id="stickyTimerJob" style="font-size:11px;color:rgba(255,255,255,0.7);"></span>
+    <button id="stickyTimerPause" style="background:none;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:600;"></button>
   </div>
 </div>
 
@@ -4234,13 +4247,16 @@
     if (phase !== 'on_site') return '';
     var job = data.job;
 
-    var h = '<div class="onsite-tools" id="onsiteTools">';
-    h += '<button class="onsite-tool-btn ot-note" onclick="showOnsiteNoteInput()">';
-    h += '📝 Note</button>';
-    h += '<button class="onsite-tool-btn ot-photo" onclick="document.getElementById(\'onsitePhotoInput\').click()">';
-    h += '📸 Photo</button>';
-    h += '<button class="onsite-tool-btn ot-variation" onclick="showVariationForm(\'' + esc(job.id) + '\', \'' + esc(job.type || 'patio') + '\')">';
-    h += '⚠️ Variation</button>';
+    var h = '<div class="onsite-tools" id="onsiteTools" style="position:relative;">';
+    h += '<button class="onsite-tool-btn ot-note" onclick="showOnsiteNoteInput()">📝 Note</button>';
+    h += '<button class="onsite-tool-btn ot-photo" onclick="document.getElementById(\'onsitePhotoInput\').click()">📸 Photo</button>';
+    h += '<button class="onsite-tool-btn ot-expense" onclick="openQuickExpense(\'' + esc(job.id) + '\')">💰 Expense</button>';
+    h += '<button class="onsite-tool-btn ot-more" onclick="toggleOnsiteMore()" style="min-width:40px;padding:0;flex:0 0 40px;">•••</button>';
+    // Overflow menu
+    h += '<div id="onsiteMoreMenu" style="display:none;position:absolute;bottom:52px;right:4px;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:4px;min-width:140px;">';
+    h += '<button onclick="showVariationForm(\'' + esc(job.id) + '\', \'' + esc(job.type || 'patio') + '\');toggleOnsiteMore()" style="display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:none;font-size:13px;cursor:pointer;">⚠️ Report Variation</button>';
+    h += '<button onclick="reportIssue();toggleOnsiteMore()" style="display:block;width:100%;text-align:left;padding:10px 12px;border:none;background:none;font-size:13px;cursor:pointer;">🆘 Report Issue</button>';
+    h += '</div>';
     h += '</div>';
 
     // Hidden photo input for on-site capture
@@ -4248,6 +4264,38 @@
 
     return h;
   }
+
+  // Report issue — quick alert to ops
+  window.reportIssue = function() {
+    if (!_currentJob) { toast('No active job', true); return; }
+    var jobNum = _currentJob.job ? (_currentJob.job.job_number || '') : '';
+    var detail = prompt('Describe the issue:');
+    if (!detail) return;
+    api('create_trade_alert', null, {
+      jobId: _currentJobId,
+      issueType: 'on_site_issue',
+      detail: detail,
+      notify_telegram: true
+    }).then(function() {
+      toast('Issue reported to ops');
+    }).catch(function() {
+      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'on_site_issue', detail: detail });
+      toast('Issue queued (offline)');
+    });
+  };
+
+  // On-site overflow menu toggle
+  window.toggleOnsiteMore = function() {
+    var menu = document.getElementById('onsiteMoreMenu');
+    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  };
+  // Close overflow menu when tapping elsewhere
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.ot-more') && !e.target.closest('#onsiteMoreMenu')) {
+      var menu = document.getElementById('onsiteMoreMenu');
+      if (menu) menu.style.display = 'none';
+    }
+  });
 
   // On-site note quick input
   window.showOnsiteNoteInput = function() {
@@ -5093,6 +5141,42 @@
         html += '  <button class="sf-action-btn" style="background:var(--sw-mid);font-size:16px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Navigate to Site</button>';
       }
       html += '</div>';
+
+      // Collapsible Job Brief (collapsed by default for driving safety)
+      html += '<div style="margin:0 16px;">';
+      html += '<div onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=b.style.display===\'none\'?\'▶\':\'▼\'" style="font-size:13px;color:var(--sw-mid);cursor:pointer;padding:6px 0;"><span>▶</span> Job Brief</div>';
+      html += '<div style="display:none;padding:8px 0;font-size:13px;">';
+
+      var tScope = job.scope_json;
+      if (tScope && tScope.config) {
+        var tc = tScope.config;
+        var tParts = [];
+        if (tc.length && tc.projection) tParts.push(tc.length + 'm × ' + tc.projection + 'm');
+        if (tc.roofStyle) tParts.push(humanise('roofStyle', tc.roofStyle));
+        if (tc.roofing) tParts.push(humanise('roofing', tc.roofing));
+        if (tc.colour) tParts.push(tc.colour);
+        html += '<div style="color:var(--sw-dark);margin-bottom:6px;">' + tParts.join(', ') + '</div>';
+      } else if (tScope && tScope.job && tScope.job.runs) {
+        var tTotalM = tScope.job.runs.reduce(function(s, r) { return s + (r.totalLength || 0); }, 0);
+        html += '<div style="color:var(--sw-dark);margin-bottom:6px;">' + Math.round(tTotalM) + 'm fencing, ' + tScope.job.runs.length + ' run(s)</div>';
+      }
+
+      // Materials delivery status
+      var tPos = data.purchaseOrders || [];
+      if (tPos.length > 0) {
+        var allConfirmed = tPos.every(function(p) { return p.confirmed_delivery_date || p.status === 'delivered' || p.status === 'billed'; });
+        html += '<div style="color:' + (allConfirmed ? 'var(--sw-green)' : 'var(--sw-orange)') + ';margin-bottom:4px;">';
+        html += allConfirmed ? '📦 Materials: Delivered/Confirmed ✓' : '📦 Materials: Some unconfirmed';
+        html += '</div>';
+      }
+
+      // Access notes
+      if (tScope && tScope.notes && tScope.notes.noteWorkOrder) {
+        html += '<div style="color:var(--sw-text-sec);">📝 ' + tScope.notes.noteWorkOrder.replace(/</g, '&lt;').slice(0, 200) + '</div>';
+      }
+
+      html += '</div></div>';
+
       container.innerHTML = html;
       startTimerTick();
       return;
@@ -5151,6 +5235,69 @@
         html += '🔲 View 3D Model (Full Screen)</button>';
         html += '</div>';
       }
+      // Work Order section (on-site)
+      var wo = data.workOrder || data.work_order;
+      var scope = job.scope_json;
+      html += '<div class="detail-section" style="margin-top:8px;">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">📋 Work Order</div>';
+
+      // Scope of work from scope_json
+      if (scope) {
+        html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-bottom:4px;">Scope</div>';
+        var scopeParts = [];
+        if (scope.config) {
+          var c = scope.config;
+          if (c.length && c.projection) scopeParts.push(c.length + 'm × ' + c.projection + 'm');
+          if (c.roofStyle) scopeParts.push(humanise('roofStyle', c.roofStyle));
+          if (c.roofing) scopeParts.push(humanise('roofing', c.roofing));
+          if (c.colour) scopeParts.push(c.colour);
+          if (c.connectionMethod || c.connection) scopeParts.push(humanise('connection', c.connectionMethod || c.connection));
+        } else if (scope.job && scope.job.runs) {
+          var totalM = scope.job.runs.reduce(function(s, r) { return s + (r.totalLength || 0); }, 0);
+          scopeParts.push(Math.round(totalM) + 'm fencing');
+          scopeParts.push(scope.job.runs.length + ' run(s)');
+        }
+        scopeParts.forEach(function(p) {
+          html += '<div style="font-size:13px;color:var(--sw-dark);padding:2px 0;">• ' + p + '</div>';
+        });
+      }
+
+      // Crew
+      var woCrew = data.crew || data.assignments || [];
+      if (woCrew.length > 0) {
+        html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-top:8px;margin-bottom:4px;">Crew</div>';
+        var crewNames = [];
+        woCrew.forEach(function(a) {
+          var n = a.crew_name || a.assigned_to || '';
+          if (n && crewNames.indexOf(n) < 0) crewNames.push(n);
+        });
+        html += '<div style="font-size:13px;color:var(--sw-dark);">' + crewNames.join(' + ') + '</div>';
+        if (scope && scope.config && scope.config.labour_days) {
+          html += '<div style="font-size:12px;color:var(--sw-text-sec);">Est. ' + scope.config.labour_days + ' days</div>';
+        } else if (scope && scope.install_days) {
+          html += '<div style="font-size:12px;color:var(--sw-text-sec);">Est. ' + scope.install_days + ' days</div>';
+        }
+      }
+
+      // Key notes from ops (scope_json.notes)
+      if (scope && scope.notes) {
+        var noteTexts = [scope.notes.noteWorkOrder, scope.notes.noteInternal].filter(Boolean);
+        if (noteTexts.length > 0) {
+          html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-top:8px;margin-bottom:4px;">Notes</div>';
+          noteTexts.forEach(function(n) {
+            html += '<div style="font-size:13px;color:var(--sw-dark);padding:2px 0;white-space:pre-wrap;">' + n.replace(/</g, '&lt;').slice(0, 500) + '</div>';
+          });
+        }
+      }
+
+      // WO PDF link
+      var woDocs = (data.documents || []).filter(function(d) { return d.type === 'work_order'; });
+      if (woDocs.length > 0) {
+        html += '<a href="' + (woDocs[0].pdf_url || woDocs[0].storage_url || '#') + '" target="_blank" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--sw-mid);font-weight:600;text-decoration:none;">View PDF ↗</a>';
+      }
+
+      html += '</div>';
+
       var refHtml = renderEnhancedScope(data, phase) + renderTradeDocuments(data, phase) + renderEnhancedPOs(data, phase);
       html += wrapCollapsible('📋 Reference Info — Scope, Docs & Materials', refHtml);
     } else {
@@ -5174,6 +5321,9 @@
 
     // Start timer tick if active
     startTimerTick();
+
+    // Setup sticky timer after render
+    setTimeout(setupStickyTimer, 100);
 
     // Load conversation thread async (Tier 3)
     if (canSeeConversation() && job.ghl_contact_id) {
@@ -7936,6 +8086,7 @@
     if (_clockState === 'on' && _clockedOnAt) {
       el.textContent = formatElapsed(_clockedOnAt);
     }
+    updateStickyTimer();
   }
 
   function startTimerTick() {
@@ -7943,6 +8094,49 @@
     if (_clockState === 'on') {
       updateTimerDisplay();
       _timerTickInterval = setInterval(updateTimerDisplay, 10000);
+    }
+  }
+
+  // Sticky timer — appears when main timer scrolls out of view
+  var _stickyTimerObserver = null;
+  function setupStickyTimer() {
+    var timerEl = document.getElementById('timerElapsed');
+    var stickyBar = document.getElementById('stickyTimerBar');
+    if (!timerEl || !stickyBar || _stickyTimerObserver) return;
+
+    _stickyTimerObserver = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (_clockState === 'on') {
+          stickyBar.style.display = entry.isIntersecting ? 'none' : 'flex';
+        } else {
+          stickyBar.style.display = 'none';
+        }
+      });
+    }, { threshold: 0 });
+
+    _stickyTimerObserver.observe(timerEl);
+  }
+
+  function updateStickyTimer() {
+    var stickyText = document.getElementById('stickyTimerText');
+    var stickyJob = document.getElementById('stickyTimerJob');
+    var stickyPause = document.getElementById('stickyTimerPause');
+    if (!stickyText) return;
+
+    var elapsed = _clockedOnAt ? formatElapsed(_clockedOnAt) : '0m';
+    stickyText.textContent = (_isPaused ? '⏸ ' : '⏱ ') + elapsed;
+
+    if (stickyJob && _currentJob) {
+      stickyJob.textContent = _currentJob.job ? (_currentJob.job.job_number || '') : '';
+    }
+    if (stickyPause) {
+      if (_isPaused) {
+        stickyPause.textContent = '▶ Resume';
+        stickyPause.onclick = function() { timerAction('resume', _currentAssignment); };
+      } else {
+        stickyPause.textContent = '⏸ Pause';
+        stickyPause.onclick = function() { timerAction('pause', _currentAssignment); };
+      }
     }
   }
 
@@ -8179,41 +8373,41 @@
     if (_currentJob) renderJobDetail(_currentJob);
   };
 
-  // Manual time override
+  // Manual time override — hours + mins picker overlay
   window.showManualTimeOverride = function() {
-    var now = new Date();
-    var startVal = _clockedOnAt ? new Date(_clockedOnAt).toTimeString().slice(0, 5) : now.toTimeString().slice(0, 5);
-    var endVal = now.toTimeString().slice(0, 5);
-    var h = '<div style="padding:16px">';
-    h += '<div style="font-size:15px;font-weight:700;margin-bottom:12px">Adjust Time Manually</div>';
-    h += '<div style="display:flex;gap:12px;margin-bottom:12px">';
-    h += '<div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">Start</label>';
-    h += '<input type="time" id="manualStart" value="' + startVal + '" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:16px;font-family:var(--sw-font)"></div>';
-    h += '<div style="flex:1"><label style="font-size:12px;color:var(--sw-text-sec)">End</label>';
-    h += '<input type="time" id="manualEnd" value="' + endVal + '" style="width:100%;padding:10px;border:1.5px solid var(--sw-border);border-radius:8px;font-size:16px;font-family:var(--sw-font)"></div>';
-    h += '</div>';
-    h += '<button class="btn btn-primary" style="width:100%" onclick="applyManualTime()">Apply</button>';
-    h += '<div style="font-size:11px;color:var(--sw-yellow);margin-top:8px;text-align:center">This will be flagged as a manual adjustment</div>';
-    h += '</div>';
-    document.getElementById('confirmOverlay').querySelector('.confirm-box').innerHTML = h;
-    document.getElementById('confirmOverlay').classList.add('active');
+    var currentMins = _clockedOnAt ? Math.round((Date.now() - new Date(_clockedOnAt).getTime()) / 60000) : 0;
+    var currentH = Math.floor(currentMins / 60);
+    var currentM = currentMins % 60;
+
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:320px;width:100%;padding:24px;text-align:center;">' +
+      '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-bottom:12px;">Override Time</div>' +
+      '<div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:8px;">' +
+        '<input type="number" id="overrideHrs" value="' + currentH + '" min="0" max="16" style="width:60px;padding:10px;text-align:center;font-size:18px;font-weight:700;border:2px solid var(--sw-border);border-radius:8px;">' +
+        '<span style="font-size:14px;color:var(--sw-text-sec);font-weight:600;">hrs</span>' +
+        '<input type="number" id="overrideMins" value="' + currentM + '" min="0" max="59" step="15" style="width:60px;padding:10px;text-align:center;font-size:18px;font-weight:700;border:2px solid var(--sw-border);border-radius:8px;">' +
+        '<span style="font-size:14px;color:var(--sw-text-sec);font-weight:600;">mins</span>' +
+      '</div>' +
+      '<div id="overridePreview" style="font-size:12px;color:var(--sw-text-sec);margin-bottom:16px;">Currently: ' + formatElapsed(_clockedOnAt) + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button onclick="this.closest(\'div[style*=fixed]\').remove();" style="flex:1;padding:12px;background:var(--sw-light);border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;color:var(--sw-mid);">Cancel</button>' +
+        '<button onclick="applyTimeOverride();this.closest(\'div[style*=fixed]\').remove();" style="flex:1;padding:12px;background:var(--sw-dark);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Apply</button>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(overlay);
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
   };
 
-  window.applyManualTime = function() {
-    var startEl = document.getElementById('manualStart');
-    var endEl = document.getElementById('manualEnd');
-    if (!startEl || !endEl) return;
-    var today = new Date().toISOString().slice(0, 10);
-    _clockedOnAt = new Date(today + 'T' + startEl.value + ':00').toISOString();
-    _arrivedAt = _clockedOnAt;
+  window.applyTimeOverride = function() {
+    var hrs = parseInt(document.getElementById('overrideHrs') ? document.getElementById('overrideHrs').value : '0');
+    var mins = parseInt(document.getElementById('overrideMins') ? document.getElementById('overrideMins').value : '0');
+    if (isNaN(hrs) || isNaN(mins)) { toast('Invalid time', true); return; }
+    var totalMins = hrs * 60 + mins;
     _manualOverride = true;
-    // Calculate stopped minutes from manual end
-    var endTime = new Date(today + 'T' + endEl.value + ':00');
-    var startTime = new Date(_clockedOnAt);
-    _stoppedOnsiteMins = Math.max(0, Math.round((endTime - startTime) / 60000));
+    _clockedOnAt = new Date(Date.now() - totalMins * 60000).toISOString();
     saveTimerState();
-    document.getElementById('confirmOverlay').classList.remove('active');
-    toast('Time adjusted manually');
+    toast('Time adjusted to ' + hrs + 'h ' + mins + 'm');
     if (_currentJob) renderJobDetail(_currentJob);
   };
 
@@ -8234,29 +8428,67 @@
       overlay.className = 'confirm-overlay active';
       document.body.appendChild(overlay);
     }
-    var allItems = [];
-    pos.forEach(function(po) {
-      if (po.line_items) po.line_items.forEach(function(li) {
-        if (li.description) allItems.push(li.description);
-      });
-    });
-    var cats = categorizeMaterials(allItems);
-    var catKeys = Object.keys(cats);
     var h = '<div class="confirm-box" style="max-width:400px;max-height:80vh;overflow-y:auto">';
     h += '<h3 style="margin-bottom:4px">Materials on site?</h3>';
-    h += '<p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">Quick check before you start</p>';
-    catKeys.forEach(function(cat) {
-      h += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:6px">';
-      h += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(cat) + '</div>';
-      h += '<div style="font-size:12px;color:var(--sw-text-sec)">' + cats[cat].length + ' item' + (cats[cat].length > 1 ? 's' : '') + '</div></div>';
-      h += '<button onclick="matCheckIssue(\'' + esc(cat) + '\')" style="padding:6px 10px;border:1px solid var(--sw-yellow);border-radius:6px;background:none;color:var(--sw-yellow);font-size:12px;font-weight:600;cursor:pointer">Issue</button>';
-      h += '</div>';
+    h += '<p style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">Tick each item as you check it</p>';
+    var itemIdx = 0;
+    pos.forEach(function(po) {
+      if (!po.line_items || po.line_items.length === 0) return;
+      var supplier = po.supplier_name || po.contact_name || 'Supplier';
+      h += '<div style="font-size:12px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.3px;margin:12px 0 6px 0;">' + esc(supplier) + '</div>';
+      po.line_items.forEach(function(li) {
+        if (!li.Description && !li.description) return;
+        var desc = li.Description || li.description || '';
+        var qty = li.Quantity || li.quantity || '';
+        h += '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:4px;cursor:pointer;">';
+        h += '<input type="checkbox" class="mat-item-cb" data-desc="' + esc(desc) + '" style="width:20px;height:20px;accent-color:var(--sw-green);flex-shrink:0;" onchange="matCheckUpdateBtn()">';
+        h += '<div style="flex:1;font-size:13px;color:var(--sw-dark);">' + esc(desc);
+        if (qty) h += ' <span style="color:var(--sw-text-sec);font-size:12px;">(' + qty + ')</span>';
+        h += '</div></label>';
+        itemIdx++;
+      });
     });
-    h += '<div class="confirm-actions" style="margin-top:16px">';
-    h += '<button class="confirm-ok" style="flex:1;background:var(--sw-green);border-color:var(--sw-green)" onclick="matCheckAllGood()">All here ✓</button>';
+    h += '<div class="confirm-actions" style="margin-top:16px;gap:8px;">';
+    h += '<button id="matCheckAllBtn" class="confirm-ok" style="flex:1;background:var(--sw-green);border-color:var(--sw-green);opacity:0.4;pointer-events:none;" onclick="matCheckAllGood()">All checked ✓</button>';
+    h += '<button class="confirm-ok" style="flex:1;background:var(--sw-yellow);border-color:var(--sw-yellow);color:#fff;" onclick="matCheckReportMissing()">Report Missing</button>';
     h += '</div></div>';
     overlay.innerHTML = h;
     overlay.classList.add('active');
+  };
+
+  window.matCheckUpdateBtn = function() {
+    var allCbs = document.querySelectorAll('.mat-item-cb');
+    var allChecked = allCbs.length > 0 && Array.prototype.every.call(allCbs, function(cb) { return cb.checked; });
+    var btn = document.getElementById('matCheckAllBtn');
+    if (btn) {
+      btn.style.opacity = allChecked ? '1' : '0.4';
+      btn.style.pointerEvents = allChecked ? 'auto' : 'none';
+    }
+  };
+
+  window.matCheckReportMissing = function() {
+    var unchecked = [];
+    document.querySelectorAll('.mat-item-cb:not(:checked)').forEach(function(cb) {
+      unchecked.push(cb.dataset.desc);
+    });
+    if (unchecked.length === 0) { toast('All items are checked'); return; }
+    var detail = 'Missing: ' + unchecked.join(', ');
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    localStorage.setItem(checkKey, 'issue');
+    localStorage.setItem('sw_matissue_' + _currentJobId, '1');
+    var jobNum = _currentJob ? (_currentJob.job.job_number || '') : '';
+    var clientName = _currentJob ? (_currentJob.job.client_name || '') : '';
+    api('create_trade_alert', null, {
+      jobId: _currentJobId,
+      issueType: 'materials_missing',
+      detail: detail,
+      notify_telegram: true
+    }).then(function() {}).catch(function() {
+      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'materials_missing', detail: detail });
+    });
+    var overlay = document.getElementById('materialsCheckOverlay');
+    if (overlay) overlay.classList.remove('active');
+    _showMaterialsIssueBanner(unchecked[0] + (unchecked.length > 1 ? ' +' + (unchecked.length - 1) + ' more' : ''), jobNum, clientName);
   };
 
   window.matCheckAllGood = function() {
@@ -8269,6 +8501,13 @@
   };
 
   window.matCheckIssue = function(category) {
+    var unchecked = [];
+    document.querySelectorAll('.mat-item-cb:not(:checked)').forEach(function(cb) {
+      unchecked.push(cb.dataset.desc);
+    });
+    var detail = unchecked.length > 0
+      ? 'Missing: ' + unchecked.join(', ')
+      : category + ' — issue reported';
     var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
     localStorage.setItem(checkKey, 'issue');
     localStorage.setItem('sw_matissue_' + _currentJobId, '1');
@@ -8277,12 +8516,12 @@
     api('create_trade_alert', null, {
       jobId: _currentJobId,
       issueType: 'materials_missing',
-      detail: category + ' — not on site or incorrect',
+      detail: detail,
       notify_telegram: true
     }).then(function() {
       // No toast here — action banner handles feedback
     }).catch(function() {
-      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'materials_missing', detail: category + ' — issue reported' });
+      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'materials_missing', detail: detail });
     });
     // Close materials overlay and show action banner
     var overlay = document.getElementById('materialsCheckOverlay');
