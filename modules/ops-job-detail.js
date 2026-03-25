@@ -8,6 +8,184 @@ function confirmEditScope(url) {
   }
 }
 
+// ════════════════════════════════════════════════════════════
+// SCOPE SNAPSHOT VIEWER — read-only frozen view of scope + pricing
+// ════════════════════════════════════════════════════════════
+
+function openScopeSnapshot(jobOrData) {
+  var j = jobOrData.job || jobOrData;
+  var docs = jobOrData.documents || [];
+  var scope = typeof j.scope_json === 'string' ? JSON.parse(j.scope_json) : j.scope_json;
+  var pricing = j.pricing_json || null;
+  var config = scope ? (scope.config || scope) : {};
+
+  document.getElementById('scopeSnapshotTitle').textContent =
+    (j.job_number || '') + ' \u2014 Scope Snapshot' + (j.client_name ? ' \u2014 ' + j.client_name : '');
+  document.getElementById('scopeSnapshotModal').classList.add('active');
+
+  var html = '';
+
+  // ── Warning if no pricing snapshot ──
+  if (!pricing) {
+    html += '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:4px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#92400E;">' +
+      '\u26A0 No pricing snapshot available for this job. This scope was saved before pricing capture was implemented. Prices shown in the scoping tool may differ from the original quote.</div>';
+  }
+
+  // ── Pricing summary (frozen) ──
+  if (pricing) {
+    var totalInc = pricing.totalIncGST || pricing.total || 0;
+    var totalEx = pricing.totalExGST || 0;
+    var margin = pricing.margin_pct || 0;
+    var matCost = pricing.materialCostEstimate || 0;
+    var labCost = pricing.labourCostEstimate || 0;
+    var genAt = pricing.generated_at ? new Date(pricing.generated_at).toLocaleDateString('en-AU') : '';
+
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Frozen Pricing' + (genAt ? ' \u2014 ' + genAt : '') + '</div>';
+    html += '<div style="display:flex;gap:16px;align-items:baseline;margin-bottom:8px;">';
+    html += '<span style="font-size:22px;font-weight:700;color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(totalInc) + ' <span style="font-size:12px;color:var(--sw-text-sec);font-weight:400;">inc GST</span></span>';
+    if (totalEx) html += '<span style="font-size:14px;color:var(--sw-text-sec);font-family:var(--sw-font-num);">' + fmt$(totalEx) + ' ex GST</span>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:16px;font-size:12px;color:var(--sw-text-sec);">';
+    if (matCost) html += '<span>Materials: ' + fmt$(matCost) + '</span>';
+    if (labCost) html += '<span>Labour: ' + fmt$(labCost) + '</span>';
+    if (margin) html += '<span>Margin: ' + margin.toFixed(1) + '%</span>';
+    html += '</div>';
+
+    // Deposit
+    if (pricing.deposit && pricing.deposit.total_deposit_inc_gst) {
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-dark);">Deposit: ' + fmt$(pricing.deposit.total_deposit_inc_gst) + ' (' + (pricing.deposit.percent || 0) + '%' + (pricing.deposit.council_fees ? ' + $' + pricing.deposit.council_fees + ' council' : '') + ')</div>';
+    }
+
+    // Line items
+    if (pricing.line_items && pricing.line_items.length > 0) {
+      html += '<details style="margin-top:10px;"><summary style="font-size:11px;font-weight:600;color:var(--sw-mid);cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;">Line Items (' + pricing.line_items.length + ')</summary>';
+      html += '<table style="width:100%;font-size:11px;margin-top:6px;border-collapse:collapse;">';
+      html += '<tr style="border-bottom:1px solid var(--sw-border);"><th style="text-align:left;padding:4px 6px;color:var(--sw-mid);">Item</th><th style="text-align:right;padding:4px 6px;color:var(--sw-mid);">Qty</th><th style="text-align:right;padding:4px 6px;color:var(--sw-mid);">Cost</th><th style="text-align:right;padding:4px 6px;color:var(--sw-mid);">Sell</th></tr>';
+      pricing.line_items.forEach(function(li) {
+        html += '<tr style="border-bottom:1px solid var(--sw-border);">';
+        html += '<td style="padding:3px 6px;">' + escapeHtml(li.description || '') + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;">' + (li.quantity || '') + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;">' + fmt$(li.total_cost || 0) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;">' + fmt$(li.total_sell || 0) + '</td>';
+        html += '</tr>';
+      });
+      html += '</table></details>';
+    }
+    html += '</div>';
+  }
+
+  // ── Scope inputs ──
+  if (scope) {
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Scope Inputs</div>';
+
+    if (j.type === 'fencing') {
+      html += renderScopeSummary(j.scope_json, 'fencing', j.id);
+    } else {
+      // Patio scope detail
+      var badgeStyle = 'display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;margin:2px 3px 2px 0;background:var(--sw-light);color:var(--sw-dark);border-left:3px solid var(--sw-mid);';
+      if (config.length || config.projection) {
+        html += '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">' + (config.length || '?') + 'm \u00D7 ' + (config.projection || '?') + 'm';
+        if (config.length && config.projection) html += ' (' + (config.length * config.projection).toFixed(1) + 'm\u00B2)';
+        html += '</div>';
+      }
+      html += '<div style="margin:6px 0;flex-wrap:wrap;">';
+      if (config.roofStyle) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.roofStyle) + '</span>';
+      if (config.roofing) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.roofing) + '</span>';
+      if (config.connection) html += '<span style="' + badgeStyle + '">' + escapeHtml(config.connection) + '</span>';
+      if (config.sheetColor) html += '<span style="' + badgeStyle + 'border-color:var(--sw-orange);">' + escapeHtml(config.sheetColor) + '</span>';
+      if (config.steelColor) html += '<span style="' + badgeStyle + '">Steel: ' + escapeHtml(config.steelColor) + '</span>';
+      if (config.ceilingFinish) html += '<span style="' + badgeStyle + '">Ceiling: ' + escapeHtml(config.ceilingFinish) + '</span>';
+      html += '</div>';
+
+      // Structure details
+      var details = [];
+      if (config.postSize) details.push('Posts: ' + config.postSize);
+      if (config.posts) details.push(config.posts + ' posts');
+      if (config.beamSize) details.push('Beams: ' + config.beamSize);
+      if (config.pitch) details.push('Pitch: ' + config.pitch + '\u00B0');
+      if (config.postHeight) details.push('Post height: ' + config.postHeight + 'm');
+      if (config.infill) details.push('Infill: ' + config.infill);
+      if (details.length > 0) {
+        html += '<div style="font-size:12px;color:var(--sw-text-sec);line-height:1.6;margin-top:4px;">' + details.join(' &middot; ') + '</div>';
+      }
+
+      // Complexity
+      var cx = scope.complexity;
+      if (cx && (cx.build || cx.access || cx.height || cx.footing || cx.distance)) {
+        html += '<div style="margin-top:8px;font-size:11px;color:var(--sw-mid);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Complexity</div>';
+        html += '<div style="display:flex;gap:12px;margin-top:4px;font-size:12px;">';
+        ['build','access','height','footing','distance'].forEach(function(k) {
+          if (cx[k]) html += '<span>' + k.charAt(0).toUpperCase() + k.slice(1) + ': <strong>' + cx[k] + '/5</strong></span>';
+        });
+        html += '</div>';
+      }
+
+      // Notes
+      var notes = scope.notes;
+      if (notes) {
+        var noteList = [];
+        if (notes.noteQuote) noteList.push({ label: 'Quote Note', text: notes.noteQuote });
+        if (notes.noteInternal) noteList.push({ label: 'Internal', text: notes.noteInternal });
+        if (notes.pricingNotes) noteList.push({ label: 'Pricing', text: notes.pricingNotes });
+        if (noteList.length > 0) {
+          html += '<div style="margin-top:8px;">';
+          noteList.forEach(function(n) {
+            html += '<div style="font-size:11px;color:var(--sw-mid);font-weight:600;margin-top:6px;">' + n.label + '</div>';
+            html += '<div style="font-size:12px;color:var(--sw-text);white-space:pre-wrap;">' + escapeHtml(n.text) + '</div>';
+          });
+          html += '</div>';
+        }
+      }
+
+      // Scope extras
+      var sc = scope.scope;
+      if (sc) {
+        var extras = [];
+        if (sc.elecDownlights && sc.elecDownlightsQty) extras.push(sc.elecDownlightsQty + ' downlights');
+        if (sc.elecFan && sc.elecFanQty) extras.push(sc.elecFanQty + ' fan(s)');
+        if (sc.elecGPO && sc.elecGPOQty) extras.push(sc.elecGPOQty + ' GPO(s)');
+        if (sc.scopeDemo) extras.push('Demo required');
+        if (sc.scopePermit) extras.push('Permit required');
+        if (extras.length > 0) {
+          html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text);">' + extras.join(' &middot; ') + '</div>';
+        }
+      }
+    }
+    html += '</div>';
+  } else {
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);color:var(--sw-text-sec);font-size:13px;">No scope data saved for this job.</div>';
+  }
+
+  // ── Quote PDF links ──
+  var quoteDocs = docs.filter(function(d) { return d.type === 'quote'; });
+  if (quoteDocs.length > 0) {
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Quote PDFs</div>';
+    quoteDocs.forEach(function(doc) {
+      var url = doc.storage_url || doc.pdf_url;
+      var name = doc.file_name || ('Quote v' + (doc.version || 1));
+      var sent = doc.sent_to_client ? ' \u2714 Sent' : '';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">';
+      html += '<a href="' + url + '" target="_blank" style="color:var(--sw-mid);font-weight:600;">\uD83D\uDCC4 ' + escapeHtml(name) + '</a>';
+      if (doc.quote_number) html += '<span style="color:var(--sw-text-sec);">' + doc.quote_number + '</span>';
+      if (sent) html += '<span style="color:var(--sw-green);font-size:11px;">' + sent + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Metadata ──
+  html += '<div style="font-size:11px;color:var(--sw-text-sec);padding-top:4px;">';
+  if (scope && scope._exported) html += 'Scope saved: ' + new Date(scope._exported).toLocaleString('en-AU') + '<br>';
+  if (scope && scope._version) html += 'Tool version: ' + scope._version + '<br>';
+  if (pricing && pricing.generated_at) html += 'Pricing snapshot: ' + new Date(pricing.generated_at).toLocaleString('en-AU');
+  html += '</div>';
+
+  document.getElementById('scopeSnapshotBody').innerHTML = html;
+}
+
 async function openJobPeek(jobId) {
   document.getElementById('slidePanel').classList.add('open');
   document.getElementById('slideBackdrop').classList.add('open');
@@ -26,7 +204,9 @@ function closeSlidePanel() {
   document.getElementById('slideBackdrop').classList.remove('open');
 }
 
+var _peekData = null;
 function renderJobPeek(data) {
+  _peekData = data;
   var j = data.job;
   var title = (j.job_number || '') + (j.job_number ? ' — ' : '') + (j.client_name || 'Unknown') + ' — ' + (j.site_suburb || '');
   document.getElementById('slidePanelTitle').textContent = title;
@@ -44,6 +224,7 @@ function renderJobPeek(data) {
   }
   if (j.type !== 'miscellaneous') {
     var scopeToolUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
+    html += '<a href="#" onclick="openScopeSnapshot(_peekData);return false;" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none;">Snapshot &#128248;</a>';
     html += '<a href="' + scopeToolUrl + '?jobId=' + j.id + '&mode=readonly" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none;">View Scope &#8599;</a>';
     html += '<a href="#" onclick="confirmEditScope(\'' + scopeToolUrl + '?jobId=' + j.id + '\');return false;" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none; color:var(--sw-orange);">Edit Scope &#9998;</a>';
   }
@@ -745,6 +926,7 @@ function renderOverviewView(data) {
   html += '<div style="margin-top:8px;font-size:11px;display:flex;gap:12px;">';
   if (j.type !== 'miscellaneous') {
     var scopeUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
+    html += '<a href="#" onclick="openScopeSnapshot(_currentJobData);return false;" style="color:var(--sw-dark);font-weight:600;">Snapshot &#128248;</a>';
     html += '<a href="' + scopeUrl + '?jobId=' + j.id + '&mode=readonly" target="_blank" style="color:var(--sw-mid);">View Scope &#8599;</a>';
     html += '<a href="#" onclick="confirmEditScope(\'' + scopeUrl + '?jobId=' + j.id + '\');return false;" style="color:var(--sw-orange);">Edit Scope &#9998;</a>';
   }
@@ -906,11 +1088,18 @@ async function loadRunAcceptanceStatus(jobId) {
         }
       });
 
-      // Run summary
+      // Run summary + actions
       var allAccepted = parties.every(function(p) { return p.status === 'accepted'; });
       var anyDeclined = parties.some(function(p) { return p.status === 'declined'; });
+      var anyPending = parties.some(function(p) { return p.status === 'pending'; });
       if (anyDeclined) html += ' <span style="font-size:10px;color:var(--sw-red);font-weight:600;">Run dropped</span>';
       else if (allAccepted) html += ' <span style="font-size:10px;color:var(--sw-green);font-weight:600;">Ready</span>';
+
+      // Resend button for runs with pending parties
+      if (anyPending && !anyDeclined) {
+        var pendingNames = parties.filter(function(p) { return p.status === 'pending'; }).map(function(p) { return p.job_contacts?.client_name || 'party'; });
+        html += ' <button class="btn btn-sm" style="font-size:9px;padding:1px 6px;background:none;border:1px solid var(--sw-border);color:var(--sw-text-sec);margin-left:4px;" onclick="event.stopPropagation();resendRunQuote(\'' + jobId + '\',\'' + escapeHtml(rl) + '\')" title="Resend to ' + escapeHtml(pendingNames.join(', ')) + '">Resend</button>';
+      }
 
       html += '</div>';
     });
