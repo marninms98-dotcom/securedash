@@ -1134,9 +1134,13 @@
     .modal-panel {
       background: #fff;
       width: 90vw;
+      max-width: 700px;
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: var(--sw-shadow-rise);
+    }
+    @media (max-width: 600px) {
+      .modal-panel { width: 100%; max-width: 100%; border-radius: 0; }
     }
     .modal-header {
       display: flex;
@@ -2952,6 +2956,17 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('councilAdvanceModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmCouncilAdvance()">Confirm & Advance</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SCOPE SNAPSHOT MODAL ══════════ -->
+<div class="modal-overlay" id="scopeSnapshotModal" onclick="if(event.target===this)closeModal('scopeSnapshotModal')">
+  <div class="modal" style="max-width:640px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-title" id="scopeSnapshotTitle">Scope Snapshot</div>
+    <div id="scopeSnapshotBody" style="flex:1;overflow-y:auto;padding-bottom:8px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('scopeSnapshotModal')">Close</button>
     </div>
   </div>
 </div>
