@@ -458,7 +458,33 @@ function renderCommsView(data) {
   html += '<div id="commsClientView">';
 
   if (!j.ghl_contact_id) {
-    html += '<div class="comms-empty">No GHL contact linked to this job.<br><span style="font-size:11px;">Link a contact via the scope tool or GHL.</span></div>';
+    // No GHL contact — show link button and attempt auto-link
+    html += '<div id="commsNoGHL" class="comms-empty">';
+    html += '<div style="margin-bottom:8px;">No GHL contact linked to this job.</div>';
+    if (j.client_phone || j.client_email) {
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;">' + escapeHtml(j.client_name || '') + ' &middot; ' + escapeHtml(j.client_phone || j.client_email || '') + '</div>';
+      html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;" onclick="autoLinkGHLContact()" id="commsLinkBtn">Find & Link GHL Contact</button>';
+      html += '<div id="commsLinkStatus" style="font-size:11px;color:var(--sw-text-sec);margin-top:6px;"></div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);">No phone or email on this job. Add contact details first.</div>';
+    }
+    html += '</div>';
+    // Still render the thread area (hidden) + compose area so auto-link can reveal them
+    html += '<div id="commsLinkedView" style="display:none;">';
+    html += '<div class="comms-header">';
+    if (j.client_phone) {
+      html += '<span class="phone-num">' + j.client_phone + '</span>';
+      html += '<button class="comms-call-btn" onclick="scheduleCallLog()">&#9742; Call</button>';
+    }
+    html += '<span style="flex:1;"></span>';
+    html += '<span id="commsGHLLink" style="font-size:11px;color:var(--sw-text-sec);"></span>';
+    html += '</div>';
+    html += '<div id="commsThread" class="comms-thread"></div>';
+    html += '</div>';
+    // Auto-attempt GHL lookup in background
+    if (j.client_phone || j.client_email) {
+      setTimeout(function() { tryAutoLinkGHL(); }, 500);
+    }
   } else {
     // Header: phone + call button
     html += '<div class="comms-header">';
@@ -749,11 +775,12 @@ async function loadConversation(contactId) {
     sessionStorage.setItem(cacheKey, JSON.stringify(data));
     renderMessageThread(data.messages || [], data.conversationId);
   } catch (e) {
+    console.error('[comms] Conversation load failed for contact ' + contactId + ':', e);
     var thread = document.getElementById('commsThread');
     if (thread) {
       var j = _currentJobData?.job;
       var ghlLink = j?.ghl_contact_id ? 'https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/' + j.ghl_contact_id : '#';
-      thread.innerHTML = '<div class="comms-empty">Conversation failed to load.<br><a href="' + ghlLink + '" target="_blank" style="color:var(--sw-orange);">View in GHL &#8599;</a></div>';
+      thread.innerHTML = '<div class="comms-empty">Conversation failed to load: ' + escapeHtml(e.message || 'Unknown error') + '<br><a href="' + ghlLink + '" target="_blank" style="color:var(--sw-orange);">View in GHL &#8599;</a></div>';
     }
   }
 }
@@ -903,6 +930,108 @@ async function sendCommsMessage() {
     } catch (e) {
       showToast('Email failed: ' + e.message, 'warning');
     }
+  }
+}
+
+// ── Auto-Link GHL Contact ──
+
+async function tryAutoLinkGHL() {
+  var j = _currentJobData?.job;
+  if (!j || j.ghl_contact_id) return;
+  var statusEl = document.getElementById('commsLinkStatus');
+  if (statusEl) statusEl.textContent = 'Searching GHL...';
+
+  try {
+    var searchQuery = j.client_phone || j.client_email || j.client_name || '';
+    if (!searchQuery) return;
+
+    var resp = await fetch(window.SUPABASE_URL + '/functions/v1/ghl-proxy?action=search&q=' + encodeURIComponent(searchQuery), {
+      headers: { 'x-api-key': _swApiKey }
+    });
+    var data = await resp.json();
+    var opps = data.opportunities || [];
+
+    if (opps.length > 0) {
+      // Found a match — auto-link
+      var match = opps[0];
+      var contactId = match.contactId;
+      if (contactId) {
+        // Update the job in Supabase
+        await opsPost('update_job_field', { job_id: j.id, field: 'ghl_contact_id', value: contactId });
+        j.ghl_contact_id = contactId;
+        _currentJobData.job.ghl_contact_id = contactId;
+
+        // Show the comms view
+        var noGHL = document.getElementById('commsNoGHL');
+        var linkedView = document.getElementById('commsLinkedView');
+        if (noGHL) noGHL.style.display = 'none';
+        if (linkedView) {
+          linkedView.style.display = '';
+          var ghlLink = document.getElementById('commsGHLLink');
+          if (ghlLink) ghlLink.innerHTML = '<a href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/' + contactId + '" target="_blank" style="color:var(--sw-text-sec);">View in GHL &#8599;</a>';
+        }
+        loadConversation(contactId);
+        if (statusEl) statusEl.textContent = '';
+        showToast('GHL contact linked automatically', 'success');
+        return;
+      }
+    }
+
+    // No match found
+    if (statusEl) statusEl.textContent = 'No existing GHL contact found. Click to create one.';
+  } catch (e) {
+    console.error('[comms] Auto-link failed:', e);
+    if (statusEl) statusEl.textContent = 'Could not search GHL. Try manually.';
+  }
+}
+
+async function autoLinkGHLContact() {
+  var j = _currentJobData?.job;
+  if (!j) return;
+  var btn = document.getElementById('commsLinkBtn');
+  var statusEl = document.getElementById('commsLinkStatus');
+  if (btn) { btn.disabled = true; btn.textContent = 'Linking...'; }
+
+  try {
+    // Split client name into first/last
+    var nameParts = (j.client_name || '').trim().split(/\s+/);
+    var firstName = nameParts[0] || '';
+    var lastName = nameParts.slice(1).join(' ') || '';
+
+    var resp = await fetch(window.SUPABASE_URL + '/functions/v1/ghl-proxy?action=create_contact_and_opportunity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
+      body: JSON.stringify({
+        firstName: firstName,
+        lastName: lastName,
+        email: j.client_email || '',
+        phone: j.client_phone || '',
+        address: j.site_address || '',
+        suburb: j.site_suburb || '',
+        toolType: j.type || 'patio',
+      }),
+    });
+    var data = await resp.json();
+
+    if (data.contactId) {
+      // Update job with GHL contact + opportunity
+      await opsPost('update_job_field', { job_id: j.id, field: 'ghl_contact_id', value: data.contactId });
+      if (data.opportunityId) {
+        await opsPost('update_job_field', { job_id: j.id, field: 'ghl_opportunity_id', value: data.opportunityId });
+      }
+      j.ghl_contact_id = data.contactId;
+      _currentJobData.job.ghl_contact_id = data.contactId;
+
+      showToast(data.contactExisted ? 'Linked to existing GHL contact' : 'New GHL contact created & linked', 'success');
+      // Reload the full comms tab
+      openJobDetail(j.id);
+    } else {
+      throw new Error(data.error || 'Failed to create GHL contact');
+    }
+  } catch (e) {
+    console.error('[comms] Link failed:', e);
+    if (statusEl) statusEl.textContent = 'Failed: ' + e.message;
+    if (btn) { btn.disabled = false; btn.textContent = 'Find & Link GHL Contact'; }
   }
 }
 
