@@ -2706,13 +2706,33 @@
 
       return fetch(url, opts).then(function(r) {
         clearTimeout(timeoutId);
-        // Detect expired session
+        // Detect expired session — retry once with refreshed token before kicking out
         if (r.status === 401 || r.status === 403) {
           return r.json().catch(function() { return {}; }).then(function(e) {
             var msg = e.error || '';
-            if (msg.indexOf('Login required') !== -1 || msg.indexOf('expired') !== -1 || msg.indexOf('Invalid') !== -1 || r.status === 401) {
-              handleSessionExpiry();
+            // If this is the first 401, try refreshing the token and retrying
+            if (!opts._retried && cloud && cloud.supabase) {
+              console.log('[trade] 401 received, refreshing token and retrying...');
+              return cloud.supabase.auth.refreshSession().then(function(ref) {
+                var newToken = ref.data?.session?.access_token;
+                if (!newToken) { handleSessionExpiry(); throw new Error('Session expired — please log in again'); }
+                // Retry with fresh token
+                var retryHeaders = Object.assign({}, headers, { 'Authorization': 'Bearer ' + newToken });
+                var retryOpts = { headers: retryHeaders, signal: opts.signal };
+                if (postBody) { retryOpts.method = 'POST'; retryOpts.body = JSON.stringify(postBody); }
+                retryOpts._retried = true;
+                return fetch(url, retryOpts).then(function(r2) {
+                  if (r2.status === 401 || r2.status === 403) { handleSessionExpiry(); throw new Error('Session expired — please log in again'); }
+                  if (!r2.ok) return r2.json().catch(function() { throw new Error(r2.statusText); }).then(function(e2) { throw new Error(e2.error || r2.statusText); });
+                  return r2.json();
+                });
+              }).catch(function(refreshErr) {
+                console.error('[trade] Token refresh failed:', refreshErr);
+                handleSessionExpiry();
+                throw new Error('Session expired — please log in again');
+              });
             }
+            handleSessionExpiry();
             throw new Error(msg || 'Session expired — please log in again');
           });
         }
