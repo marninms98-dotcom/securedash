@@ -92,10 +92,12 @@
       border: none;
       color: #fff;
       font-size: 22px;
-      padding: 4px 8px;
+      padding: 8px 12px;
+      min-width: 44px;
+      min-height: 44px;
       cursor: pointer;
       display: none; /* shown via JS when in sub-view */
-      margin-right: 8px;
+      margin-right: 4px;
     }
     .header-left { display: flex; align-items: center; gap: 4px; }
 
@@ -404,8 +406,8 @@
       background: var(--sw-light);
       border: none;
       border-radius: 8px;
-      width: 36px;
-      height: 36px;
+      width: 44px;
+      height: 44px;
       font-size: 18px;
       font-weight: 700;
       color: var(--sw-mid);
@@ -831,6 +833,27 @@
       animation: spin 0.6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Skeleton loading cards */
+    .skeleton-card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border-left: 4px solid var(--sw-border);
+    }
+    .skeleton-line {
+      height: 14px;
+      background: linear-gradient(90deg, var(--sw-light) 25%, #e8ecf0 50%, var(--sw-light) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .skeleton-line.short { width: 40%; }
+    .skeleton-line.medium { width: 65%; }
+    .skeleton-line.long { width: 85%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
     .loading-screen {
       display: flex;
@@ -1365,7 +1388,7 @@
       font-size: 12px; font-weight: 600; font-family: var(--sw-font);
       background: var(--sw-card); color: var(--sw-text-sec);
       cursor: pointer; white-space: nowrap; transition: all 0.15s;
-      min-height: 32px;
+      min-height: 44px;
     }
     .filter-chip.active {
       background: var(--sw-dark); color: #fff; border-color: var(--sw-dark);
@@ -1978,8 +2001,8 @@
       margin: 0;
     }
     .viewer-3d-close {
-      width: 36px;
-      height: 36px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       border: none;
       background: rgba(255,255,255,0.15);
@@ -2070,7 +2093,10 @@
     <button class="header-back" id="btnBack" onclick="goBack()">&#8592;</button>
     <div class="header-brand">SecureWorks <span>Trade</span></div>
   </div>
-  <div class="header-user" id="headerUser" onclick="toggleUserMenu()"></div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="syncDot" onclick="showSyncStatus()" style="width:10px;height:10px;border-radius:50%;background:var(--sw-green);cursor:pointer;flex-shrink:0;display:none;" title="Sync status"></span>
+    <div class="header-user" id="headerUser" onclick="toggleUserMenu()"></div>
+  </div>
 </div>
 <div class="offline-bar" id="offlineBar">No internet connection — working offline</div>
 <div class="notif-banner" id="notifBanner" style="display:none">
@@ -3150,7 +3176,9 @@
   window.loadMyJobs = function loadMyJobs() {
     if (!_user) return;
     var container = document.getElementById('myJobsList');
-    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div><span id="myJobsLoadMsg">Loading your jobs...</span></div>';
+    container.innerHTML = '<div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>' +
+      '<div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>' +
+      '<div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line short"></div></div>';
 
     // Show admin toggle if admin
     var adminToggle = document.getElementById('adminJobToggle');
@@ -3360,8 +3388,8 @@
             html += ' <span class="badge-materials pending">&#9888; Materials not confirmed</span>';
           }
         }
-        // Scope summary line
-        var scopeSummary = buildScopeSummary(job.scope_json, type);
+        // Scope summary line (from server scope_summary, fallback to parsing scope_json)
+        var scopeSummary = job.scope_summary || buildScopeSummary(job.scope_json, type);
         if (scopeSummary) {
           html += '  <div style="font-size:12px;color:var(--sw-mid);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(scopeSummary) + '</div>';
         }
@@ -3421,6 +3449,37 @@
   // ══════════════════════════════════════════════════
   // OPEN JOB (from card or deep link)
   // ══════════════════════════════════════════════════
+
+  // ── Site Note — quick note logging against job ──
+  window.submitSiteNote = function() {
+    var input = document.getElementById('siteNoteInput');
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text) return;
+    input.disabled = true;
+    api('add_note', null, {
+      jobId: _currentJobId,
+      text: text,
+      eventType: 'site_note',
+      metadata: { user_id: _user ? _user.id : null, user_name: _user ? _user.name : null }
+    }).then(function() {
+      input.value = '';
+      input.disabled = false;
+      toast('Note saved');
+      // Add to the notes list immediately
+      var list = document.getElementById('siteNotesList');
+      if (list) {
+        var now = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+        list.innerHTML = '<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--sw-border);display:flex;gap:8px;">' +
+          '<span style="color:var(--sw-text-sec);white-space:nowrap;">' + now + '</span>' +
+          '<span style="color:var(--sw-text);flex:1;">' + text.replace(/</g, '&lt;') + '</span>' +
+          '</div>' + list.innerHTML;
+      }
+    }).catch(function(err) {
+      input.disabled = false;
+      toast('Failed to save note: ' + friendlyError(err), true);
+    });
+  };
 
   window.openJob = function(jobId, assignmentId) {
     _currentJobId = jobId;
@@ -4961,6 +5020,9 @@
 
     var html = '';
 
+    // ── Back button ──
+    html += '<button onclick="showView(\'myJobs\')" style="display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--sw-mid);font-size:14px;font-weight:600;padding:8px 0;margin-bottom:4px;cursor:pointer;min-height:44px;">&larr; Back to Jobs</button>';
+
     // ── Section 1: Job Hero Card ──
     html += renderHeroCard(data, phase);
 
@@ -4997,6 +5059,18 @@
 
     // ── Section 6: Special Instructions ──
     html += renderSpecialInstructions(data, phase);
+
+    // ── Site Note — quick note logging for trades ──
+    html += '<div class="detail-section" id="siteNoteSection">';
+    html += '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+    html += '    <span style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;flex:1;">Site Notes</span>';
+    html += '  </div>';
+    html += '  <div style="display:flex;gap:8px;">';
+    html += '    <input type="text" id="siteNoteInput" placeholder="Log a note \u2014 issue, change, observation..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);" onkeydown="if(event.key===\'Enter\')submitSiteNote()">';
+    html += '    <button onclick="submitSiteNote()" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;white-space:nowrap;">Send</button>';
+    html += '  </div>';
+    html += '  <div id="siteNotesList" style="margin-top:8px;"></div>';
+    html += '</div>';
 
     // ── Section 7: Handoff Card (multi-day, day 2+) ──
     html += renderHandoffCard(data, phase);
@@ -6822,6 +6896,9 @@
     html += '    <button class="btn btn-primary btn-small" onclick="saveAvailNote()" style="flex:1">Save</button>';
     html += '  </div>';
     html += '</div>';
+
+    // Sync note
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;margin:8px 0 16px;padding:0 16px;">Your manager can see your availability when scheduling jobs</div>';
 
     // ── My Schedule (upcoming jobs) ──
     html += '<div class="avail-section">';
@@ -10810,6 +10887,40 @@
   // Check on load
   if (!navigator.onLine) updateOfflineBar();
 
+  // Sync status dot
+  function updateSyncDot() {
+    var dot = document.getElementById('syncDot');
+    if (!dot) return;
+    dot.style.display = 'block';
+    var offlineQueue = [];
+    try { offlineQueue = JSON.parse(localStorage.getItem('sw_offline_queue') || '[]'); } catch(e) {}
+    if (!navigator.onLine) {
+      dot.style.background = 'var(--sw-red)';
+      dot.title = 'Offline';
+    } else if (offlineQueue.length > 0) {
+      dot.style.background = 'var(--sw-yellow)';
+      dot.title = offlineQueue.length + ' pending';
+    } else {
+      dot.style.background = 'var(--sw-green)';
+      dot.title = 'All synced';
+    }
+  }
+  setInterval(updateSyncDot, 5000);
+  setTimeout(updateSyncDot, 1000);
+
+  window.showSyncStatus = function() {
+    var offlineQueue = [];
+    try { offlineQueue = JSON.parse(localStorage.getItem('sw_offline_queue') || '[]'); } catch(e) {}
+    if (!navigator.onLine) {
+      toast('Offline — ' + offlineQueue.length + ' action' + (offlineQueue.length !== 1 ? 's' : '') + ' queued');
+    } else if (offlineQueue.length > 0) {
+      var items = offlineQueue.slice(0, 3).map(function(q) { return q.action || 'action'; }).join(', ');
+      toast(offlineQueue.length + ' pending: ' + items);
+    } else {
+      toast('All synced \u2714');
+    }
+  };
+
   // ══════════════════════════════════════════════════
   // iOS KEYBOARD — hide bottom nav when keyboard is up
   // ══════════════════════════════════════════════════
@@ -10945,17 +11056,26 @@
       step.textContent = '';
       var h = '<div style="padding:16px">';
 
-      // Job selector toggle
-      h += '<div style="margin-bottom:16px">';
-      h += '<div style="font-size:13px;font-weight:600;margin-bottom:6px">Link to:</div>';
-      h += '<div style="display:flex;gap:8px">';
-      h += '<button onclick="expenseSetGeneral(false)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (!_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (!_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (!_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">Specific Job</button>';
-      h += '<button onclick="expenseSetGeneral(true)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">General Stock</button>';
-      h += '</div>';
-      if (_expenseIsGeneral) {
-        h += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">Not linked to a job — routed to Jan for approval</div>';
+      // Auto-link banner if clocked on to a job
+      var clockedJob = (_clockState === 'on' && _currentJobId && _currentJob) ? _currentJob.job : null;
+      if (clockedJob && _expenseJobId && !_expenseIsGeneral) {
+        h += '<div style="background:#EBF4FF;border:1px solid var(--sw-blue);border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px;">';
+        h += '<span style="font-size:13px;color:var(--sw-dark);flex:1;">Linking to <strong>' + esc(clockedJob.job_number || '') + '</strong> \u2014 ' + esc(clockedJob.client_name || '') + '</span>';
+        h += '<button onclick="expenseSetGeneral(true)" style="background:none;border:1px solid var(--sw-border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--sw-mid);cursor:pointer;min-height:32px;">Change</button>';
+        h += '</div>';
+      } else {
+        // Job selector toggle
+        h += '<div style="margin-bottom:16px">';
+        h += '<div style="font-size:13px;font-weight:600;margin-bottom:6px">Link to:</div>';
+        h += '<div style="display:flex;gap:8px">';
+        h += '<button onclick="expenseSetGeneral(false)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (!_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (!_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (!_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">Specific Job</button>';
+        h += '<button onclick="expenseSetGeneral(true)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid ' + (_expenseIsGeneral ? 'var(--sw-orange)' : 'var(--sw-border)') + ';background:' + (_expenseIsGeneral ? 'var(--sw-orange)' : '#fff') + ';color:' + (_expenseIsGeneral ? '#fff' : 'var(--sw-text)') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sw-font)">General Stock</button>';
+        h += '</div>';
+        if (_expenseIsGeneral) {
+          h += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">Not linked to a job — routed to Jan for approval</div>';
+        }
+        h += '</div>';
       }
-      h += '</div>';
 
       // Photo capture
       h += '<div style="text-align:center;padding:20px;border:2px dashed var(--sw-border);border-radius:12px;margin-bottom:16px">';
