@@ -1184,6 +1184,23 @@ async function executeSendRunQuotes(jobId) {
   }
 }
 
+async function resendRunQuote(jobId, runLabel) {
+  if (!confirm('Resend quote for run ' + runLabel + '? This will re-send emails to any pending parties.')) return;
+  try {
+    showToast('Resending ' + runLabel + '...', 'info');
+    // Call send-runs which is idempotent — creates new documents for unsent runs
+    await fetch(window.SUPABASE_URL + '/functions/v1/send-quote/send-runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
+      body: JSON.stringify({ job_id: jobId }),
+    });
+    showToast('Quotes resent for ' + runLabel, 'success');
+    loadRunAcceptanceStatus(jobId);
+  } catch (e) {
+    showToast('Failed: ' + (e.message || e), 'warning');
+  }
+}
+
 async function loadOverviewCouncilSection(jobId, jobType) {
   var el = document.getElementById('jdOverviewCouncil');
   if (!el) return;
