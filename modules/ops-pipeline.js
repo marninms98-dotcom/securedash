@@ -85,6 +85,15 @@ function renderKanban(container, columns) {
       if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
       if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
       if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
+      // Multi-run fencing badge (static count from pricing_json, no extra query)
+      if (j.type === 'fencing' && j.pricing_json) {
+        try {
+          var pjk = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
+          if (pjk.runs && pjk.runs.length > 1) {
+            html += '<span class="kanban-meta-badge" style="background:rgba(241,90,41,0.1);color:var(--sw-orange);">' + pjk.runs.length + ' runs</span>';
+          }
+        } catch(e) {}
+      }
       if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
       html += '</div>';
       var stale = j.days_in_stage > 14;

@@ -441,11 +441,11 @@ function renderScopeSummary(scope_json, jobType, jobId) {
     html += '<div style="color:var(--sw-text-sec);">No scope data</div>';
   }
 
-  // Scope tool link
+  // Scope tool link (readonly by default)
   var scopeToolUrl = jobType === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
   var linkId = jobId || scope.jobId || '';
   if (linkId) {
-    html += '<div style="margin-top:6px;"><a href="' + scopeToolUrl + '?jobId=' + linkId + '" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">&#128279; Open in Scope Tool &#8599;</a></div>';
+    html += '<div style="margin-top:6px;"><a href="' + scopeToolUrl + '?jobId=' + linkId + '&mode=readonly" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">&#128279; View in Scope Tool &#8599;</a></div>';
   }
 
   html += '</div>';
@@ -769,6 +769,13 @@ function renderOverviewView(data) {
     html += '<span style="font-size:13px;flex:1;">Mark as ' + (STATUS_LABELS[s] || s) + '</span>';
     html += '<button class="btn btn-sm" style="background:' + color + ';color:#fff;" onclick="changeJobStatus(\x27' + j.id + '\x27,\x27' + s + '\x27)">' + (STATUS_LABELS[s] || s) + '</button></div>';
   });
+  // Send Run Quotes button (fencing multi-run jobs that haven't been quoted yet)
+  var pj = j.pricing_json ? (typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json) : {};
+  if (j.type === 'fencing' && pj.runs && pj.runs.length > 0 && !j.quoted_at) {
+    html += '<div style="background:rgba(241,90,41,0.06);padding:10px 12px;margin-bottom:4px;border-left:3px solid var(--sw-orange);display:flex;align-items:center;gap:8px;">';
+    html += '<span style="font-size:13px;flex:1;">&#128233; ' + pj.runs.length + ' fence run' + (pj.runs.length > 1 ? 's' : '') + ' ready to quote</span>';
+    html += '<button class="btn btn-sm" style="background:var(--sw-orange);color:#fff;" onclick="showSendRunQuotesConfirm(\'' + j.id + '\')">Send Run Quotes</button></div>';
+  }
   html += '</div>';
 
   // AI Annotations section (between Next Actions and Progress)
@@ -815,7 +822,12 @@ function renderOverviewView(data) {
   });
   html += '</div>';
 
-  // Section 4b: Council / Engineering (async-loaded)
+  // Section 4b: Per-run acceptance status (async-loaded, fencing multi-run only)
+  if (j.type === 'fencing' && j.quoted_at) {
+    html += '<div id="jdRunAcceptanceStatus"></div>';
+  }
+
+  // Section 4c: Council / Engineering (async-loaded)
   html += '<div id="jdOverviewCouncil"></div>';
 
   // Section 5: Recent Activity
@@ -840,6 +852,147 @@ function renderOverviewView(data) {
 
   // Load council section async (shows button or status)
   loadOverviewCouncilSection(j.id, j.type);
+
+  // Load per-run acceptance status (fencing multi-run)
+  if (j.type === 'fencing' && j.quoted_at) {
+    loadRunAcceptanceStatus(j.id);
+  }
+}
+
+// ── Per-Run Acceptance Status (fencing multi-run) ──
+
+async function loadRunAcceptanceStatus(jobId) {
+  var el = document.getElementById('jdRunAcceptanceStatus');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_run_acceptances', { job_id: jobId });
+    var acceptances = resp.acceptances || [];
+    if (acceptances.length === 0) { el.innerHTML = ''; return; }
+
+    // Group by run_label
+    var runMap = {};
+    acceptances.forEach(function(ra) {
+      if (!runMap[ra.run_label]) runMap[ra.run_label] = [];
+      runMap[ra.run_label].push(ra);
+    });
+
+    var html = '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Run Acceptance</div>';
+
+    Object.keys(runMap).forEach(function(rl, idx) {
+      var parties = runMap[rl];
+      var prefix = idx === Object.keys(runMap).length - 1 ? '└─' : '├─';
+      html += '<div style="padding:4px 0 4px 12px;font-size:12px;border-left:2px solid var(--sw-border);margin-left:8px;">';
+      html += '<strong>' + prefix + ' ' + escapeHtml(rl) + ':</strong> ';
+
+      parties.forEach(function(ra, pi) {
+        var isPrimary = ra.job_contacts?.is_primary;
+        var name = ra.job_contacts?.client_name || (isPrimary ? 'Client' : 'Neighbour');
+        var label = isPrimary ? 'Client' : name;
+        var statusIcon = ra.status === 'accepted' ? '<span style="color:var(--sw-green);">&#9989;</span>' :
+                         ra.status === 'declined' ? '<span style="color:var(--sw-red);">&#10060;</span>' :
+                         '<span style="color:var(--sw-text-sec);">&#9203;</span>';
+
+        if (pi > 0) html += ' · ';
+        html += statusIcon + ' ' + escapeHtml(label);
+
+        // Deposit payment status
+        if (ra.deposit) {
+          if (ra.deposit.paid) {
+            html += ' <span style="font-size:10px;color:var(--sw-green);font-weight:600;">Paid &#9989;</span>';
+          } else if (ra.deposit.total) {
+            html += ' <span style="font-size:10px;color:var(--sw-orange);">Deposit sent</span>';
+          }
+        }
+      });
+
+      // Run summary
+      var allAccepted = parties.every(function(p) { return p.status === 'accepted'; });
+      var anyDeclined = parties.some(function(p) { return p.status === 'declined'; });
+      if (anyDeclined) html += ' <span style="font-size:10px;color:var(--sw-red);font-weight:600;">Run dropped</span>';
+      else if (allAccepted) html += ' <span style="font-size:10px;color:var(--sw-green);font-weight:600;">Ready</span>';
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+// ── Send Run Quotes Confirmation ──
+
+async function showSendRunQuotesConfirm(jobId) {
+  var j = _currentJobData ? _currentJobData.job : null;
+  if (!j) return;
+  var pj = j.pricing_json ? (typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json) : {};
+  var runs = pj.runs || [];
+  if (runs.length === 0) { showToast('No runs in pricing data', 'warning'); return; }
+
+  var lines = runs.map(function(run) {
+    var nbName = run.neighbour_name || null;
+    var clientShare = run.totals ? fmt$(run.totals.client_share_inc || 0) : '';
+    var nbShare = run.totals ? fmt$(run.totals.neighbour_share_inc || 0) : '';
+    var line = '<strong>' + escapeHtml(run.run_label || run.run_name) + '</strong> — Client: ' + escapeHtml(j.client_name || '') + ' (' + clientShare + ')';
+    if (nbName) {
+      line += ' + Neighbour: ' + escapeHtml(nbName) + ' (' + nbShare + ')';
+    } else {
+      line += ' <span style="color:var(--sw-text-sec);">[No neighbour]</span>';
+    }
+    return '<div style="padding:4px 0;border-bottom:1px solid var(--sw-border);font-size:12px;">' + line + '</div>';
+  }).join('');
+
+  // Count unique recipients
+  var clientEmail = j.client_email || '';
+  var nbEmails = runs.filter(function(r) { return r.neighbour_name; }).map(function(r) { return r.neighbour_name; });
+  var uniqueNbs = [...new Set(nbEmails)];
+
+  var confirmHtml = '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">Send quotes for ' + escapeHtml(j.job_number || '') + '?</div>';
+  confirmHtml += '<div style="margin-bottom:12px;">' + lines + '</div>';
+  confirmHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:16px;">';
+  confirmHtml += 'Client gets ' + runs.length + ' run quote' + (runs.length > 1 ? 's' : '') + ' in one email.';
+  if (uniqueNbs.length > 0) confirmHtml += '<br>Each neighbour gets their run quote(s) separately.';
+  confirmHtml += '</div>';
+  confirmHtml += '<div style="display:flex;gap:8px;justify-content:flex-end;">';
+  confirmHtml += '<button class="btn btn-secondary" onclick="closeModal(\'sendRunConfirmModal\')">Cancel</button>';
+  confirmHtml += '<button class="btn btn-primary" onclick="executeSendRunQuotes(\'' + jobId + '\')">Send All Quotes</button>';
+  confirmHtml += '</div>';
+
+  // Use a generic modal overlay
+  var overlay = document.getElementById('sendRunConfirmModal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'sendRunConfirmModal';
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = '<div class="modal" style="max-width:500px;">' + confirmHtml + '</div>';
+    document.body.appendChild(overlay);
+  } else {
+    overlay.querySelector('.modal').innerHTML = confirmHtml;
+  }
+  overlay.classList.add('active');
+}
+
+async function executeSendRunQuotes(jobId) {
+  closeModal('sendRunConfirmModal');
+  showToast('Sending run quotes...', 'info');
+  try {
+    var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-quote/send-runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
+      body: JSON.stringify({ job_id: jobId }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var result = await resp.json();
+    if (result.error) throw new Error(result.error);
+    showToast(result.runs_sent + ' run quotes sent, ' + result.emails_sent + ' emails delivered', 'success');
+    // Refresh job detail
+    if (typeof openJobPeek === 'function') openJobPeek(jobId);
+    refreshActiveView();
+  } catch (e) {
+    showToast('Failed to send: ' + (e.message || e), 'warning');
+  }
 }
 
 async function loadOverviewCouncilSection(jobId, jobType) {
