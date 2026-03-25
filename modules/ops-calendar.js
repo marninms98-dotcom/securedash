@@ -77,7 +77,7 @@ async function loadCalendar() {
   var range = getCalRange();
   try {
     var fetches = [
-      opsFetch('calendar', { from: range.from, to: range.to }),
+      opsFetch('calendar', { from: range.from, to: range.to, include_financials: 'true' }),
       opsFetch('pipeline'),
       opsFetch('get_crew_availability', { from: range.from, to: range.to }),
     ];
