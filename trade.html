@@ -2981,7 +2981,7 @@
     _user = profile;
     if (!_user) { console.error('[trade] onLogin: profile is null!'); return; }
     _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
-    _userTier = determineTier(_user.email);
+    _userTier = _user.trade_tier || determineTier(_user.email);
     _isAdmin = (_user.role === 'admin');
     _adminViewAll = _isAdmin; // default to all-jobs view for admins
     document.getElementById('headerUser').textContent = _user.name || _user.email;
@@ -6241,6 +6241,7 @@
   // ══════════════════════════════════════════════════
 
   function loadAvailabilityData() {
+    // Load from localStorage first (offline fallback)
     try {
       var p = localStorage.getItem('sw_avail_pattern');
       if (p) _weeklyPattern = JSON.parse(p);
@@ -6252,6 +6253,21 @@
     try {
       _lastAssignmentCheck = localStorage.getItem('sw_last_assignment_check') || null;
     } catch (e) {}
+    // Then sync from backend (overrides localStorage with server truth)
+    if (_user && _user.id) {
+      var today = new Date().toISOString().slice(0, 10);
+      var end = new Date(); end.setDate(end.getDate() + 90);
+      var endStr = end.toISOString().slice(0, 10);
+      api('get_crew_availability', { start_date: today, end_date: endStr }).then(function(data) {
+        if (data && data.availability) {
+          var myRows = data.availability.filter(function(r) { return r.user_id === _user.id; });
+          myRows.forEach(function(r) {
+            _exceptions[r.date] = { available: r.status === 'available', leave: r.status === 'leave', note: r.note || '' };
+          });
+          try { localStorage.setItem('sw_avail_exceptions', JSON.stringify(_exceptions)); } catch(e) {}
+        }
+      }).catch(function(e) { console.warn('[Availability] Backend load failed, using local:', e); });
+    }
   }
 
   function saveAvailabilityData() {
@@ -6259,7 +6275,31 @@
       localStorage.setItem('sw_avail_pattern', JSON.stringify(_weeklyPattern));
       localStorage.setItem('sw_avail_exceptions', JSON.stringify(_exceptions));
     } catch (e) {}
-    // TODO: api('set_availability', null, { pattern: _weeklyPattern, exceptions: _exceptions }) — sync to backend
+    // Sync to backend — convert exceptions + weekly pattern into date rows for crew_availability
+    if (_user && _user.id) {
+      var dates = [];
+      // Push all explicit exceptions
+      Object.keys(_exceptions).forEach(function(dateStr) {
+        var ex = _exceptions[dateStr];
+        dates.push({ date: dateStr, status: ex.available ? 'available' : (ex.leave ? 'leave' : 'unavailable'), note: ex.note || null });
+      });
+      // Push weekly pattern for next 60 days (recurring unavailable days)
+      var today = new Date();
+      for (var i = 0; i < 60; i++) {
+        var d = new Date(today); d.setDate(today.getDate() + i);
+        var ds = d.toISOString().slice(0, 10);
+        if (_exceptions[ds]) continue; // explicit exception takes priority
+        var patIdx = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+        if (_weeklyPattern[patIdx] === 0) {
+          dates.push({ date: ds, status: 'unavailable', note: 'Weekly pattern' });
+        }
+      }
+      if (dates.length > 0) {
+        api('set_availability', null, { user_id: _user.id, dates: dates }).then(function() {
+          showToast('Availability synced', 'success');
+        }).catch(function(e) { console.warn('[Availability] Sync failed:', e); });
+      }
+    }
   }
 
   // Map JS getDay (0=Sun) to our pattern index (0=Mon..6=Sun)
@@ -7808,7 +7848,7 @@
       api('add_note', null, { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' }).catch(function() {
         queueOfflineAction('add_note', { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' });
       });
-      captureGPS();
+      captureGPS('clock_on');
       // After clock-on: show materials check if POs exist
       setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
 
@@ -7831,12 +7871,14 @@
         }
       }
       api('add_note', null, { jobId: _currentJobId, text: 'Started travel', eventType: 'assignment.clocked_on' }).catch(function() {});
+      captureGPS('start_travel');
 
     } else if (action === 'arrived') {
       _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
       _arrivedAt = new Date().toISOString();
       saveTimerState();
       updatePhaseOnServer(assignmentId, 'arrived');
+      captureGPS('arrived');
       // Auto "arrived" SMS
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
@@ -7864,7 +7906,7 @@
       }).catch(function(err) {
         toast(friendlyError(err), true);
       });
-      captureGPS();
+      captureGPS('clock_off');
     }
 
     // Re-render job detail
@@ -8049,10 +8091,20 @@
     if (overlay) overlay.classList.remove('active');
   };
 
-  function captureGPS() {
+  function captureGPS(transitionType) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(function(pos) {
-        // GPS captured — could log to backend if needed
+        var lat = pos.coords.latitude;
+        var lng = pos.coords.longitude;
+        // Persist GPS to backend via job event
+        if (_currentJobId && _user) {
+          api('add_note', null, {
+            jobId: _currentJobId,
+            text: (transitionType || 'gps') + ': ' + lat.toFixed(6) + ',' + lng.toFixed(6),
+            eventType: 'gps_capture',
+            metadata: { latitude: lat, longitude: lng, transition: transitionType || 'unknown', accuracy: pos.coords.accuracy }
+          }).catch(function(e) { console.warn('[GPS] Storage failed:', e); });
+        }
       }, function() {}, { timeout: 5000, maximumAge: 60000 });
     }
   }
