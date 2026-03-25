@@ -3063,6 +3063,7 @@
       return;
     }
     _currentView = view;
+    _lastViewChangeTime = Date.now();
     document.querySelectorAll('.view').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.bottom-nav button').forEach(function(el) { el.classList.remove('active'); });
 
@@ -3097,8 +3098,16 @@
   };
 
   // Android hardware back button / browser back gesture
+  var _lastViewChangeTime = 0;
   window.addEventListener('popstate', function(e) {
     if (_skipPopState) { _skipPopState = false; return; }
+    // Don't navigate away if we just loaded a view less than 2 seconds ago
+    // Prevents iOS swipe/history contamination from kicking users out of jobs
+    if (Date.now() - _lastViewChangeTime < 2000) {
+      _skipPopState = true;
+      history.pushState({ view: _currentView, jobId: _currentJobId }, '', '');
+      return;
+    }
     if (_currentView === 'report') {
       _skipPopState = true;
       showView('job', true);
@@ -3106,7 +3115,6 @@
       _skipPopState = true;
       showView('myJobs', true);
     }
-    // If on a main tab, let the browser handle it (close PWA or go back)
   });
 
   window.goBack = function() {
