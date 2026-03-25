@@ -2176,8 +2176,38 @@
      SCHEDULE VIEW
      ══════════════════════════════════════════════════ -->
 <div id="viewSchedule" class="view">
-  <div class="container" id="scheduleContent">
-    <div class="loading-screen"><div class="spinner"></div>Loading schedule...</div>
+  <div class="container">
+    <!-- Sub-tabs: Calendar | Availability -->
+    <div id="scheduleSubTabs" style="display:flex;gap:2px;background:var(--sw-light);border-radius:8px;padding:2px;margin-bottom:12px;">
+      <button class="schedule-sub-tab active" id="subTabCalendar" onclick="showScheduleSubTab('calendar')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:var(--sw-dark);color:#fff;transition:all 0.2s">Calendar</button>
+      <button class="schedule-sub-tab" id="subTabAvail" onclick="showScheduleSubTab('availability')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--sw-mid);transition:all 0.2s">Availability</button>
+    </div>
+
+    <!-- Calendar sub-view -->
+    <div id="scheduleCalendarView">
+      <div id="calendarHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <button onclick="calNavWeek(-1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--sw-dark);padding:8px;">&#9664;</button>
+        <div style="text-align:center;">
+          <strong id="calWeekLabel" style="font-size:16px;color:var(--sw-dark);"></strong>
+          <div style="display:flex;gap:4px;justify-content:center;margin-top:4px;">
+            <button class="cal-range-btn active" id="calRangeWeek" onclick="setCalRange('week')" style="font-size:11px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:4px;cursor:pointer;background:var(--sw-dark);color:#fff;">Week</button>
+            <button class="cal-range-btn" id="calRangeMonth" onclick="setCalRange('month')" style="font-size:11px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:4px;cursor:pointer;background:transparent;color:var(--sw-mid);">Month</button>
+          </div>
+        </div>
+        <button onclick="calNavWeek(1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--sw-dark);padding:8px;">&#9654;</button>
+      </div>
+      <div id="calendarBody">
+        <div class="loading-screen"><div class="spinner"></div>Loading calendar...</div>
+      </div>
+      <div id="calendarFooter" style="display:flex;gap:8px;margin-top:12px;"></div>
+    </div>
+
+    <!-- Availability sub-view (existing functionality) -->
+    <div id="scheduleAvailView" style="display:none;">
+      <div id="scheduleContent">
+        <div class="loading-screen"><div class="spinner"></div>Loading schedule...</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2211,7 +2241,7 @@
   </button>
   <button data-view="schedule" onclick="showView('schedule')" style="position:relative">
     <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-    Schedule
+    Calendar
     <span class="nav-badge" id="scheduleBadge" style="display:none">0</span>
   </button>
   <button data-view="hours" onclick="showView('hours')">
@@ -3034,7 +3064,7 @@
     // Lazy-load data (skip reload if same job already loaded)
     if (view === 'myJobs') loadMyJobs();
     if (view === 'camera') renderCameraView();
-    if (view === 'schedule') renderScheduleView();
+    if (view === 'schedule') { loadTeamCalendar(); renderScheduleView(); }
     if (view === 'hours') loadHoursView();
     if (view === 'profile') renderProfileView();
     if (view === 'job' && _currentJobId) {
@@ -6218,8 +6248,471 @@
   // SCHEDULE VIEW — Availability + Calendar + Jobs
   // ══════════════════════════════════════════════════
 
+  // ══════════════════════════════════════════════════
+  // TEAM CALENDAR — All crew assignments, week view
+  // ══════════════════════════════════════════════════
+
+  var _calWeekStart = null;
+  var _calRange = 'week'; // 'week' or 'month'
+  var _calEvents = [];
+  var _calCacheTime = 0;
+  var _calCrewList = [];
+  var _scheduleSubTab = 'calendar';
+
+  function showScheduleSubTab(tab) {
+    _scheduleSubTab = tab;
+    var calView = document.getElementById('scheduleCalendarView');
+    var availView = document.getElementById('scheduleAvailView');
+    var tabCal = document.getElementById('subTabCalendar');
+    var tabAvail = document.getElementById('subTabAvail');
+    if (tab === 'calendar') {
+      if (calView) calView.style.display = '';
+      if (availView) availView.style.display = 'none';
+      if (tabCal) { tabCal.style.background = 'var(--sw-dark)'; tabCal.style.color = '#fff'; }
+      if (tabAvail) { tabAvail.style.background = 'transparent'; tabAvail.style.color = 'var(--sw-mid)'; }
+      loadTeamCalendar();
+    } else {
+      if (calView) calView.style.display = 'none';
+      if (availView) availView.style.display = '';
+      if (tabAvail) { tabAvail.style.background = 'var(--sw-dark)'; tabAvail.style.color = '#fff'; }
+      if (tabCal) { tabCal.style.background = 'transparent'; tabCal.style.color = 'var(--sw-mid)'; }
+      renderScheduleView();
+    }
+  }
+
+  function calNavWeek(delta) {
+    if (!_calWeekStart) _calWeekStart = getMonday(new Date());
+    _calWeekStart = new Date(_calWeekStart.getTime() + delta * 7 * 86400000);
+    _calCacheTime = 0; // Force reload
+    loadTeamCalendar();
+  }
+
+  function setCalRange(range) {
+    _calRange = range;
+    var weekBtn = document.getElementById('calRangeWeek');
+    var monthBtn = document.getElementById('calRangeMonth');
+    if (range === 'week') {
+      if (weekBtn) { weekBtn.style.background = 'var(--sw-dark)'; weekBtn.style.color = '#fff'; }
+      if (monthBtn) { monthBtn.style.background = 'transparent'; monthBtn.style.color = 'var(--sw-mid)'; }
+    } else {
+      if (monthBtn) { monthBtn.style.background = 'var(--sw-dark)'; monthBtn.style.color = '#fff'; }
+      if (weekBtn) { weekBtn.style.background = 'transparent'; weekBtn.style.color = 'var(--sw-mid)'; }
+    }
+    renderTeamCalendar();
+  }
+
+  function getMonday(d) {
+    d = new Date(d);
+    var day = d.getDay();
+    var diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.getFullYear(), d.getMonth(), diff);
+  }
+
+  async function loadTeamCalendar() {
+    if (!_calWeekStart) _calWeekStart = getMonday(new Date());
+
+    // Cache: skip if loaded within 5 minutes
+    if (_calCacheTime && (Date.now() - _calCacheTime < 300000) && _calEvents.length > 0) {
+      renderTeamCalendar();
+      return;
+    }
+
+    var body = document.getElementById('calendarBody');
+    if (body) body.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading...</div>';
+
+    var from = _calWeekStart.toISOString().slice(0, 10);
+    var toDate = new Date(_calWeekStart.getTime() + (_calRange === 'month' ? 35 : 7) * 86400000);
+    var to = toDate.toISOString().slice(0, 10);
+
+    try {
+      var data = await api('calendar', { from: from, to: to });
+      _calEvents = data.events || [];
+      _calCacheTime = Date.now();
+
+      // Also load crew list if not cached
+      if (_calCrewList.length === 0) {
+        try {
+          var userData = await api('list_users', {});
+          _calCrewList = (userData.users || userData || []).filter(function(u) {
+            return ['crew', 'lead_installer', 'admin', 'ops_manager'].indexOf(u.role) >= 0;
+          });
+        } catch (e) { console.log('[cal] crew list load failed:', e); }
+      }
+
+      renderTeamCalendar();
+    } catch (e) {
+      if (body) body.innerHTML = '<div class="empty-state">Failed to load calendar: ' + (e.message || e) + '</div>';
+    }
+  }
+
+  function renderTeamCalendar() {
+    var body = document.getElementById('calendarBody');
+    var footer = document.getElementById('calendarFooter');
+    var label = document.getElementById('calWeekLabel');
+    if (!body) return;
+
+    var monday = _calWeekStart || getMonday(new Date());
+    var days = _calRange === 'month' ? 28 : 7;
+    var today = new Date().toISOString().slice(0, 10);
+    var myName = (_user?.name || '').toLowerCase();
+
+    // Week label
+    var endDate = new Date(monday.getTime() + (days - 1) * 86400000);
+    if (label) {
+      label.textContent = monday.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + ' — ' + endDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    // Group events by date
+    var eventsByDate = {};
+    _calEvents.forEach(function(ev) {
+      var d = ev.scheduled_date;
+      if (!eventsByDate[d]) eventsByDate[d] = [];
+      eventsByDate[d].push(ev);
+    });
+
+    // Calculate "Day X of Y" for each job+crew combo
+    var jobCrewDays = {};
+    _calEvents.forEach(function(ev) {
+      var key = ev.job_id + '_' + (ev.crew_name || '');
+      if (!jobCrewDays[key]) jobCrewDays[key] = [];
+      jobCrewDays[key].push(ev.scheduled_date);
+    });
+    Object.keys(jobCrewDays).forEach(function(key) {
+      jobCrewDays[key].sort();
+    });
+
+    var html = '';
+    var dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    for (var i = 0; i < days; i++) {
+      var date = new Date(monday.getTime() + i * 86400000);
+      var dateStr = date.toISOString().slice(0, 10);
+      var isToday = dateStr === today;
+      var isPast = dateStr < today;
+      var dayName = dayNames[date.getDay()];
+      var dayLabel = dayName + ' ' + date.getDate() + ' ' + date.toLocaleDateString('en-AU', { month: 'short' });
+
+      // Skip weekends in week view
+      if (_calRange === 'week' && (date.getDay() === 0 || date.getDay() === 6)) continue;
+
+      var dayEvents = eventsByDate[dateStr] || [];
+
+      html += '<div style="margin-bottom:16px;' + (isToday ? 'background:rgba(241,90,41,0.04);border-radius:8px;padding:8px;margin:-4px -8px 16px;' : '') + '">';
+      html += '<div style="font-size:13px;font-weight:700;color:' + (isToday ? 'var(--sw-orange)' : isPast ? 'var(--sw-text-sec)' : 'var(--sw-dark)') + ';margin-bottom:6px;' + (isPast ? 'opacity:0.6;' : '') + '">';
+      html += dayLabel;
+      if (isToday) html += ' <span style="font-size:10px;font-weight:600;background:var(--sw-orange);color:#fff;padding:1px 6px;border-radius:4px;margin-left:4px;">TODAY</span>';
+      html += '</div>';
+
+      if (dayEvents.length === 0) {
+        html += '<div style="font-size:12px;color:var(--sw-text-sec);padding:6px 0;font-style:italic;">No jobs scheduled</div>';
+      } else {
+        dayEvents.forEach(function(ev) {
+          var isMyJob = (ev.crew_name || '').toLowerCase() === myName || (ev.assigned_to || '').toLowerCase() === myName;
+          var borderColor = isMyJob ? 'var(--sw-orange)' : '#e0e0e0';
+          var borderWidth = isMyJob ? '3px' : '1px';
+          var completed = ev.assignment_status === 'complete';
+
+          // Day X of Y
+          var jobCrewKey = ev.job_id + '_' + (ev.crew_name || '');
+          var daysList = jobCrewDays[jobCrewKey] || [dateStr];
+          var dayX = daysList.indexOf(dateStr) + 1;
+          var dayY = daysList.length;
+          // Fallback: use scope_json.labour_days if available and larger
+          var labourDays = ev.scope_json?.labour_days || ev.scope_json?.install_days || ev.scope_json?.config?.labour_days;
+          if (labourDays && parseInt(labourDays) > dayY) dayY = parseInt(labourDays);
+
+          // Type badge
+          var typeBadge = { patio: 'Patio', fencing: 'Fencing', decking: 'Decking' };
+          var typeLabel = typeBadge[(ev.job_type || '').toLowerCase()] || ev.job_type || '';
+
+          // Crew names for this job on this date
+          var crewOnThisJob = dayEvents.filter(function(e) { return e.job_id === ev.job_id; }).map(function(e) { return e.crew_name || e.assigned_to || ''; });
+          var uniqueCrew = [];
+          crewOnThisJob.forEach(function(c) { if (c && uniqueCrew.indexOf(c) < 0) uniqueCrew.push(c); });
+
+          // Skip duplicate card for same job (show once with all crew)
+          if (dayEvents.indexOf(ev) !== dayEvents.findIndex(function(e) { return e.job_id === ev.job_id; })) return;
+
+          html += '<div onclick="openCalendarJobPreview(\'' + ev.job_id + '\')" style="padding:10px 12px;border-left:' + borderWidth + ' solid ' + borderColor + ';border:1px solid ' + (isMyJob ? borderColor : '#eee') + ';border-left-width:' + borderWidth + ';border-radius:8px;margin-bottom:6px;cursor:pointer;' + (completed ? 'opacity:0.5;' : '') + (isPast && !completed ? 'opacity:0.7;' : '') + '">';
+
+          // Row 1: Job number + type + status
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+          html += '<div>';
+          if (isMyJob) html += '<span style="color:var(--sw-orange);margin-right:4px;">&#9733;</span>';
+          html += '<strong style="color:var(--sw-dark);">' + (ev.job_number || 'Draft') + '</strong>';
+          html += ' <span style="font-size:11px;color:var(--sw-text-sec);">' + (ev.client_name || '') + '</span>';
+          html += '</div>';
+          if (typeLabel) html += '<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--sw-light);color:var(--sw-mid);font-weight:600;">' + typeLabel + '</span>';
+          html += '</div>';
+
+          // Row 2: Suburb + crew + day count
+          html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:3px;">';
+          html += (ev.site_suburb || '') + ' &middot; ' + uniqueCrew.join(' + ') + ' &middot; Day ' + dayX + '/' + dayY;
+          if (completed) html += ' &#10003;';
+          html += '</div>';
+
+          html += '</div>';
+        });
+      }
+
+      html += '</div>';
+    }
+
+    body.innerHTML = html;
+
+    // Footer: availability link + help request button (lead_installer only)
+    if (footer) {
+      var footerHtml = '';
+      var userRole = _user?.role || '';
+      var isLead = userRole === 'lead_installer' || userRole === 'admin';
+      if (isLead) {
+        footerHtml += '<button class="btn btn-sm" style="background:var(--sw-orange);color:#fff;flex:1;" onclick="openRequestHelpPicker()">+ Request Help</button>';
+      }
+      footer.innerHTML = footerHtml;
+    }
+  }
+
+  // ── Calendar Job Preview ──
+  async function openCalendarJobPreview(jobId) {
+    try {
+      var data = await api('trade_job_detail', { jobId: jobId });
+      var job = data.job || data;
+      var assignments = data.assignments || [];
+
+      // Build scope summary (no pricing)
+      var scopeDesc = '';
+      var scope = job.scope_json;
+      if (scope && scope.config) {
+        var c = scope.config;
+        var parts = [];
+        if (c.length && c.projection) parts.push(c.length + 'm \u00d7 ' + c.projection + 'm');
+        if (c.roofStyle) parts.push(c.roofStyle.charAt(0).toUpperCase() + c.roofStyle.slice(1));
+        if (c.roofing) parts.push(c.roofing);
+        if (c.colour) parts.push(c.colour);
+        scopeDesc = parts.join(', ');
+      } else if (scope && scope.job && scope.job.runs) {
+        var runs = scope.job.runs;
+        var totalM = runs.reduce(function(s, r) { return s + (r.totalLength || r.lengthM || 0); }, 0);
+        scopeDesc = Math.round(totalM) + 'm total, ' + runs.length + ' run(s)';
+      }
+
+      // Schedule info
+      var scheduleDates = assignments.map(function(a) { return a.scheduled_date; }).filter(Boolean).sort();
+      var crewNames = [];
+      assignments.forEach(function(a) {
+        var n = a.crew_name || a.assigned_to || '';
+        if (n && crewNames.indexOf(n) < 0) crewNames.push(n);
+      });
+
+      var isMyJob = crewNames.some(function(n) { return n.toLowerCase() === (_user?.name || '').toLowerCase(); });
+      var typeBadge = { patio: 'PATIO', fencing: 'FENCING', decking: 'DECKING' };
+
+      var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:flex-end;justify-content:center;">';
+      html += '<div style="background:#fff;border-radius:16px 16px 0 0;padding:20px 16px 28px;width:100%;max-width:500px;max-height:80vh;overflow-y:auto;">';
+
+      // Close handle
+      html += '<div style="width:40px;height:4px;background:#ddd;border-radius:2px;margin:0 auto 16px;"></div>';
+
+      // Header
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">';
+      html += '<div>';
+      html += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);">' + (job.job_number || 'Draft') + '</div>';
+      html += '<div style="font-size:14px;color:var(--sw-text-sec);">' + (job.client_name || '') + '</div>';
+      html += '</div>';
+      html += '<span style="font-size:11px;padding:3px 10px;border-radius:6px;background:var(--sw-light);color:var(--sw-mid);font-weight:700;">' + (typeBadge[(job.type || '').toLowerCase()] || job.type || '') + '</span>';
+      html += '</div>';
+
+      // Address
+      if (job.site_address || job.site_suburb) {
+        html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">' + (job.site_address || job.site_suburb || '') + '</div>';
+      }
+
+      // Schedule section
+      html += '<div style="border-top:1px solid var(--sw-border);padding-top:10px;margin-bottom:10px;">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Schedule</div>';
+      if (scheduleDates.length > 0) {
+        var firstDate = new Date(scheduleDates[0] + 'T00:00:00');
+        var lastDate = new Date(scheduleDates[scheduleDates.length - 1] + 'T00:00:00');
+        html += '<div style="font-size:14px;color:var(--sw-dark);">' + firstDate.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+        if (scheduleDates.length > 1) html += ' \u2192 ' + lastDate.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+        html += ' (' + scheduleDates.length + ' day' + (scheduleDates.length > 1 ? 's' : '') + ')</div>';
+      }
+      html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-top:2px;">' + crewNames.join(' + ') + '</div>';
+      html += '</div>';
+
+      // Scope section
+      if (scopeDesc) {
+        html += '<div style="border-top:1px solid var(--sw-border);padding-top:10px;margin-bottom:10px;">';
+        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Scope</div>';
+        html += '<div style="font-size:14px;color:var(--sw-dark);">' + scopeDesc + '</div>';
+        html += '</div>';
+      }
+
+      // Notes
+      var notes = job.scope_json?.notes?.noteWorkOrder || job.scope_json?.notes?.noteInternal || '';
+      if (notes) {
+        html += '<div style="border-top:1px solid var(--sw-border);padding-top:10px;margin-bottom:10px;">';
+        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Notes</div>';
+        html += '<div style="font-size:13px;color:var(--sw-dark);white-space:pre-wrap;">' + notes.replace(/</g, '&lt;').slice(0, 500) + '</div>';
+        html += '</div>';
+      }
+
+      // Action buttons
+      html += '<div style="display:flex;gap:8px;margin-top:12px;">';
+      if (job.site_address) {
+        html += '<a href="https://maps.google.com/?q=' + encodeURIComponent(job.site_address) + '" target="_blank" class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none;font-size:13px;">Navigate</a>';
+      }
+      if (job.client_phone) {
+        html += '<a href="tel:' + job.client_phone + '" class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none;font-size:13px;">Call Client</a>';
+      }
+      if (isMyJob) {
+        html += '<button class="btn btn-primary" style="flex:1;font-size:13px;" onclick="this.closest(\'div[style*=fixed]\').remove();openJob(\'' + job.id + '\')">Open Full Job</button>';
+      }
+      html += '</div>';
+
+      html += '</div></div>';
+
+      var overlay = document.createElement('div');
+      overlay.innerHTML = html;
+      overlay.firstChild.onclick = function(e) { if (e.target === overlay.firstChild) overlay.remove(); };
+      document.body.appendChild(overlay);
+    } catch (e) {
+      showToast('Failed to load job: ' + (e.message || e), 'warning');
+    }
+  }
+
+  // ── Request Help (lead_installer only) ──
+  async function openRequestHelpPicker() {
+    // Show list of own upcoming jobs to pick which one needs help
+    var myName = (_user?.name || '').toLowerCase();
+    var myJobs = _calEvents.filter(function(ev) {
+      return (ev.crew_name || '').toLowerCase() === myName && ev.scheduled_date >= new Date().toISOString().slice(0, 10);
+    });
+
+    // Deduplicate by job_id
+    var seen = {};
+    var uniqueJobs = [];
+    myJobs.forEach(function(ev) {
+      if (!seen[ev.job_id]) { seen[ev.job_id] = true; uniqueJobs.push(ev); }
+    });
+
+    if (uniqueJobs.length === 0) {
+      showToast('No upcoming jobs to request help for', 'warning');
+      return;
+    }
+
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;">';
+    html += '<div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:90%;max-height:80vh;overflow-y:auto;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3 style="margin:0;color:var(--sw-dark);font-size:16px;">Request Help</h3><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;">&times;</button></div>';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">Which job do you need help on?</div>';
+
+    uniqueJobs.forEach(function(ev) {
+      html += '<div onclick="openRequestHelpForm(\'' + ev.job_id + '\');this.closest(\'div[style*=fixed]\').remove();" style="padding:10px 12px;border:1px solid #eee;border-radius:8px;margin-bottom:6px;cursor:pointer;">';
+      html += '<strong>' + (ev.job_number || 'Draft') + '</strong> ' + (ev.client_name || '') + '<br>';
+      html += '<span style="font-size:12px;color:var(--sw-text-sec);">' + (ev.site_suburb || '') + ' &middot; ' + (ev.job_type || '') + '</span>';
+      html += '</div>';
+    });
+
+    html += '</div></div>';
+    var overlay = document.createElement('div');
+    overlay.innerHTML = html;
+    overlay.firstChild.onclick = function(e) { if (e.target === overlay.firstChild) overlay.remove(); };
+    document.body.appendChild(overlay);
+  }
+
+  async function openRequestHelpForm(jobId) {
+    // Get job's scheduled dates
+    var jobEvents = _calEvents.filter(function(ev) { return ev.job_id === jobId && ev.scheduled_date >= new Date().toISOString().slice(0, 10); });
+    var jobDates = [];
+    var seenDates = {};
+    jobEvents.forEach(function(ev) { if (!seenDates[ev.scheduled_date]) { seenDates[ev.scheduled_date] = true; jobDates.push(ev.scheduled_date); }});
+    jobDates.sort();
+    var firstEv = jobEvents[0] || {};
+
+    // Load crew + availability for these dates
+    var crewList = _calCrewList.filter(function(u) {
+      return u.role === 'crew' || u.role === 'lead_installer';
+    });
+    var myId = _user?.id;
+
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;">';
+    html += '<div style="background:#fff;border-radius:12px;padding:20px;max-width:420px;width:92%;max-height:85vh;overflow-y:auto;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="margin:0;color:var(--sw-dark);font-size:16px;">Request Help</h3><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999;">&times;</button></div>';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">' + (firstEv.job_number || '') + ' ' + (firstEv.client_name || '') + '</div>';
+
+    // Date checkboxes
+    html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-bottom:6px;">Which day(s)?</div>';
+    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;">';
+    jobDates.forEach(function(d) {
+      var dt = new Date(d + 'T00:00:00');
+      var label = dt.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+      html += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;"><input type="checkbox" class="req-date-cb" value="' + d + '" checked> ' + label + '</label>';
+    });
+    html += '</div>';
+
+    // Crew list
+    html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-bottom:6px;">Who do you need?</div>';
+    crewList.forEach(function(u) {
+      if (u.id === myId) return; // Don't show yourself
+      // Check if they're already assigned to another job on these dates
+      var conflicts = _calEvents.filter(function(ev) { return (ev.crew_name || '').toLowerCase() === (u.name || '').toLowerCase() && jobDates.indexOf(ev.scheduled_date) >= 0 && ev.job_id !== jobId; });
+      var isAvail = conflicts.length === 0;
+      var conflictJob = conflicts.length > 0 ? (conflicts[0].job_number || 'another job') : '';
+
+      html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid ' + (isAvail ? '#ddd' : '#fdd') + ';border-radius:8px;margin-bottom:4px;cursor:pointer;' + (isAvail ? '' : 'opacity:0.5;') + '">';
+      html += '<input type="radio" name="reqTrade" value="' + u.id + '" ' + (isAvail ? '' : 'disabled') + '>';
+      html += '<div style="flex:1;"><strong style="font-size:13px;">' + (u.name || '') + '</strong>';
+      if (isAvail) html += '<div style="font-size:11px;color:var(--sw-green);">Available &#10003;</div>';
+      else html += '<div style="font-size:11px;color:var(--sw-red);">On ' + conflictJob + '</div>';
+      html += '</div></label>';
+    });
+
+    // Note
+    html += '<div style="margin-top:10px;"><textarea id="reqHelpNote" placeholder="Note to ops (optional)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-height:50px;resize:vertical;box-sizing:border-box;font-family:var(--sw-font);"></textarea></div>';
+
+    // Submit
+    html += '<button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="submitHelpRequest(\'' + jobId + '\')">Send Request</button>';
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;margin-top:6px;">Requests go to Shaun for approval.</div>';
+
+    html += '</div></div>';
+    var overlay = document.createElement('div');
+    overlay.id = 'requestHelpOverlay';
+    overlay.innerHTML = html;
+    overlay.firstChild.onclick = function(e) { if (e.target === overlay.firstChild) overlay.remove(); };
+    document.body.appendChild(overlay);
+  }
+
+  async function submitHelpRequest(jobId) {
+    var tradeRadio = document.querySelector('input[name="reqTrade"]:checked');
+    if (!tradeRadio) { showToast('Please select a trade', 'warning'); return; }
+    var selectedDates = [];
+    document.querySelectorAll('.req-date-cb:checked').forEach(function(cb) { selectedDates.push(cb.value); });
+    if (selectedDates.length === 0) { showToast('Please select at least one day', 'warning'); return; }
+    var note = (document.getElementById('reqHelpNote')?.value || '').trim();
+
+    try {
+      await api('request_assistance', {}, {
+        job_id: jobId,
+        requested_trade_id: tradeRadio.value,
+        requested_dates: selectedDates,
+        note: note || undefined,
+        requested_by: _user?.id,
+      });
+      var overlay = document.getElementById('requestHelpOverlay');
+      if (overlay) overlay.remove();
+      showToast('Request sent. Shaun will confirm.', 'success');
+    } catch (e) {
+      showToast('Failed to send request: ' + (e.message || e), 'warning');
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  // AVAILABILITY — existing functionality
+  // ══════════════════════════════════════════════════
+
   function renderScheduleView() {
     var container = document.getElementById('scheduleContent');
+    if (!container) return;
     if (!_calendarMonth) {
       var now = new Date();
       _calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
