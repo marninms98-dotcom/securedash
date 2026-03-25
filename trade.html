@@ -2458,6 +2458,9 @@
   // Backward-compat: keep these for EOD timesheet calculation
   var _stoppedTravelMins = 0;
   var _stoppedOnsiteMins = 0;
+  var _isPaused = false;
+  var _pauseStartTime = null;
+  var _totalBreakMins = 0;
 
   function loadTimerState() {
     try {
@@ -3827,22 +3830,19 @@
     h += '<div class="sf-expanded">';
 
     if (_clockState === 'off' && phase !== 'complete') {
-      // ── CLOCKED OFF: Show Clock On button ──
-      if (needsAck) {
-        h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:8px">Read scope below first, then clock on ↓</div>';
-      }
+      // ── CLOCKED OFF: Two equal buttons — Travel or Clock On ──
       var jobLabel = job.job_number ? esc(job.job_number) : 'this job';
-      h += '<button class="sf-action-btn" style="background:var(--sw-green);font-size:16px;padding:16px 24px" onclick="confirmClockOn(\'' + myAssignment.id + '\')">';
-      h += '🟢 Clock On to ' + jobLabel + '</button>';
-      // Optional travel start
-      h += '<div style="margin-top:10px">';
-      h += '<a href="#" onclick="event.preventDefault();confirmThenTravel(\'' + myAssignment.id + '\')" style="font-size:13px;color:var(--sw-text-sec);text-decoration:underline">Start travel first</a>';
+      h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+      h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-mid);font-size:15px;padding:14px 12px" onclick="confirmThenTravel(\'' + myAssignment.id + '\')">';
+      h += '\uD83D\uDE97 Start Travel</button>';
+      h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-green);font-size:15px;padding:14px 12px" onclick="confirmClockOn(\'' + myAssignment.id + '\')">';
+      h += '\uD83D\uDFE2 Clock On (on site)</button>';
       h += '</div>';
       if (canMessage()) {
-        var checked = _autoNotifyClient ? ' checked' : '';
-        h += '<label style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px;font-size:12px;color:var(--sw-text-sec)">';
-        h += '<input type="checkbox" id="autoNotifyCheck"' + checked + ' onchange="_autoNotifyClient=this.checked"> Auto-notify client';
-        h += '</label>';
+        h += '<div style="font-size:12px;color:var(--sw-text-sec);text-align:center;">';
+        h += _autoNotifyClient ? '\u2705 Client will be notified' : '\uD83D\uDD15 Client notifications off';
+        h += ' <a href="#" onclick="event.preventDefault();_autoNotifyClient=!_autoNotifyClient;if(_currentJob)renderJobDetail(_currentJob);" style="color:var(--sw-mid);font-size:11px;">[change]</a>';
+        h += '</div>';
       }
 
     } else if (_clockState === 'on' && !_arrivedAt && _travelStartTime) {
@@ -3859,20 +3859,45 @@
 
     } else if (_clockState === 'on') {
       // ── CLOCKED ON & WORKING ──
-      h += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-green);letter-spacing:0.5px">Clocked On ✓</div>';
-      h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_clockedOnAt) + '</div>';
-      if (_stoppedTravelMins > 0) {
-        h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:4px">Travel: ' + formatMins(_stoppedTravelMins) + '</div>';
+      if (_isPaused) {
+        h += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-yellow);letter-spacing:0.5px">\u23F8 PAUSED</div>';
+        h += '<div style="font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0;color:var(--sw-text-sec);">' + formatElapsed(_clockedOnAt) + '</div>';
+      } else {
+        h += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-green);letter-spacing:0.5px">Clocked On \u2713</div>';
+        h += '<div class="timer-elapsed" id="timerElapsed" style="font-size:36px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0">' + formatElapsed(_clockedOnAt) + '</div>';
       }
-      h += '<button class="sf-action-btn" style="background:var(--sw-red);font-size:16px;padding:14px 24px" onclick="confirmClockOff(\'' + myAssignment.id + '\')">';
-      h += '🔴 Clock Off</button>';
+      if (_stoppedTravelMins > 0) {
+        h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:4px">Travel: ' + formatMins(_stoppedTravelMins) + (_totalBreakMins > 0 ? ' \u00B7 Breaks: ' + formatMins(_totalBreakMins) : '') + '</div>';
+      }
+      h += '<div style="display:flex;gap:8px;">';
+      if (_isPaused) {
+        h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-green);font-size:15px;padding:14px" onclick="timerAction(\'resume\', \'' + myAssignment.id + '\')">\u25B6 Resume</button>';
+      } else {
+        h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-text-sec);font-size:15px;padding:14px" onclick="timerAction(\'pause\', \'' + myAssignment.id + '\')">\u23F8 Pause</button>';
+      }
+      h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-red);font-size:15px;padding:14px" onclick="confirmClockOff(\'' + myAssignment.id + '\')">\uD83D\uDD34 Clock Off</button>';
+      h += '</div>';
       // Manual override link
       h += '<div style="margin-top:10px">';
       h += '<a href="#" onclick="event.preventDefault();showManualTimeOverride()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Adjust time manually</a>';
       h += '</div>';
 
     } else if (phase === 'complete') {
-      h += '<div style="font-size:16px;font-weight:700;color:var(--sw-green)">✅ Job Complete</div>';
+      h += '<div style="font-size:16px;font-weight:700;color:var(--sw-green)">\u2705 Job Complete</div>';
+      // Next job preview
+      if (typeof _lastJobData !== 'undefined' && _lastJobData) {
+        var allAssignments = [].concat(_lastJobData.today || [], _lastJobData.thisWeek || [], _lastJobData.upcoming || []);
+        var nextJob = allAssignments.find(function(a) { return a.jobs && a.jobs.id !== job.id && a.scheduled_date >= new Date().toISOString().slice(0, 10); });
+        if (nextJob && nextJob.jobs) {
+          var nj = nextJob.jobs;
+          h += '<div style="margin-top:12px;padding:12px;background:var(--sw-light);border-radius:8px;text-align:left;">';
+          h += '<div style="font-size:11px;color:var(--sw-text-sec);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Next Up</div>';
+          h += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark);">' + esc(nj.job_number || '') + ' \u2014 ' + esc(nj.client_name || '') + '</div>';
+          h += '<div style="font-size:12px;color:var(--sw-text-sec);">' + formatDate(nextJob.scheduled_date) + (nextJob.start_time ? ' \u00B7 ' + nextJob.start_time.slice(0, 5) : '') + ' \u00B7 ' + esc(nj.site_suburb || '') + '</div>';
+          h += '<button onclick="openJob(\'' + nj.id + '\', \'' + nextJob.id + '\')" style="margin-top:8px;padding:8px 16px;background:var(--sw-orange);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;">View Job \u2192</button>';
+          h += '</div>';
+        }
+      }
     }
 
     h += '</div>'; // sf-expanded
@@ -4875,8 +4900,23 @@
       h += '</div>';
     }
 
-    // ── Completion Photos (complete only) ──
+    // ── Photo Targets (complete phase) ──
     if (phase === 'complete') {
+    var progressPhotos = media.filter(function(m) { return m.phase === 'in_progress'; });
+    var photoTargets = { before: 3, during: 2, completion: 5 };
+    var beforeCount = scopePhotos.length;
+    var duringCount = progressPhotos.length;
+    var compCount = completionPhotos.length;
+    h += '<div style="display:flex;gap:8px;margin-bottom:12px;font-size:12px;text-align:center;">';
+    h += '<div style="flex:1;padding:8px;background:' + (beforeCount >= photoTargets.before ? '#E8F8EF' : '#FEF3C7') + ';border-radius:6px;">';
+    h += '<div style="font-weight:700;color:' + (beforeCount >= photoTargets.before ? 'var(--sw-green)' : '#92400E') + ';">Before: ' + beforeCount + '/' + photoTargets.before + '</div></div>';
+    h += '<div style="flex:1;padding:8px;background:' + (duringCount >= photoTargets.during ? '#E8F8EF' : '#FEF3C7') + ';border-radius:6px;">';
+    h += '<div style="font-weight:700;color:' + (duringCount >= photoTargets.during ? 'var(--sw-green)' : '#92400E') + ';">During: ' + duringCount + '/' + photoTargets.during + '</div></div>';
+    h += '<div style="flex:1;padding:8px;background:' + (compCount >= photoTargets.completion ? '#E8F8EF' : '#FEF3C7') + ';border-radius:6px;">';
+    h += '<div style="font-weight:700;color:' + (compCount >= photoTargets.completion ? 'var(--sw-green)' : '#92400E') + ';">After: ' + compCount + '/' + photoTargets.completion + '</div></div>';
+    h += '</div>';
+
+    // ── Completion Photos ──
     h += '<div class="detail-section">';
     h += '  <h3>Completion Photos</h3>';
     if (completionPhotos.length > 0) {
@@ -5029,15 +5069,25 @@
     // ── Section 2: Weather Strip ──
     html += renderWeatherStrip(data, phase);
 
+    // ── Scope-first layout: on first visit of the day, show key specs before clock buttons ──
+    var myAsgn = getMyAssignment(data);
+    var scopeFirstToday = !myAsgn?.acknowledged_at && job.scope_json && (phase === 'pre_confirm' || phase === 'confirmed');
+    if (scopeFirstToday) {
+      html += renderKeyDimensions(data);
+      html += renderSpecialInstructions(data, phase);
+    }
+
     // ── Section 3: Smart Status Flow ──
     html += renderSmartStatusFlow(data, phase);
 
-    // ── Travelling: minimal view — just status flow + address card ──
+    // ── Travelling: minimal view — status flow + address + departure time ──
     if (phase === 'travelling') {
       var addr = dedupeAddress(job.site_address, job.site_suburb);
+      var leftAt = _travelStartTime ? new Date(_travelStartTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '';
       html += '<div class="detail-section" style="text-align:center;padding:20px 16px">';
       html += '  <div style="font-size:16px;font-weight:700;margin-bottom:6px">' + esc(job.client_name || 'Unknown') + '</div>';
-      html += '  <div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:12px">' + esc(addr) + '</div>';
+      html += '  <div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:4px">' + esc(addr) + '</div>';
+      if (leftAt) html += '  <div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px;">Left at ' + leftAt + '</div>';
       var navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
       if (navUrl) {
         html += '  <button class="sf-action-btn" style="background:var(--sw-mid);font-size:16px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Navigate to Site</button>';
@@ -7949,6 +7999,7 @@
       }
       api('add_note', null, { jobId: _currentJobId, text: 'Started travel', eventType: 'assignment.clocked_on' }).catch(function() {});
       captureGPS('start_travel');
+      if (!(_autoNotifyClient && canMessage())) toast('\uD83D\uDE97 Travelling');
 
     } else if (action === 'arrived') {
       _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
@@ -7956,13 +8007,15 @@
       saveTimerState();
       updatePhaseOnServer(assignmentId, 'arrived');
       captureGPS('arrived');
-      // Auto "arrived" SMS
+      // Auto "arrived" SMS + toast
       if (canMessage() && _autoNotifyClient && _currentJob) {
         var job = _currentJob.job;
         if (job.ghl_contact_id) {
-          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).catch(function() {});
-        }
-      }
+          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).then(function() {
+            toast('\uD83D\uDCCD On site \u2014 client notified');
+          }).catch(function() { toast('\uD83D\uDCCD On site'); });
+        } else { toast('\uD83D\uDCCD On site'); }
+      } else { toast('\uD83D\uDCCD On site'); }
       // Show materials check after arrival
       setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
 
@@ -7984,6 +8037,24 @@
         toast(friendlyError(err), true);
       });
       captureGPS('clock_off');
+
+    } else if (action === 'pause') {
+      _isPaused = true;
+      _pauseStartTime = new Date().toISOString();
+      saveTimerState();
+      api('add_note', null, { jobId: _currentJobId, text: 'Timer paused', eventType: 'timer.paused', metadata: { paused_at: _pauseStartTime } }).catch(function() {});
+      toast('\u23F8 Timer paused', false, 2000);
+
+    } else if (action === 'resume') {
+      if (_pauseStartTime) {
+        var breakMins = Math.round((Date.now() - new Date(_pauseStartTime).getTime()) / 60000);
+        _totalBreakMins += breakMins;
+        api('add_note', null, { jobId: _currentJobId, text: 'Timer resumed (' + breakMins + ' min break)', eventType: 'timer.resumed', metadata: { resumed_at: new Date().toISOString(), break_mins: breakMins } }).catch(function() {});
+      }
+      _isPaused = false;
+      _pauseStartTime = null;
+      saveTimerState();
+      toast('\u25B6 Timer running', false, 2000);
     }
 
     // Re-render job detail
@@ -8011,9 +8082,31 @@
   };
 
   window.confirmClockOff = function(assignmentId) {
-    showConfirm('Clock Off?', 'This opens your end-of-day report. You must complete it to clock off.', 'Yes, Clock Off').then(function(ok) {
-      if (ok) openEOD();
-    });
+    // Check for consecutive quick clock-offs without progress update
+    var quickCount = parseInt(localStorage.getItem('sw_quick_clockoff_streak_' + _currentJobId) || '0', 10);
+    var nudge = quickCount >= 3 ? '\n\nYou haven\'t updated progress since ' + (localStorage.getItem('sw_quick_clockoff_last_date_' + _currentJobId) || 'recently') + ' \u2014 quick update?' : '';
+
+    // Two options: Quick (just log time) or Full Report
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:24px;text-align:center;">' +
+      '<div style="font-size:18px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Clock Off?</div>' +
+      (nudge ? '<div style="font-size:12px;color:var(--sw-yellow);margin-bottom:12px;padding:8px;background:#FEF3C7;border-radius:6px;">' + nudge.trim() + '</div>' : '') +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        '<button onclick="this.closest(\'div[style]\').parentElement.remove();_quickClockOff(\'' + assignmentId + '\')" style="padding:14px;background:var(--sw-dark);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;min-height:48px;">Quick \u2014 just log time</button>' +
+        '<button onclick="this.closest(\'div[style]\').parentElement.remove();openEOD()" style="padding:14px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;min-height:48px;">Full Report \u2192</button>' +
+        '<button onclick="this.closest(\'div[style]\').parentElement.remove();" style="padding:10px;background:none;border:none;color:var(--sw-text-sec);font-size:13px;cursor:pointer;">Cancel</button>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+  };
+
+  window._quickClockOff = function(assignmentId) {
+    // Track quick clock-off streak
+    var streakKey = 'sw_quick_clockoff_streak_' + _currentJobId;
+    var count = parseInt(localStorage.getItem(streakKey) || '0', 10) + 1;
+    localStorage.setItem(streakKey, count.toString());
+    localStorage.setItem('sw_quick_clockoff_last_date_' + _currentJobId, new Date().toLocaleDateString('en-AU'));
+    timerAction('clock_off', assignmentId);
   };
 
   window.confirmThenComplete = function() {
@@ -8154,19 +8247,39 @@
     var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
     localStorage.setItem(checkKey, 'issue');
     localStorage.setItem('sw_matissue_' + _currentJobId, '1');
+    var jobNum = _currentJob ? (_currentJob.job.job_number || '') : '';
+    var clientName = _currentJob ? (_currentJob.job.client_name || '') : '';
     api('create_trade_alert', null, {
       jobId: _currentJobId,
       issueType: 'materials_missing',
-      detail: category + ' — not on site or incorrect'
+      detail: category + ' — not on site or incorrect',
+      notify_telegram: true
     }).then(function() {
-      toast(category + ' issue reported');
+      // No toast here — action banner handles feedback
     }).catch(function() {
       queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'materials_missing', detail: category + ' — issue reported' });
-      toast('Issue saved — will sync when online');
     });
+    // Close materials overlay and show action banner
     var overlay = document.getElementById('materialsCheckOverlay');
     if (overlay) overlay.classList.remove('active');
+    _showMaterialsIssueBanner(category, jobNum, clientName);
   };
+
+  function _showMaterialsIssueBanner(category, jobNum, clientName) {
+    // Remove existing banner if any
+    var existing = document.getElementById('matIssueBanner');
+    if (existing) existing.remove();
+    var banner = document.createElement('div');
+    banner.id = 'matIssueBanner';
+    banner.style.cssText = 'position:fixed;top:56px;left:0;right:0;z-index:300;background:#FDE8E0;border-bottom:2px solid var(--sw-red);padding:12px 16px;';
+    banner.innerHTML =
+      '<div style="font-size:13px;font-weight:600;color:#991B1B;margin-bottom:8px;">\u26A0 Materials issue: ' + (category || 'Unknown') + ' \u2014 ' + (jobNum || '') + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<a href="tel:0434223776" style="flex:1;text-align:center;padding:10px;background:var(--sw-orange);color:#fff;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;min-height:44px;display:flex;align-items:center;justify-content:center;">\uD83D\uDCDE Call Shaun</a>' +
+        '<button onclick="document.getElementById(\'matIssueBanner\').remove();" style="flex:1;padding:10px;background:var(--sw-light);color:var(--sw-text);border:1px solid var(--sw-border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;">Continue Anyway \u2192</button>' +
+      '</div>';
+    document.body.appendChild(banner);
+  }
 
   function captureGPS(transitionType) {
     if (navigator.geolocation) {
@@ -10279,21 +10392,30 @@
         timerAction('clock_off', assignmentId);
       }
     }).then(function() {
-      // Show success
+      // Show time summary
+      var travelMins = _stoppedTravelMins || 0;
+      var onsiteMins = _stoppedOnsiteMins || 0;
+      var breakMins = _totalBreakMins || 0;
+      var totalMins = travelMins + onsiteMins - breakMins;
+      var rounded = roundTo15(totalMins);
+      var jobNum = _currentJob ? (_currentJob.job.job_number || '') : '';
+
       var body = document.getElementById('eodBody');
       var footer = document.getElementById('eodFooter');
-      body.innerHTML = '<div style="text-align:center;padding:40px 16px">' +
-        '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>' +
-        '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Great work today.</div>' +
-        '<div style="font-size:15px;color:var(--sw-text-sec)">See you tomorrow.</div>' +
+      body.innerHTML = '<div style="text-align:center;padding:32px 16px">' +
+        '<div style="font-size:48px;margin-bottom:12px">&#9989;</div>' +
+        '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:4px">Clocked Off' + (jobNum ? ' \u2014 ' + esc(jobNum) : '') + '</div>' +
+        '<div style="margin:16px auto;max-width:240px;text-align:left;font-size:14px;line-height:2;">' +
+          '<div style="display:flex;justify-content:space-between;"><span style="color:var(--sw-text-sec);">Travel</span><strong>' + formatMins(travelMins) + '</strong></div>' +
+          '<div style="display:flex;justify-content:space-between;"><span style="color:var(--sw-text-sec);">On-site</span><strong>' + formatMins(onsiteMins - breakMins) + '</strong></div>' +
+          (breakMins > 0 ? '<div style="display:flex;justify-content:space-between;"><span style="color:var(--sw-text-sec);">Breaks</span><span style="color:var(--sw-text-sec);">' + formatMins(breakMins) + '</span></div>' : '') +
+          '<div style="display:flex;justify-content:space-between;border-top:1px solid var(--sw-border);padding-top:4px;margin-top:4px;"><span style="font-weight:700;">Total</span><strong style="color:var(--sw-green);">' + formatMins(rounded) + '</strong></div>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--sw-text-sec);margin-top:4px;">Progress: ' + (_eodProgress || 0) + '%</div>' +
         '</div>';
-      footer.innerHTML = '';
+      footer.innerHTML = '<button onclick="closeEOD();showView(\'myJobs\');" style="width:100%;padding:14px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;min-height:48px;">Done \u2192</button>';
       document.getElementById('eodStepLabel').textContent = 'Done';
       document.getElementById('eodTitle').textContent = 'Day Complete';
-      setTimeout(function() {
-        closeEOD();
-        showView('myJobs'); // return to job list
-      }, 2000);
     }).catch(function(err) {
       toast('Error submitting: ' + friendlyError(err), true);
       if (btn) { btn.disabled = false; btn.textContent = 'Submit & Clock Off'; }
