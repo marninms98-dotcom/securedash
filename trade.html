@@ -3390,8 +3390,8 @@
       _currentJob = data;
       _currentJobLoaded = jobId;
       renderJobDetail(data);
-      // Check for stale clock-on from previous day
-      checkStaleClock();
+      // Check for stale clock-on from previous day — debounced to avoid blocking render
+      setTimeout(function() { if (_currentJobId === jobId) checkStaleClock(); }, 1500);
     }).catch(function(err) {
       clearTimeout(slowTimer);
       container.innerHTML = '<div class="empty-state">Error: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="loadJobDetail(\'' + jobId + '\')">Retry</button></div>';
@@ -7257,11 +7257,14 @@
     }
   }
 
-  // When app comes back from background, immediately update the timer
+  // When app comes back from background, update the timer (debounced to avoid cascade)
+  var _visChangeTimer = null;
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible' && _clockState === 'on') {
       updateTimerDisplay();
-      checkStaleClock();
+      // Debounce stale clock check — prevent rapid re-entry from iOS background/foreground flicker
+      clearTimeout(_visChangeTimer);
+      _visChangeTimer = setTimeout(function() { checkStaleClock(); }, 2000);
     }
   });
 
@@ -10238,9 +10241,23 @@
   // ══════════════════════════════════════════════════
 
   if (window.visualViewport) {
+    var _navRestoreTimer = null;
     window.visualViewport.addEventListener('resize', function() {
       var isKeyboard = window.visualViewport.height < window.innerHeight * 0.75;
-      document.getElementById('bottomNav').style.display = isKeyboard ? 'none' : 'flex';
+      var nav = document.getElementById('bottomNav');
+      if (!nav) return;
+      clearTimeout(_navRestoreTimer);
+      if (isKeyboard) {
+        nav.style.display = 'none';
+      } else {
+        nav.style.display = 'flex';
+      }
+      // Safety: always restore nav after 5 seconds if no input is focused
+      _navRestoreTimer = setTimeout(function() {
+        var active = document.activeElement;
+        var isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+        if (!isInput && nav) nav.style.display = 'flex';
+      }, 5000);
     });
   }
 
