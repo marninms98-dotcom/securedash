@@ -2896,7 +2896,7 @@
     btn.textContent = 'Logging in...';
     hideLoginError();
 
-    cloud.auth.signInWithPassword(email, password).then(function() {
+    cloud.auth.signIn(email, password).then(function() {
       // onLogin handler fires via auth:login event
     }).catch(function(err) {
       var msg = (err && err.message) || String(err);
