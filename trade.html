@@ -4611,11 +4611,12 @@
       var scopeViewerUrl = (data.job.type || '').toLowerCase() === 'fencing'
         ? 'https://marninms98-dotcom.github.io/fence-designer/'
         : 'https://marninms98-dotcom.github.io/patio/';
-      // Use sandbox to prevent iframe from pushing parent history or running integration.js auth calls
+      // Sandbox: allow-scripts only (NO allow-same-origin — prevents iframe from navigating parent or interfering with auth)
+      // noAuth=true tells the patio/fencing tool to skip Supabase init inside the iframe
       h += '<div style="margin-top:4px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">';
-      h += '<iframe src="' + scopeViewerUrl + '?jobId=' + data.job.id + '&mode=view" ';
+      h += '<iframe src="' + scopeViewerUrl + '?jobId=' + data.job.id + '&mode=view&noAuth=true" ';
       h += 'style="width:100%;height:300px;display:block;background:#f0f0f0;border:none;" ';
-      h += 'frameborder="0" sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe></div>';
+      h += 'frameborder="0" sandbox="allow-scripts" allowfullscreen></iframe></div>';
     }
     if ((config.length || config.totalLength) && phase !== 'on_site') {
       h += '<div style="margin-top:4px">';
@@ -5223,9 +5224,9 @@
           ? 'https://marninms98-dotcom.github.io/fence-designer/'
           : 'https://marninms98-dotcom.github.io/patio/';
         html += '<div style="margin:8px 0;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">';
-        html += '<iframe src="' + tradeViewerUrl + '?jobId=' + job.id + '&mode=view" ';
+        html += '<iframe src="' + tradeViewerUrl + '?jobId=' + job.id + '&mode=view&noAuth=true" ';
         html += 'style="width:100%;height:300px;display:block;background:#f0f0f0;border:none;" ';
-        html += 'frameborder="0" sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe></div>';
+        html += 'frameborder="0" sandbox="allow-scripts" allowfullscreen></iframe></div>';
       }
       // Fallback 3D button for full-screen parametric view
       var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
