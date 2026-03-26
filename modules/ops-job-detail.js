@@ -2074,6 +2074,12 @@ function renderMoneyView(data) {
     html += '</div></div>';
   }
 
+  // ── Trade Invoices for this job ──
+  var jobId = j.id;
+  html += '<div id="jdTradeInvoices"></div>';
+  // Load async
+  loadJobTradeInvoices(jobId);
+
   // Margin bar
   if (quoteVal > 0) {
     var costBarPct = Math.min(100, poCosts / quoteVal * 100);
@@ -2085,6 +2091,69 @@ function renderMoneyView(data) {
   }
 
   document.getElementById('jdMoney').innerHTML = html;
+}
+
+async function loadJobTradeInvoices(jobId) {
+  var el = document.getElementById('jdTradeInvoices');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_trade_invoice_lines', { job_id: jobId });
+    var lines = resp.lines || [];
+    if (lines.length === 0) { el.innerHTML = ''; return; }
+
+    var html = '<div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--sw-border);">';
+    html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Trade Invoices</div>';
+
+    lines.forEach(function(line) {
+      var statusColors = {
+        pending: 'var(--sw-orange)',
+        acknowledged: 'var(--sw-green)',
+        queried: 'var(--sw-red)',
+      };
+      var statusLabel = line.acknowledgment_status || 'pending';
+      var statusColor = statusColors[statusLabel] || 'var(--sw-text-sec)';
+      var invStatus = line.trade_invoices?.status || '';
+
+      html += '<div class="jd-money-card"><div class="jd-money-card-head">';
+      html += '<span>' + escapeHtml(line.trade_name || 'Trade') + ' — WK' + (line.week_label || '') + '</span>';
+      html += '<strong>' + fmt$(line.line_total_ex) + '</strong></div>';
+      html += '<div class="jd-money-card-sub">';
+      html += line.total_hours + 'h @ $' + line.hourly_rate + '/hr';
+      html += ' &middot; <span style="color:' + statusColor + ';font-weight:600;">' + statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1) + '</span>';
+      if (invStatus === 'pushed_to_xero') html += ' &middot; <span style="color:var(--sw-green);">In Xero</span>';
+      html += '</div>';
+
+      // Acknowledge/Query buttons for pending lines (ops can do this)
+      if (statusLabel === 'pending') {
+        html += '<div style="display:flex;gap:6px;margin-top:6px;">';
+        html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;font-size:11px;" onclick="acknowledgeInvoiceLine(\'' + line.id + '\',true)">Acknowledge</button>';
+        html += '<button class="btn btn-sm" style="background:var(--sw-red);color:#fff;font-size:11px;" onclick="acknowledgeInvoiceLine(\'' + line.id + '\',false)">Query</button>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+async function acknowledgeInvoiceLine(lineId, approved) {
+  var note = '';
+  if (!approved) {
+    note = prompt('Reason for query:');
+    if (note === null) return; // Cancelled
+  }
+  try {
+    await opsPost('acknowledge_invoice_line', { line_id: lineId, acknowledged: approved, query_note: note || undefined });
+    showToast(approved ? 'Acknowledged' : 'Query sent', 'success');
+    if (_currentJobData?.job?.id) openJobDetail(_currentJobData.job.id);
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
 }
 
 // ── Build View ──

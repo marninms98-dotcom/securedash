@@ -14,6 +14,53 @@ async function loadTradeBills() {
   } catch (e) {
     console.error('loadTradeBills error:', e);
   }
+
+  // Also load new-format trade invoices
+  try {
+    var newInvoices = await opsFetch('list_new_trade_invoices');
+    var invoices = newInvoices.invoices || [];
+    if (invoices.length > 0) {
+      var newHtml = '<div style="margin-top:16px;"><div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Weekly Trade Invoices</div>';
+      newHtml += '<div class="data-table-wrap"><table class="data-table"><thead><tr>';
+      newHtml += '<th>Trade</th><th>Week</th><th>Hours</th><th>Total</th><th>Status</th><th>Actions</th>';
+      newHtml += '</tr></thead><tbody>';
+
+      invoices.forEach(function(inv) {
+        var statusColors = { pending_acknowledgment: '#F59E0B', acknowledged: '#22C55E', pushed_to_xero: '#3B82F6', paid: '#22C55E', queried: '#EF4444', pending_ops_review: '#F59E0B' };
+        var statusColor = statusColors[inv.status] || '#999';
+        newHtml += '<tr>';
+        newHtml += '<td>' + escapeHtml(inv.user?.name || '') + '</td>';
+        newHtml += '<td>' + fmtDate(inv.week_start) + '</td>';
+        newHtml += '<td>' + inv.total_hours + 'h</td>';
+        newHtml += '<td>' + fmt$(inv.total_inc) + '</td>';
+        newHtml += '<td><span style="color:' + statusColor + ';font-weight:600;">' + (inv.status || '').replace(/_/g, ' ') + '</span>';
+        if (inv.has_manual_overrides) newHtml += ' <span style="color:var(--sw-orange);font-size:10px;">⚠ override</span>';
+        newHtml += '</td>';
+        newHtml += '<td>';
+        if (inv.status === 'acknowledged' && !inv.xero_bill_id) {
+          newHtml += '<button class="btn btn-sm" style="font-size:11px;background:var(--sw-green);color:#fff;" onclick="pushTradeInvoiceToXero(\'' + inv.id + '\')">Push to Xero</button>';
+        }
+        if (inv.xero_bill_id) {
+          newHtml += '<a href="https://go.xero.com/AccountsPayable/View.aspx?InvoiceID=' + inv.xero_bill_id + '" target="_blank" style="font-size:11px;color:var(--sw-mid);">View in Xero ↗</a>';
+        }
+        newHtml += '</td></tr>';
+      });
+
+      newHtml += '</tbody></table></div></div>';
+      document.getElementById('tradeBillTable').parentElement.parentElement.insertAdjacentHTML('afterend', newHtml);
+    }
+  } catch (e) { console.log('New trade invoices load failed:', e); }
+}
+
+async function pushTradeInvoiceToXero(invoiceId) {
+  if (!confirm('Push this trade invoice to Xero as a draft bill?')) return;
+  try {
+    await opsPost('push_trade_invoice_to_xero', { invoice_id: invoiceId });
+    showToast('Pushed to Xero', 'success');
+    loadTradeBills();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+  }
 }
 
 function renderTradeBillTable(invoices) {
