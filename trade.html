@@ -3092,6 +3092,7 @@
 
   var _currentView = 'myJobs';
   var _skipPopState = false; // avoid infinite loop when handling popstate
+  var _lastViewChangeTime = 0;
 
   // Main tabs (show in bottom nav) vs sub-views (accessed from job cards)
   var _mainTabs = ['myJobs', 'camera', 'schedule', 'hours', 'profile'];
