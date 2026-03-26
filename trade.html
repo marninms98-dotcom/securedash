@@ -213,6 +213,7 @@
       cursor: pointer;
       transition: all 0.15s;
       width: 100%;
+      min-height: 44px;
     }
     .btn-primary {
       background: var(--sw-orange);
@@ -2531,6 +2532,13 @@
   // Check if clocked on from a previous day (stale clock)
   function checkStaleClock() {
     if (_clockState !== 'on' || !_clockedOnAt) return;
+    var clockedHours = (Date.now() - new Date(_clockedOnAt).getTime()) / 3600000;
+    // 14+ hours — prompt "Still working?"
+    if (clockedHours > 14) {
+      showStaleClockPrompt({ id: _currentAssignment }, clockedHours);
+      return;
+    }
+    // Different day — prompt to clock off for that day
     var clockDate = new Date(_clockedOnAt).toISOString().slice(0, 10);
     var today = new Date().toISOString().slice(0, 10);
     if (clockDate < today) {
@@ -2539,6 +2547,56 @@
         if (ok) openEOD();
       });
     }
+  }
+
+  // Stale clock prompt — shown when clocked on for 14+ hours
+  function showStaleClockPrompt(assignment, hours) {
+    var hrs = Math.round(hours);
+    showConfirm(
+      'Still working?',
+      'You\'ve been clocked on for ' + hrs + ' hours. Did you forget to clock off?',
+      'Still going'
+    ).then(function(stillGoing) {
+      if (stillGoing) {
+        toast('Timer continues');
+      } else {
+        if (_currentJobId) {
+          openEOD();
+        }
+      }
+    });
+  }
+
+  // Server clock recovery — check cached my_jobs data for active clocks
+  function checkServerClockRecovery(data) {
+    if (_clockState === 'on') return; // already clocked on locally
+    try {
+      var allJobs = [].concat(data.today || [], data.thisWeek || [], data.upcoming || [], data.recent || []);
+      for (var i = 0; i < allJobs.length; i++) {
+        var assignments = allJobs[i].assignments || [];
+        for (var a = 0; a < assignments.length; a++) {
+          var asg = assignments[a];
+          if (asg.clocked_on_at && !asg.clocked_off_at) {
+            // Active clock found on server — restore timer state
+            console.log('[trade] Restoring active clock from server:', asg.id);
+            _clockState = 'on';
+            _clockedOnAt = asg.clocked_on_at;
+            _travelStartTime = asg.travel_started_at || null;
+            _arrivedAt = asg.arrived_at || null;
+            _totalBreakMins = asg.break_minutes || 0;
+            _isPaused = asg.job_phase === 'paused';
+            _currentAssignment = asg.id;
+            saveTimerState();
+            // Check if stale (14+ hours)
+            var clockedHours = (Date.now() - new Date(asg.clocked_on_at).getTime()) / 3600000;
+            if (clockedHours > 14) {
+              showStaleClockPrompt(asg, clockedHours);
+            }
+            return;
+          }
+        }
+      }
+    } catch (e) { /* non-blocking */ }
   }
 
   function roundTo15(mins) {
@@ -3237,6 +3295,8 @@
     api('my_jobs', params).then(function(data) {
       clearTimeout(slowTimer);
       renderMyJobs(data);
+      // Check for active server-side clock (survives app reinstall / device switch)
+      checkServerClockRecovery(data);
     }).catch(function(err) {
       clearTimeout(slowTimer);
       console.error('[trade] my_jobs error:', err);
@@ -4850,7 +4910,7 @@
       var lbId = 'labourBudgetCard';
       h += '<div class="detail-section" id="' + lbId + '">';
       h += '  <h3>Labour Budget</h3>';
-      h += '  <div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div>';
+      h += '  <div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading...</div>';
       h += '</div>';
 
       setTimeout(function() {
@@ -5207,6 +5267,17 @@
 
     // ── Section 5: Client Card ──
     html += renderEnhancedClientCard(data, phase);
+
+    // ── Client Messages (GHL conversation) ──
+    if (job.ghl_contact_id) {
+      html += '<div class="detail-section" style="margin-top:8px;">';
+      html += '<div onclick="toggleClientMessages(this)" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:4px 0;">';
+      html += '<h3 style="margin:0;font-size:14px;">Client Messages</h3>';
+      html += '<span style="font-size:12px;color:var(--sw-text-sec);" id="msgToggleIcon">&#9654; Show</span>';
+      html += '</div>';
+      html += '<div id="clientMessagesBody" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto;"></div>';
+      html += '</div>';
+    }
 
     // ── Section 6: Special Instructions ──
     html += renderSpecialInstructions(data, phase);
@@ -8039,7 +8110,7 @@
     // ── Invoice History ──
     html += '<div style="margin-top:16px;padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow)">';
     html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">My Invoices</div>';
-    html += '  <div id="profileInvoiceList"><div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div></div>';
+    html += '  <div id="profileInvoiceList"><div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading...</div></div>';
     html += '</div>';
 
     // General expense
@@ -8782,7 +8853,7 @@
     // My sent messages
     html += '<div style="margin-top:16px">';
     html += '  <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:8px">My Messages</div>';
-    html += '  <div id="mySentMessages"><div style="font-size:13px;color:var(--sw-text-sec)">Loading...</div></div>';
+    html += '  <div id="mySentMessages"><div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading...</div></div>';
     html += '</div>';
 
     document.getElementById('msgOverlayContent').innerHTML = html;
@@ -8883,6 +8954,59 @@
       toast(friendlyError(err), true);
       closeCallNotes();
     });
+  };
+
+  // ══════════════════════════════════════════════════
+  // CLIENT MESSAGES TOGGLE (Job Detail — collapsible)
+  // ══════════════════════════════════════════════════
+
+  window.toggleClientMessages = function(el) {
+    var body = document.getElementById('clientMessagesBody');
+    var icon = document.getElementById('msgToggleIcon');
+    if (!body) return;
+
+    if (body.style.display === 'none') {
+      body.style.display = '';
+      icon.textContent = '\u25BC Hide';
+      // Load if not already loaded
+      if (!body.dataset.loaded) {
+        body.innerHTML = '<div style="text-align:center;padding:12px;color:var(--sw-text-sec);font-size:12px;"><div class="spinner" style="width:20px;height:20px;margin:0 auto 6px"></div>Loading messages...</div>';
+        var j = _currentJob ? _currentJob.job : null;
+        if (j && j.ghl_contact_id) {
+          ghlApi('get_conversation', { contactId: j.ghl_contact_id }).then(function(data) {
+            var msgs = data.messages || [];
+            if (msgs.length === 0) {
+              body.innerHTML = '<div style="text-align:center;padding:12px;color:var(--sw-text-sec);font-size:12px;font-style:italic;">No messages yet</div>';
+            } else {
+              var html = '';
+              msgs.slice(0, 20).forEach(function(m) {
+                var isOut = m.direction === 'outbound';
+                var time = m.timestamp ? new Date(m.timestamp).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                var channel = (m.type || 'SMS').replace('TYPE_', '');
+                var dirIcon = isOut ? '\u2191' : '\u2193';
+                var bgColor = isOut ? 'var(--sw-light)' : '#fff';
+
+                html += '<div style="padding:8px 10px;margin-bottom:4px;border-radius:8px;background:' + bgColor + ';border:1px solid var(--sw-border);font-size:12px;">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
+                html += '<span style="font-weight:600;color:var(--sw-mid);">' + dirIcon + ' ' + channel + '</span>';
+                html += '<span style="color:var(--sw-text-sec);font-size:11px;">' + time + '</span>';
+                html += '</div>';
+                if (m.body) html += '<div style="color:var(--sw-dark);white-space:pre-wrap;">' + m.body.replace(/</g, '&lt;').slice(0, 300) + '</div>';
+                if (channel === 'CALL' && m.duration) html += '<div style="color:var(--sw-text-sec);font-size:11px;">Duration: ' + m.duration + '</div>';
+                html += '</div>';
+              });
+              body.innerHTML = html;
+            }
+            body.dataset.loaded = 'true';
+          }).catch(function(err) {
+            body.innerHTML = '<div style="text-align:center;padding:12px;color:var(--sw-red);font-size:12px;">Failed to load: ' + (err.message || err) + '</div>';
+          });
+        }
+      }
+    } else {
+      body.style.display = 'none';
+      icon.textContent = '\u25B6 Show';
+    }
   };
 
   // ══════════════════════════════════════════════════
@@ -11453,7 +11577,7 @@
     if (!dot) return;
     dot.style.display = 'block';
     var offlineQueue = [];
-    try { offlineQueue = JSON.parse(localStorage.getItem('sw_offline_queue') || '[]'); } catch(e) {}
+    try { offlineQueue = JSON.parse(localStorage.getItem('sw_action_queue') || '[]'); } catch(e) {}
     if (!navigator.onLine) {
       dot.style.background = 'var(--sw-red)';
       dot.title = 'Offline';
@@ -11470,7 +11594,7 @@
 
   window.showSyncStatus = function() {
     var offlineQueue = [];
-    try { offlineQueue = JSON.parse(localStorage.getItem('sw_offline_queue') || '[]'); } catch(e) {}
+    try { offlineQueue = JSON.parse(localStorage.getItem('sw_action_queue') || '[]'); } catch(e) {}
     if (!navigator.onLine) {
       toast('Offline — ' + offlineQueue.length + ' action' + (offlineQueue.length !== 1 ? 's' : '') + ' queued');
     } else if (offlineQueue.length > 0) {
