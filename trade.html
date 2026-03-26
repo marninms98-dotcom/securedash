@@ -4293,18 +4293,19 @@
   window.reportIssue = function() {
     if (!_currentJob) { toast('No active job', true); return; }
     var jobNum = _currentJob.job ? (_currentJob.job.job_number || '') : '';
-    var detail = prompt('Describe the issue:');
-    if (!detail) return;
-    api('create_trade_alert', null, {
-      jobId: _currentJobId,
-      issueType: 'on_site_issue',
-      detail: detail,
-      notify_telegram: true
-    }).then(function() {
-      toast('Issue reported to ops');
-    }).catch(function() {
-      queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'on_site_issue', detail: detail });
-      toast('Issue queued (offline)');
+    showTextPrompt('Report Issue', 'What\'s the issue on ' + jobNum + '?', 'Send Report').then(function(detail) {
+      if (!detail) return;
+      api('create_trade_alert', null, {
+        jobId: _currentJobId,
+        issueType: 'on_site_issue',
+        detail: detail,
+        notify_telegram: true
+      }).then(function() {
+        toast('Issue reported to ops');
+      }).catch(function() {
+        queueOfflineAction('create_trade_alert', { jobId: _currentJobId, issueType: 'on_site_issue', detail: detail });
+        toast('Issue queued (offline)');
+      });
     });
   };
 
@@ -7941,13 +7942,14 @@
   };
 
   window.disputeHours = function(assignmentId) {
-    var reason = prompt('What\'s wrong with these hours?');
-    if (!reason) return;
-    api('dispute_hours', null, { assignment_id: assignmentId, reason: reason }).then(function() {
-      toast('Hours disputed — labourer notified');
-      openVerificationInbox();
-    }).catch(function(err) {
-      toast(friendlyError(err), true);
+    showTextPrompt('Dispute Hours', 'What\'s wrong with these hours?', 'Submit Dispute').then(function(reason) {
+      if (!reason) return;
+      api('dispute_hours', null, { assignment_id: assignmentId, reason: reason }).then(function() {
+        toast('Hours disputed — labourer notified');
+        openVerificationInbox();
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+      });
     });
   };
 
@@ -10922,6 +10924,29 @@
 
   // ── Custom Confirm Dialog (replaces native confirm()) ──
   var _confirmResolve = null;
+  // Text prompt — replaces native prompt() for consistent UX
+  function showTextPrompt(title, msg, okLabel) {
+    return new Promise(function(resolve) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+      overlay.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:360px;width:100%;padding:24px;">' +
+        '<h3 style="margin:0 0 8px;font-size:16px;color:var(--sw-dark);">' + title + '</h3>' +
+        '<p style="margin:0 0 12px;font-size:13px;color:var(--sw-text-sec);">' + msg + '</p>' +
+        '<textarea id="textPromptInput" style="width:100%;min-height:60px;padding:10px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);resize:vertical;box-sizing:border-box;" placeholder="Type here..."></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;">' +
+          '<button style="flex:1;padding:12px;background:var(--sw-light);border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;color:var(--sw-mid);min-height:44px;">Cancel</button>' +
+          '<button style="flex:1;padding:12px;background:var(--sw-dark);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;">' + (okLabel || 'Submit') + '</button>' +
+        '</div></div>';
+      document.body.appendChild(overlay);
+      var input = document.getElementById('textPromptInput');
+      setTimeout(function() { input.focus(); }, 100);
+      var btns = overlay.querySelectorAll('button');
+      btns[0].onclick = function() { overlay.remove(); resolve(null); };
+      btns[1].onclick = function() { var v = input.value.trim(); overlay.remove(); resolve(v || null); };
+      overlay.onclick = function(e) { if (e.target === overlay) { overlay.remove(); resolve(null); } };
+    });
+  }
+
   function showConfirm(title, msg, okLabel) {
     return new Promise(function(resolve) {
       _confirmResolve = resolve;
