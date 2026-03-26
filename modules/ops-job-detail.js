@@ -1748,6 +1748,62 @@ function renderMoneyView(data) {
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Collected</span><strong style="color:var(--sw-green)">' + fmt$(invoicePaid) + '</strong></div></div>';
   html += '<div class="jd-money-card"><div class="jd-money-card-head"><span>Still to Invoice</span><strong style="color:' + (quoteVal - invoicedTotal > 0 ? 'var(--sw-orange)' : 'var(--sw-green)') + '">' + fmt$(Math.max(0, quoteVal - invoicedTotal)) + '</strong></div></div>';
 
+  // ── Payment Status card (overdue invoices only) ──
+  var overdueInvs = salesInvoices.filter(function(inv) {
+    return inv.due_date && new Date(inv.due_date + 'T00:00:00') < new Date() && ['AUTHORISED','SUBMITTED','SENT'].indexOf(inv.status) >= 0 && (parseFloat(inv.amount_due) || 0) > 0;
+  });
+  if (overdueInvs.length > 0) {
+    var chaseLogs = data.chase_logs || [];
+    var classLabels = { unclassified: { icon: '\u2B1C', label: 'Unclassified', color: '#999' }, genuine_debt: { icon: '\uD83D\uDD34', label: 'Genuine Debt', color: '#e74c3c' }, blocked_by_us: { icon: '\uD83D\uDFE1', label: 'Blocked by Us', color: '#f39c12' }, in_dispute: { icon: '\uD83D\uDFE0', label: 'In Dispute', color: '#e67e22' }, bad_debt: { icon: '\u26AB', label: 'Bad Debt', color: '#2c3e50' } };
+
+    html += '<div style="margin-top:10px;padding:12px;background:var(--sw-card);border-radius:10px;box-shadow:var(--sw-shadow);border-left:4px solid var(--sw-red)">';
+    html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">\u26A1 PAYMENT STATUS</div>';
+
+    overdueInvs.forEach(function(inv) {
+      var daysOverdue = Math.ceil((Date.now() - new Date(inv.due_date + 'T00:00:00').getTime()) / 86400000);
+      var agingColor = daysOverdue <= 30 ? '#27ae60' : daysOverdue <= 60 ? '#f39c12' : '#e74c3c';
+      var cls = classLabels[inv.debt_classification || 'unclassified'] || classLabels.unclassified;
+      var amtDue = parseFloat(inv.amount_due) || 0;
+
+      html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">';
+      html += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);">' + (inv.invoice_number || '-') + ' \u00B7 ' + fmt$(amtDue) + '</span>';
+      html += '<span style="font-size:12px;font-weight:600;color:' + agingColor + ';">' + daysOverdue + ' days overdue</span>';
+      html += '</div>';
+
+      // Classification badge
+      html += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
+      html += '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:' + cls.color + '18;color:' + cls.color + ';font-weight:600;">' + cls.icon + ' ' + cls.label + '</span>';
+      if (inv.debt_classification_reason) html += '<span style="font-size:10px;color:var(--sw-text-sec);font-style:italic;">' + escapeHtml(inv.debt_classification_reason) + '</span>';
+      html += '</div>';
+
+      // Last chase interaction for this invoice
+      var invLogs = chaseLogs.filter(function(cl) { return cl.xero_invoice_id === inv.xero_invoice_id; }).slice(0, 2);
+      if (invLogs.length > 0) {
+        html += '<div style="margin-top:4px;">';
+        var methodIcons = { call: '\uD83D\uDCDE', sms: '\uD83D\uDCAC', auto_sms: '\uD83E\uDD16', email: '\uD83D\uDCE7', note: '\uD83D\uDCDD', status_change: '\uD83C\uDFF7' };
+        invLogs.forEach(function(log) {
+          var icon = methodIcons[log.method] || '\u2022';
+          html += '<div style="font-size:11px;color:var(--sw-text-sec);">' + icon + ' ' + fmtDate(log.created_at) + ' \u2014 ' + (log.outcome ? '<strong>' + escapeHtml(log.outcome) + '</strong>' : '') + (log.notes ? ' ' + escapeHtml(log.notes).substring(0, 60) : '') + '</div>';
+        });
+        // Next follow-up
+        var nextFU = invLogs.find(function(l) { return l.follow_up_date && !l.follow_up_resolved; });
+        if (nextFU) {
+          var fuOverdue = nextFU.follow_up_date <= new Date().toISOString().slice(0, 10);
+          html += '<div style="font-size:11px;color:' + (fuOverdue ? 'var(--sw-red)' : 'var(--sw-text-sec)') + ';font-weight:' + (fuOverdue ? '600' : '400') + ';">\u23F0 Follow-up: ' + fmtDate(nextFU.follow_up_date) + (fuOverdue ? ' (overdue)' : '') + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+
+    // Link to Clear Debt
+    html += '<div style="margin-top:8px;text-align:right;">';
+    html += '<button class="btn btn-sm" style="font-size:11px;color:var(--sw-red);" onclick="closeJobDetail();showView(\'financials\');showSubTab(\'cleardebt\')">View in Clear Debt \u2192</button>';
+    html += '</div>';
+    html += '</div>';
+  }
+
   // ── Job Contacts panel (multi-neighbour fencing) ──
   var jobContacts = data.job_contacts || [];
   var isMultiContact = jobContacts.length > 1;
