@@ -2642,12 +2642,35 @@
 
   var _sessionExpired = false;
 
+  var _sessionExpireAttempts = 0;
   function handleSessionExpiry() {
-    if (_sessionExpired) return; // prevent multiple triggers
+    if (_sessionExpired) return;
+    _sessionExpireAttempts++;
+
+    // First attempt: try silent refresh — don't kick out
+    if (_sessionExpireAttempts <= 2 && cloud && cloud.supabase) {
+      console.log('[trade] Session may have expired — attempting silent refresh (attempt ' + _sessionExpireAttempts + ')');
+      cloud.supabase.auth.refreshSession().then(function(ref) {
+        if (ref.data?.session) {
+          console.log('[trade] Silent refresh succeeded');
+          _sessionExpireAttempts = 0; // Reset counter
+        } else {
+          _forceLogout();
+        }
+      }).catch(function() {
+        _forceLogout();
+      });
+      return;
+    }
+
+    _forceLogout();
+  }
+
+  function _forceLogout() {
+    if (_sessionExpired) return;
     _sessionExpired = true;
     toast('Session expired — please log in again', true);
 
-    // Sign out and show login
     if (cloud && cloud.supabase) {
       cloud.supabase.auth.signOut().catch(function() {});
     }
@@ -2663,6 +2686,7 @@
       document.getElementById('viewLogin').classList.add('active');
       document.getElementById('btnBack').style.display = 'none';
       _sessionExpired = false;
+      _sessionExpireAttempts = 0;
     }, 1500);
   }
 
