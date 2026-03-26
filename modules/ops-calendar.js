@@ -443,6 +443,9 @@ function renderSwimlaneView(container, range) {
         var confStatus = ev.confirmation_status || 'tentative';
         if (ev.assignment_status === 'in_progress') confStatus = 'in_progress';
         if (ev.assignment_status === 'complete') confStatus = 'completed';
+        // Live clock indicator: clocked on but not off = currently on site
+        var isLiveOnSite = ev.clocked_on_at && !ev.clocked_off_at && ev.assignment_status !== 'complete';
+        var isStaleOnSite = isLiveOnSite && (Date.now() - new Date(ev.clocked_on_at).getTime() > 14 * 3600000);
 
         var blockClass = 'cal-job-block ' + confStatus;
         // Readiness left border
@@ -466,6 +469,9 @@ function renderSwimlaneView(container, range) {
         html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '"';
         html += '>';
 
+        // Live on-site indicator
+        if (isLiveOnSite && !isStaleOnSite) html += '<span style="display:inline-block;width:8px;height:8px;background:#22C55E;border-radius:50%;margin-right:4px;animation:pulse 1.5s infinite;" title="On site now"></span>';
+        else if (isStaleOnSite) html += '<span style="display:inline-block;width:8px;height:8px;background:#F59E0B;border-radius:50%;margin-right:4px;" title="Clocked on 14h+ ago — may be stale"></span>';
         // Job name (skip job_number on month view)
         if (!isMonthMode && ev.job_number) html += '<strong>' + ev.job_number + '</strong> ';
         html += escapeHtml(ev.client_name || 'Unknown');

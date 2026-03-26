@@ -1996,16 +1996,27 @@ function renderMoneyView(data) {
     var name = cleanCrewName(a.crew_name || a.users?.name || 'Unknown');
     if (!crewHours[name]) crewHours[name] = { hours: 0, days: 0, rate: 0, verified: 0, unverified: 0 };
     crewHours[name].days++;
-    // If hours tracked (clocked_on/clocked_off), use actual hours
+    // Use server-side hours_worked (breaks subtracted) if available
     if (a.hours_worked) {
       crewHours[name].hours += parseFloat(a.hours_worked) || 0;
       crewHours[name].verified++;
-    } else if (a.clocked_on && a.clocked_off) {
-      var hrs = (new Date(a.clocked_off) - new Date(a.clocked_on)) / 3600000;
-      crewHours[name].hours += Math.round(hrs * 10) / 10;
+    } else if (a.clocked_on_at && a.clocked_off_at) {
+      var hrs = (new Date(a.clocked_off_at) - new Date(a.clocked_on_at)) / 3600000;
+      var breaks = (a.break_minutes || 0) / 60;
+      crewHours[name].hours += Math.round((hrs - breaks) * 100) / 100;
       crewHours[name].verified++;
+    } else if (a.clocked_on && a.clocked_off) {
+      // Legacy fallback
+      var hrs2 = (new Date(a.clocked_off) - new Date(a.clocked_on)) / 3600000;
+      crewHours[name].hours += Math.round(hrs2 * 10) / 10;
+      crewHours[name].verified++;
+    } else if (a.clocked_on_at && !a.clocked_off_at) {
+      // Currently on site — show live hours
+      var liveHrs = (Date.now() - new Date(a.clocked_on_at).getTime()) / 3600000;
+      crewHours[name].hours += Math.round(liveHrs * 10) / 10;
+      crewHours[name].live = true;
     } else if (a.status === 'complete') {
-      crewHours[name].hours += 8; // Default 8hr day
+      crewHours[name].hours += 8; // Default 8hr day estimate
       crewHours[name].unverified++;
     }
   });
@@ -2031,8 +2042,8 @@ function renderMoneyView(data) {
       var cost = c.hours * rate;
       totalLabourCost += cost;
 
-      var verifiedLabel = c.verified > 0 ? (c.unverified > 0 ? 'Partial' : 'Verified') : (c.hours > 0 ? 'Estimated' : '');
-      var verifiedColor = c.verified > 0 && c.unverified === 0 ? 'var(--sw-green)' : 'var(--sw-orange)';
+      var verifiedLabel = c.live ? 'On site now' : c.verified > 0 ? (c.unverified > 0 ? 'Partial' : 'Verified') : (c.hours > 0 ? 'Estimated' : '');
+      var verifiedColor = c.live ? 'var(--sw-green)' : c.verified > 0 && c.unverified === 0 ? 'var(--sw-green)' : 'var(--sw-orange)';
 
       html += '<div class="jd-money-card"><div class="jd-money-card-head">';
       html += '<span>' + escapeHtml(name) + '</span>';
