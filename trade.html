@@ -10009,7 +10009,38 @@
       return;
     }
 
-    // Create overlay
+    var job = _currentJob.job;
+    var type = (job.type || 'patio').toLowerCase();
+    var viewerUrl = type === 'fencing'
+      ? 'https://marninms98-dotcom.github.io/fence-designer/'
+      : 'https://marninms98-dotcom.github.io/patio/';
+
+    // Full-screen overlay with iframe to patio/fencing tool in embedded mode
+    // Embedded mode: 3D viewport + layer toggles + dimensions, no auth/header/forms
+    var overlay = document.createElement('div');
+    overlay.id = 'viewer3dOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;';
+    overlay.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.9);flex-shrink:0;">' +
+      '  <span style="color:#fff;font-size:14px;font-weight:600;">🔲 ' + esc(job.job_number || '3D Model') + ' — ' + esc(job.client_name || '') + '</span>' +
+      '  <button onclick="close3DViewer()" style="background:none;border:2px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;width:44px;height:44px;border-radius:22px;cursor:pointer;font-weight:700;">✕</button>' +
+      '</div>' +
+      '<iframe src="' + viewerUrl + '?jobId=' + job.id + '&mode=embedded&noAuth=true" ' +
+      'style="flex:1;border:none;width:100%;background:#f0f0f0;" ' +
+      'sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe>';
+
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+    _viewer3dOpen = true;
+  };
+
+  // Legacy: keep the old open3DViewer_native for reference but don't use it
+  window.open3DViewer_native = function() {
+    if (!_currentJob || !_currentJob.job.scope_json) {
+      toast('No scope data for 3D view');
+      return;
+    }
+
     var overlay = document.createElement('div');
     overlay.className = 'viewer-3d-overlay';
     overlay.id = 'viewer3dOverlay';
@@ -10032,14 +10063,12 @@
     document.body.style.overflow = 'hidden';
     _viewer3dOpen = true;
 
-    // Load Three.js if not loaded
     if (_threeLoaded) {
       init3DScene();
     } else {
       var script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
       script.onload = function() {
-        // Load OrbitControls
         var script2 = document.createElement('script');
         script2.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js';
         script2.onload = function() {
