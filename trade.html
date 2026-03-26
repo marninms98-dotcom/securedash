@@ -8152,109 +8152,195 @@
   });
 
   // ══════════════════════════════════════════════════
-  // CLOCK ACTIONS — Simplified: clock_on, clock_off, start_travel, arrived
+  // CLOCK EVENT — Server-first clock action with retry queue
+  // ══════════════════════════════════════════════════
+
+  function clockEvent(event, assignmentId, extra) {
+    var payload = {
+      assignment_id: assignmentId,
+      event: event,
+      timestamp: new Date().toISOString(),
+      idempotency_key: crypto.randomUUID ? crypto.randomUUID() : 'ik-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+      break_minutes: _totalBreakMins || 0,
+    };
+
+    // Merge extras
+    if (extra) Object.keys(extra).forEach(function(k) { payload[k] = extra[k]; });
+
+    return api('clock_event', {}, payload).then(function(result) {
+      if (!result.success) throw new Error(result.error || 'Clock event failed');
+
+      // Update local state FROM SERVER response
+      var ass = result.assignment;
+      if (ass) {
+        _clockedOnAt = ass.clocked_on_at || _clockedOnAt;
+        _travelStartTime = ass.travel_started_at || _travelStartTime;
+        _arrivedAt = ass.arrived_at || _arrivedAt;
+        _totalBreakMins = ass.break_minutes || _totalBreakMins;
+
+        if (event === 'clock_on' || event === 'start_travel') {
+          _clockState = 'on';
+          _isPaused = false;
+        } else if (event === 'clock_off') {
+          _clockState = 'off';
+          _isPaused = false;
+          _clockedOnAt = null;
+          _travelStartTime = null;
+          _arrivedAt = null;
+          _totalBreakMins = 0;
+        } else if (event === 'pause') {
+          _isPaused = true;
+          _pauseStartTime = new Date().toISOString();
+        } else if (event === 'resume') {
+          _isPaused = false;
+          _pauseStartTime = null;
+        }
+      }
+
+      saveTimerState();
+      return result;
+    }).catch(function(err) {
+      console.error('[trade] clock_event failed:', event, err);
+
+      // Save locally + queue for retry — DON'T clear state
+      var pendingKey = 'sw_pending_clock_' + assignmentId;
+      localStorage.setItem(pendingKey, JSON.stringify(payload));
+      queueOfflineAction('clock_event', payload);
+
+      // Still update local state optimistically for UI
+      if (event === 'clock_on' || event === 'start_travel') {
+        _clockState = 'on';
+        _clockedOnAt = _clockedOnAt || new Date().toISOString();
+        if (event === 'start_travel') _travelStartTime = new Date().toISOString();
+        else _arrivedAt = new Date().toISOString();
+      } else if (event === 'arrived') {
+        _arrivedAt = new Date().toISOString();
+      } else if (event === 'clock_off') {
+        _clockState = 'off';
+      } else if (event === 'pause') {
+        _isPaused = true;
+        _pauseStartTime = new Date().toISOString();
+      } else if (event === 'resume') {
+        _isPaused = false;
+        _pauseStartTime = null;
+      }
+      saveTimerState();
+
+      toast('Saved locally \u2014 will sync when online', false);
+      throw err; // Re-throw so callers know it failed
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // CLOCK ACTIONS — Server-first via clock_event endpoint
   // ══════════════════════════════════════════════════
 
   window.timerAction = function(action, assignmentId) {
     if (navigator.vibrate) navigator.vibrate(10);
+    assignmentId = assignmentId || _currentAssignment;
+    if (!assignmentId) { toast('No assignment selected', true); return; }
 
-    if (action === 'clock_on') {
-      _clockState = 'on';
-      _clockedOnAt = new Date().toISOString();
-      _arrivedAt = new Date().toISOString(); // default: assume on-site unless travel started
-      saveTimerState();
-      // Show success immediately — sync in background
-      updatePhaseOnServer(assignmentId, 'working');
-      // Create business event (fire and forget)
-      api('add_note', null, { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' }).catch(function() {
-        queueOfflineAction('add_note', { jobId: _currentJobId, text: 'Clocked on', eventType: 'assignment.clocked_on' });
-      });
-      captureGPS('clock_on');
-      // After clock-on: show materials check if POs exist
-      setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+    var job = _currentJob ? _currentJob.job : null;
 
-    } else if (action === 'start_travel') {
-      _clockState = 'on';
-      _clockedOnAt = new Date().toISOString();
-      _travelStartTime = new Date().toISOString();
-      _arrivedAt = null; // not arrived yet
-      saveTimerState();
-      updatePhaseOnServer(assignmentId, 'travelling');
-      localStorage.setItem('sw_travel_started', Date.now().toString());
-      // Auto-SMS (Tier 2+)
-      if (canMessage() && _autoNotifyClient && _currentJob) {
-        var job = _currentJob.job;
-        if (job.ghl_contact_id) {
-          var firstName = (job.client_name || '').split(' ')[0] || 'there';
-          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: 'On my way — arriving in about 20 minutes', jobId: job.id }).then(function() {
-            toast('Auto-notified ' + firstName);
-          }).catch(function() {});
+    switch (action) {
+      case 'clock_on':
+        clockEvent('clock_on', assignmentId).then(function() {
+          captureGPS('clock_on');
+          toast('Clocked On \u2713');
+          setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        }).catch(function() {
+          // Already handled in clockEvent — just re-render
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        });
+        break;
+
+      case 'start_travel':
+        clockEvent('start_travel', assignmentId).then(function() {
+          captureGPS('start_travel');
+          localStorage.setItem('sw_travel_started', Date.now().toString());
+          // Auto-SMS
+          if (canMessage() && _autoNotifyClient && job && job.ghl_contact_id) {
+            var firstName = (job.client_name || '').split(' ')[0] || 'there';
+            ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: 'On my way \u2014 arriving in about 20 minutes.', jobId: job.id }).then(function() {
+              toast('Auto-notified ' + firstName);
+            }).catch(function() {});
+          } else {
+            toast('\uD83D\uDE97 Travelling');
+          }
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        }).catch(function() {
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        });
+        break;
+
+      case 'arrived':
+        clockEvent('arrived', assignmentId).then(function() {
+          captureGPS('arrived');
+          // Auto-SMS arrived
+          if (canMessage() && _autoNotifyClient && job && job.ghl_contact_id) {
+            ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property.", jobId: job.id }).then(function() {
+              toast('\uD83D\uDCCD On site \u2014 client notified');
+            }).catch(function() { toast('\uD83D\uDCCD On site'); });
+          } else {
+            toast('\uD83D\uDCCD On site');
+          }
+          setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+          if (_currentJob) renderJobDetail(_currentJob);
+        }).catch(function() {
+          if (_currentJob) renderJobDetail(_currentJob);
+        });
+        break;
+
+      case 'pause':
+        clockEvent('pause', assignmentId).then(function() {
+          toast('\u23F8 Timer paused');
+          if (_currentJob) renderJobDetail(_currentJob);
+        }).catch(function() {
+          if (_currentJob) renderJobDetail(_currentJob);
+        });
+        break;
+
+      case 'resume':
+        // Calculate break duration for display
+        if (_pauseStartTime) {
+          var breakMins = Math.round((Date.now() - new Date(_pauseStartTime).getTime()) / 60000);
+          _totalBreakMins = (_totalBreakMins || 0) + breakMins;
         }
-      }
-      api('add_note', null, { jobId: _currentJobId, text: 'Started travel', eventType: 'assignment.clocked_on' }).catch(function() {});
-      captureGPS('start_travel');
-      if (!(_autoNotifyClient && canMessage())) toast('\uD83D\uDE97 Travelling');
+        clockEvent('resume', assignmentId, { break_minutes: _totalBreakMins }).then(function() {
+          toast('\u25B6 Timer running');
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        }).catch(function() {
+          if (_currentJob) renderJobDetail(_currentJob);
+          startTimerTick();
+        });
+        break;
 
-    } else if (action === 'arrived') {
-      _stoppedTravelMins = Math.round((Date.now() - new Date(_travelStartTime).getTime()) / 60000);
-      _arrivedAt = new Date().toISOString();
-      saveTimerState();
-      updatePhaseOnServer(assignmentId, 'arrived');
-      captureGPS('arrived');
-      // Auto "arrived" SMS + toast
-      if (canMessage() && _autoNotifyClient && _currentJob) {
-        var job = _currentJob.job;
-        if (job.ghl_contact_id) {
-          ghlApi('send_sms', null, { contactId: job.ghl_contact_id, message: "We've arrived at your property", jobId: job.id }).then(function() {
-            toast('\uD83D\uDCCD On site \u2014 client notified');
-          }).catch(function() { toast('\uD83D\uDCCD On site'); });
-        } else { toast('\uD83D\uDCCD On site'); }
-      } else { toast('\uD83D\uDCCD On site'); }
-      // Show materials check after arrival
-      setTimeout(function() { showMaterialsCheckPrompt(); }, 500);
+      case 'clock_off':
+        clockEvent('clock_off', assignmentId, {
+          break_minutes: _totalBreakMins,
+          progress_pct: window._quickProgress || undefined
+        }).then(function(result) {
+          captureGPS('clock_off');
+          var hours = result.net_hours ? (Math.round(result.net_hours * 100) / 100) + 'h' : '';
+          toast('Clocked off' + (hours ? ' \u2014 ' + hours + ' logged' : ''));
+          clearTimerState();
+          window._quickProgress = null;
+          if (_currentJob) renderJobDetail(_currentJob);
+        }).catch(function() {
+          // Clock-off failed — DON'T clear timer state
+          toast('Clock-off saved locally \u2014 will sync when online', false);
+          if (_currentJob) renderJobDetail(_currentJob);
+        });
+        break;
 
-    } else if (action === 'clock_off') {
-      // Clock off happens ONLY after EOD form is submitted
-      // Calculate total on-site minutes
-      if (_arrivedAt) {
-        _stoppedOnsiteMins = Math.round((Date.now() - new Date(_arrivedAt).getTime()) / 60000);
-      } else if (_clockedOnAt) {
-        _stoppedOnsiteMins = Math.round((Date.now() - new Date(_clockedOnAt).getTime()) / 60000);
-      }
-      var totalMins = _stoppedTravelMins + _stoppedOnsiteMins;
-      var rounded = roundTo15(totalMins);
-      updatePhaseOnServer(assignmentId, 'complete');
-      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'complete', manual_override: _manualOverride }).then(function() {
-        toast('Clocked off — ' + formatMins(rounded) + ' logged');
-        clearTimerState();
-      }).catch(function(err) {
-        toast(friendlyError(err), true);
-      });
-      captureGPS('clock_off');
-
-    } else if (action === 'pause') {
-      _isPaused = true;
-      _pauseStartTime = new Date().toISOString();
-      saveTimerState();
-      api('add_note', null, { jobId: _currentJobId, text: 'Timer paused', eventType: 'timer.paused', metadata: { paused_at: _pauseStartTime } }).catch(function() {});
-      toast('\u23F8 Timer paused', false, 2000);
-
-    } else if (action === 'resume') {
-      if (_pauseStartTime) {
-        var breakMins = Math.round((Date.now() - new Date(_pauseStartTime).getTime()) / 60000);
-        _totalBreakMins += breakMins;
-        api('add_note', null, { jobId: _currentJobId, text: 'Timer resumed (' + breakMins + ' min break)', eventType: 'timer.resumed', metadata: { resumed_at: new Date().toISOString(), break_mins: breakMins } }).catch(function() {});
-      }
-      _isPaused = false;
-      _pauseStartTime = null;
-      saveTimerState();
-      toast('\u25B6 Timer running', false, 2000);
-    }
-
-    // Re-render job detail
-    if (_currentJob) {
-      renderJobDetail(_currentJob);
-      startTimerTick();
+      default:
+        console.warn('[trade] Unknown timer action:', action);
     }
   };
 
@@ -11264,6 +11350,22 @@
     updateOfflineBar();
     toast('Back online');
     syncPendingNotes();
+
+    // Sync pending clock events
+    var pendingKeys = Object.keys(localStorage).filter(function(k) { return k.startsWith('sw_pending_clock_'); });
+    pendingKeys.forEach(function(key) {
+      try {
+        var payload = JSON.parse(localStorage.getItem(key));
+        if (payload) {
+          api('clock_event', {}, payload).then(function() {
+            localStorage.removeItem(key);
+            console.log('[trade] Synced pending clock event:', payload.event);
+          }).catch(function() {
+            // Keep for next retry
+          });
+        }
+      } catch (e) {}
+    });
   });
 
   window.addEventListener('offline', function() {
