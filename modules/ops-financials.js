@@ -16,6 +16,7 @@ function showSubTab(tab) {
   if (tab === 'quotes') loadQuotes();
   if (tab === 'tradebills') loadTradeBills();
   if (tab === 'unreconciled') loadUnreconciled();
+  if (tab === 'cleardebt') loadClearDebt();
 }
 
 async function loadFinancials() {
