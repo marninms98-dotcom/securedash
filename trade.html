@@ -7376,7 +7376,8 @@
   // HOURS VIEW — Weekly hours + invoice submission
   // ══════════════════════════════════════════════════
 
-  var _hoursWeekEnd = null; // current week being viewed
+  var _hoursWeekEnd = null; // current week being viewed (Sunday)
+  var _hoursWeekStart = null; // Monday of the selected week
   var _hoursData = null;    // cached response
   var _tradeRate = null;    // cached rate for profile
 
@@ -7406,6 +7407,12 @@
 
   function loadHoursView() {
     if (!_hoursWeekEnd) _hoursWeekEnd = getWeekEndSunday(0);
+    // Compute Monday from Sunday
+    var sunDate = new Date(_hoursWeekEnd + 'T00:00:00');
+    var monDate = new Date(sunDate);
+    monDate.setDate(monDate.getDate() - 6);
+    _hoursWeekStart = monDate.toISOString().slice(0, 10);
+
     var container = document.getElementById('hoursContent');
     container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading hours...</div>';
 
@@ -7487,22 +7494,35 @@
         else if (jobNum.startsWith('SWF')) division = 'fencing';
         else if (jobNum.startsWith('SWD')) division = 'decking';
 
-        var startTime = a.started_at ? new Date(a.started_at).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
-        var endTime = a.completed_at ? new Date(a.completed_at).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
+        // Use clocked_on/off if available, fall back to started_at/completed_at
+        var clockOnRaw = a.clocked_on_at || a.started_at;
+        var clockOffRaw = a.clocked_off_at || a.completed_at;
+        var startTime = clockOnRaw ? new Date(clockOnRaw).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
+        var endTime = clockOffRaw ? new Date(clockOffRaw).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
+        var breakMins = a.break_minutes || 0;
+        var netHours = a.hours_worked != null ? a.hours_worked : (a.hours || 0);
+        var rate = a.hourly_rate || data.rate || 0;
+        var lineAmount = netHours * rate;
 
         html += '<div class="hours-row">';
         html += '  <div class="hours-row-top">';
         html += '    <div>';
         html += '      <div class="hours-row-job">' + esc(jobNum) + ' · ' + esc(job.client_name || '') + '</div>';
-        html += '      <div class="hours-row-client">' + esc(job.site_suburb || job.site_address || '') + '</div>';
+        html += '      <div class="hours-row-client">' + esc(job.site_suburb || job.site_address || '') + (division ? ' · ' + division : '') + '</div>';
         html += '    </div>';
-        html += '    <div class="hours-row-amount">' + a.hours.toFixed(2) + 'h';
-        if (data.rate > 0) html += ' · $' + a.amount.toFixed(2);
+        html += '    <div class="hours-row-amount">' + netHours.toFixed(2) + 'h';
+        if (rate > 0) html += ' · $' + lineAmount.toFixed(2);
         html += '</div>';
         html += '  </div>';
-        html += '  <div class="hours-row-time">' + startTime + ' – ' + endTime + '</div>';
-        if (division) {
-          html += '  <span class="hours-badge ' + division + '">' + division + '</span>';
+        html += '  <div class="hours-row-time">' + startTime + ' – ' + endTime;
+        if (breakMins > 0) html += ' · Break: ' + breakMins + 'm';
+        html += ' · Net: ' + netHours.toFixed(2) + 'h';
+        html += '</div>';
+        if (rate > 0) {
+          html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">Rate: $' + rate.toFixed(2) + '/hr · Amount: $' + lineAmount.toFixed(2) + '</div>';
+        }
+        if (a.manual_override_flag) {
+          html += '  <span style="display:inline-block;font-size:10px;background:#FEF3CD;color:#92400E;padding:2px 6px;border-radius:4px;margin-top:4px">Manual override</span>';
         }
         html += '</div>';
       });
@@ -7527,6 +7547,8 @@
       // New 2-step flow: submit for verification first, or direct to Xero
       html += '<button class="hours-submit-btn" id="btnSubmitVerify" onclick="submitForVerification()" style="background:var(--sw-orange)">Submit for Verification</button>';
       html += '<div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();submitTradeHours()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Skip verification — submit directly to Xero</a></div>';
+      // Generate Trade Invoice (per-job line items with clock data)
+      html += '<button class="btn btn-primary" style="width:100%;margin-top:16px;padding:14px;" onclick="generateTradeInvoice(\'' + _hoursWeekStart + '\')">Generate Invoice for This Week</button>';
     }
 
     // Lead verification inbox button (Tier 2+ / lead_installer role)
@@ -7789,6 +7811,24 @@
       }).catch(function(err) {
         toast(friendlyError(err), true);
         if (btn) { btn.disabled = false; btn.textContent = 'Submit Invoice for This Week'; }
+      });
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // GENERATE TRADE INVOICE (per-job line items)
+  // ══════════════════════════════════════════════════
+
+  window.generateTradeInvoice = function(weekStart) {
+    showConfirm('Generate Invoice?', 'This will create an invoice for all completed hours this week. You can\'t edit it after submitting.', 'Generate').then(function(ok) {
+      if (!ok) return;
+
+      api('generate_trade_invoice', {}, { week_start: weekStart }).then(function(result) {
+        if (result.error) { toast(result.error, true); return; }
+        toast('Invoice generated — ' + result.total_hours + 'h, $' + Number(result.total_inc).toLocaleString());
+        loadHoursView(); // Refresh to show submitted state
+      }).catch(function(err) {
+        toast('Failed: ' + (err.message || err), true);
       });
     });
   };
