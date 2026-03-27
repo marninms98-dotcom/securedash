@@ -1092,7 +1092,13 @@ function clearDebtLogChase(xeroInvoiceId,jobId,ghlContactId,contactName,defaultM
 async function clearDebtSubmitChase(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var method=document.getElementById('chaseMethod').value,outcome=document.getElementById('chaseOutcome').value,followUpDays=document.getElementById('chaseFollowUp').value,notes=document.getElementById('chaseNotes').value.trim();
   var followUpDate=null; if(followUpDays){var d=new Date();d.setDate(d.getDate()+parseInt(followUpDays));followUpDate=d.toISOString().slice(0,10);}
-  try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:method,outcome:outcome,notes:notes||null,follow_up_date:followUpDate});showToast('Chase logged','success');document.querySelector('.modal-overlay').remove();loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
+  try{
+    await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:method,outcome:outcome,notes:notes||null,follow_up_date:followUpDate});
+    // Close ALL modal overlays first, then refresh
+    document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});
+    showToast('Chase logged','success');
+    loadClearDebt();
+  }catch(e){showToast('Failed: '+e.message,'warning');}
 }
 function clearDebtClassify(xeroInvoiceId,currentClassification,ghlContactId,invoiceNumber,jobNumber,amount) {
   var overlay=document.createElement('div'); overlay.className='modal-overlay';
@@ -1106,7 +1112,7 @@ async function clearDebtSetClassification(xeroInvoiceId,classification,ghlContac
   var reason=document.getElementById('classifyReason')?.value?.trim()||'';
   try{await opsPost('classify_invoice',{xero_invoice_id:xeroInvoiceId,classification:classification,reason:reason||null});
   if(ghlContactId){if(classification==='genuine_debt'){await opsPost('trigger_chase_workflow',{ghl_contact_id:ghlContactId,overdue_amount:amount,invoice_number:invoiceNumber,job_number:jobNumber});}else{await opsPost('stop_chase_workflow',{ghl_contact_id:ghlContactId});}}
-  showToast('Classified as '+_debtClassLabels[classification].label,'success');var o=document.querySelector('.modal-overlay');if(o)o.remove();loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
+  showToast('Classified as '+_debtClassLabels[classification].label,'success');document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
 }
 async function clearDebtClassifyDirect(xeroInvoiceId,classification,ghlContactId) {
   try{await opsPost('classify_invoice',{xero_invoice_id:xeroInvoiceId,classification:classification,reason:classification==='bad_debt'?'Written off':classification==='unclassified'?'Reopened':null});
@@ -1148,7 +1154,7 @@ function clearDebtNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
 }
 async function clearDebtSaveNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var notes=document.getElementById('chaseNoteText')?.value?.trim(); if(!notes){showToast('Note is empty','warning');return;}
-  try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'note',notes:notes});showToast('Note saved','success');document.querySelector('.modal-overlay').remove();loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
+  try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'note',notes:notes});showToast('Note saved','success');document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
 }
 
 // ── Personality Note ──
