@@ -2324,6 +2324,7 @@
     <!-- Sub-tabs: Calendar | Availability -->
     <div id="scheduleSubTabs" style="display:flex;gap:2px;background:var(--sw-light);border-radius:8px;padding:2px;margin-bottom:12px;">
       <button class="schedule-sub-tab active" id="subTabCalendar" onclick="showScheduleSubTab('calendar')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:var(--sw-dark);color:#fff;transition:all 0.2s">Calendar</button>
+      <button class="schedule-sub-tab" id="subTabTeam" onclick="showScheduleSubTab('team')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--sw-mid);transition:all 0.2s;display:none">Team</button>
       <button class="schedule-sub-tab" id="subTabAvail" onclick="showScheduleSubTab('availability')" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-family:var(--sw-font);font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--sw-mid);transition:all 0.2s">Availability</button>
     </div>
 
@@ -2344,6 +2345,18 @@
         <div class="loading-screen"><div class="spinner"></div>Loading calendar...</div>
       </div>
       <div id="calendarFooter" style="display:flex;gap:8px;margin-top:12px;"></div>
+    </div>
+
+    <!-- Team swimlane sub-view (Tier 2+) -->
+    <div id="scheduleTeamView" style="display:none;">
+      <div id="teamCalHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <button onclick="calNavWeek(-1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--sw-dark);padding:8px;">&#9664;</button>
+        <strong id="teamWeekLabel" style="font-size:16px;color:var(--sw-dark);"></strong>
+        <button onclick="calNavWeek(1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--sw-dark);padding:8px;">&#9654;</button>
+      </div>
+      <div id="teamCalBody" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <div class="loading-screen"><div class="spinner"></div>Loading team schedule...</div>
+      </div>
     </div>
 
     <!-- Availability sub-view (existing functionality) -->
@@ -3215,6 +3228,10 @@
     document.getElementById('headerUser').textContent = _user.name || _user.email;
     document.getElementById('bottomNav').style.display = 'flex';
     document.getElementById('viewLogin').classList.remove('active');
+
+    // Show Team tab for Tier 2+
+    var teamTab = document.getElementById('subTabTeam');
+    if (teamTab && _userTier >= 2) teamTab.style.display = '';
 
     // Load availability data from localStorage
     loadAvailabilityData();
@@ -5445,6 +5462,11 @@
     startTimerTick();
     setTimeout(setupStickyTimer, 100);
 
+    // ── Comms unread badge (async, non-blocking) ──
+    if (job.ghl_contact_id) {
+      _checkCommsUnread(job.ghl_contact_id);
+    }
+
     // ── On-site tools: hide bottom nav, show toolbar ──
     var bottomNav = document.getElementById('bottomNav');
     if (phase === 'on_site' && bottomNav) {
@@ -5978,10 +6000,45 @@
       });
       thread.innerHTML = html;
       thread.scrollTop = thread.scrollHeight;
+      // Mark as seen — clear unread badge
+      try { localStorage.setItem('sw_comms_seen_' + job.ghl_contact_id, new Date().toISOString()); } catch(e) {}
+      var commsBadge = document.querySelector('.jd-tab[data-tab="comms"] .tab-badge');
+      if (commsBadge) commsBadge.remove();
     }).catch(function() {
       var thread = document.getElementById('tabCommsThread');
       if (thread) thread.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">Could not load messages</div>';
     });
+  }
+
+  // Check for unread inbound messages (async, non-blocking)
+  function _checkCommsUnread(contactId) {
+    var lastSeen = null;
+    try { lastSeen = localStorage.getItem('sw_comms_seen_' + contactId); } catch(e) {}
+
+    ghlApi('get_conversation', { contactId: contactId }).then(function(result) {
+      var msgs = result.messages || [];
+      // Find latest inbound message
+      var latestInbound = null;
+      for (var i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].direction === 'inbound') {
+          latestInbound = msgs[i].dateAdded || msgs[i].created_at;
+          break;
+        }
+      }
+      if (!latestInbound) return;
+      // Compare with last seen
+      var hasUnread = !lastSeen || new Date(latestInbound) > new Date(lastSeen);
+      var commsTab = document.querySelector('.jd-tab[data-tab="comms"]');
+      if (commsTab && hasUnread) {
+        // Add badge if not already present
+        if (!commsTab.querySelector('.tab-badge')) {
+          var badge = document.createElement('span');
+          badge.className = 'tab-badge';
+          badge.textContent = '!';
+          commsTab.appendChild(badge);
+        }
+      }
+    }).catch(function() {}); // Fail silently
   }
 
   window.sendTabCommsMessage = function(contactId) {
@@ -7585,19 +7642,28 @@
     _scheduleSubTab = tab;
     var calView = document.getElementById('scheduleCalendarView');
     var availView = document.getElementById('scheduleAvailView');
+    var teamView = document.getElementById('scheduleTeamView');
     var tabCal = document.getElementById('subTabCalendar');
     var tabAvail = document.getElementById('subTabAvail');
+    var tabTeam = document.getElementById('subTabTeam');
+    var allViews = [calView, availView, teamView];
+    var allTabs = [tabCal, tabAvail, tabTeam];
+
+    // Hide all views, deactivate all tabs
+    allViews.forEach(function(v) { if (v) v.style.display = 'none'; });
+    allTabs.forEach(function(t) { if (t) { t.style.background = 'transparent'; t.style.color = 'var(--sw-mid)'; } });
+
     if (tab === 'calendar') {
       if (calView) calView.style.display = '';
-      if (availView) availView.style.display = 'none';
       if (tabCal) { tabCal.style.background = 'var(--sw-dark)'; tabCal.style.color = '#fff'; }
-      if (tabAvail) { tabAvail.style.background = 'transparent'; tabAvail.style.color = 'var(--sw-mid)'; }
       loadTeamCalendar();
+    } else if (tab === 'team') {
+      if (teamView) teamView.style.display = '';
+      if (tabTeam) { tabTeam.style.background = 'var(--sw-dark)'; tabTeam.style.color = '#fff'; }
+      loadTeamCalendar().then(function() { renderTeamSwimLane(); });
     } else {
-      if (calView) calView.style.display = 'none';
       if (availView) availView.style.display = '';
       if (tabAvail) { tabAvail.style.background = 'var(--sw-dark)'; tabAvail.style.color = '#fff'; }
-      if (tabCal) { tabCal.style.background = 'transparent'; tabCal.style.color = 'var(--sw-mid)'; }
       renderScheduleView();
     }
   }
@@ -7795,6 +7861,172 @@
   }
 
   // ── Calendar Job Preview ──
+  // ══════════════════════════════════════════════════
+  // TEAM SWIMLANE — One row per crew member
+  // ══════════════════════════════════════════════════
+
+  var _teamAvailability = {}; // { crewName: { dateStr: 'available'|'leave'|'unavailable' } }
+
+  function renderTeamSwimLane() {
+    var container = document.getElementById('teamCalBody');
+    if (!container) return;
+
+    var monday = _calWeekStart || getMonday(new Date());
+    var dates = [];
+    for (var d = 0; d < 7; d++) {
+      var dt = new Date(monday.getTime() + d * 86400000);
+      dates.push({
+        date: dt,
+        str: dt.toISOString().slice(0, 10),
+        label: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d],
+        dayNum: dt.getDate()
+      });
+    }
+
+    // Update week label
+    var weekLabel = document.getElementById('teamWeekLabel');
+    if (weekLabel) {
+      weekLabel.textContent = monday.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) +
+        ' \u2014 ' + dates[6].date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    // Group events by crew
+    var crewEvents = {}; // { crewName: { dateStr: [events] } }
+    var unassigned = {}; // { dateStr: [events] }
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    _calEvents.forEach(function(ev) {
+      var crew = ev.crew_name || ev.assigned_to || '';
+      if (!crew) {
+        if (!unassigned[ev.scheduled_date]) unassigned[ev.scheduled_date] = [];
+        unassigned[ev.scheduled_date].push(ev);
+        return;
+      }
+      if (!crewEvents[crew]) crewEvents[crew] = {};
+      if (!crewEvents[crew][ev.scheduled_date]) crewEvents[crew][ev.scheduled_date] = [];
+      crewEvents[crew][ev.scheduled_date].push(ev);
+    });
+
+    // Also add crew from _calCrewList who may have no events this week
+    (_calCrewList || []).forEach(function(u) {
+      if (u.name && !crewEvents[u.name]) crewEvents[u.name] = {};
+    });
+
+    var crewNames = Object.keys(crewEvents).sort();
+    var typeColors = { patio: '#F15A29', fencing: '#3498DB', decking: '#27AE60' };
+
+    // Load availability async (non-blocking — renders default first)
+    _loadTeamAvailability(monday, dates[6].str);
+
+    var html = '';
+
+    // ── Grid header ──
+    html += '<div style="display:grid;grid-template-columns:80px repeat(7,1fr);gap:1px;background:var(--sw-border);border-radius:8px;overflow:hidden;min-width:600px">';
+    // Header row
+    html += '<div style="background:var(--sw-dark);color:#fff;padding:8px 6px;font-size:11px;font-weight:700;text-align:center">Crew</div>';
+    dates.forEach(function(d) {
+      var isToday = d.str === todayStr;
+      html += '<div style="background:' + (isToday ? 'var(--sw-orange)' : 'var(--sw-dark)') + ';color:#fff;padding:8px 4px;font-size:10px;font-weight:700;text-align:center">';
+      html += d.label + '<br>' + d.dayNum;
+      html += '</div>';
+    });
+
+    // ── Crew rows ──
+    crewNames.forEach(function(name) {
+      var events = crewEvents[name] || {};
+      // Crew name cell
+      html += '<div style="background:var(--sw-card);padding:8px 6px;font-size:11px;font-weight:700;color:var(--sw-dark);display:flex;align-items:center;word-break:break-word">' + esc(name.split(' ')[0]) + '</div>';
+      // Day cells
+      dates.forEach(function(d) {
+        var dayEvents = events[d.str] || [];
+        var isToday = d.str === todayStr;
+        var cellBg = isToday ? 'rgba(241,90,41,0.04)' : 'var(--sw-card)';
+        html += '<div style="background:' + cellBg + ';padding:4px 3px;min-height:48px;font-size:10px">';
+
+        if (dayEvents.length > 0) {
+          dayEvents.forEach(function(ev) {
+            var color = typeColors[(ev.job_type || 'patio').toLowerCase()] || typeColors.patio;
+            var complete = ev.assignment_status === 'complete';
+            html += '<div onclick="openCalendarJobPreview(\'' + ev.job_id + '\')" style="background:' + color + ';color:#fff;padding:3px 4px;border-radius:4px;margin-bottom:2px;cursor:pointer;font-size:9px;font-weight:600;line-height:1.2;' + (complete ? 'opacity:0.5;' : '') + 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis">';
+            html += esc((ev.client_name || '').split(' ')[0]);
+            if (complete) html += ' &#10003;';
+            html += '</div>';
+          });
+        } else {
+          // Show availability status
+          var availStatus = _getCrewAvailability(name, d.str, d.date.getDay());
+          if (availStatus === 'leave') {
+            html += '<div style="color:var(--sw-yellow);font-size:9px;font-weight:600;text-align:center;padding:4px 0">LEAVE</div>';
+          } else if (availStatus === 'off') {
+            html += '<div style="color:var(--sw-text-sec);font-size:9px;font-weight:600;text-align:center;padding:4px 0;opacity:0.5">OFF</div>';
+          } else {
+            html += '<div style="color:var(--sw-green);font-size:9px;font-weight:600;text-align:center;padding:4px 0;opacity:0.4">AVAIL</div>';
+          }
+        }
+        html += '</div>';
+      });
+    });
+
+    // ── Unassigned row ──
+    var hasUnassigned = Object.keys(unassigned).length > 0;
+    if (hasUnassigned) {
+      html += '<div style="background:#FEF3C7;padding:8px 6px;font-size:11px;font-weight:700;color:#92400E;display:flex;align-items:center">&#9888; None</div>';
+      dates.forEach(function(d) {
+        var dayEvents = unassigned[d.str] || [];
+        html += '<div style="background:#FEF3C7;padding:4px 3px;min-height:48px;font-size:10px">';
+        dayEvents.forEach(function(ev) {
+          html += '<div onclick="openCalendarJobPreview(\'' + ev.job_id + '\')" style="background:#92400E;color:#fff;padding:3px 4px;border-radius:4px;margin-bottom:2px;cursor:pointer;font-size:9px;font-weight:600;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">';
+          html += esc((ev.client_name || '').split(' ')[0]);
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+    }
+
+    html += '</div>'; // Close grid
+
+    if (crewNames.length === 0 && !hasUnassigned) {
+      html = '<div style="padding:40px 20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No jobs scheduled this week</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  // Get availability status for a crew member on a given date
+  function _getCrewAvailability(crewName, dateStr, dayOfWeek) {
+    // Check team availability data first (from API)
+    if (_teamAvailability[crewName] && _teamAvailability[crewName][dateStr]) {
+      var status = _teamAvailability[crewName][dateStr];
+      if (status === 'leave') return 'leave';
+      if (status === 'unavailable') return 'off';
+      return 'available';
+    }
+    // Fallback: weekends are off
+    if (dayOfWeek === 0 || dayOfWeek === 6) return 'off';
+    return 'available';
+  }
+
+  // Load availability data for team view (non-blocking)
+  function _loadTeamAvailability(weekStart, weekEnd) {
+    api('get_crew_availability', { start_date: weekStart.toISOString().slice(0, 10), end_date: weekEnd }).then(function(data) {
+      var rows = data.availability || [];
+      _teamAvailability = {};
+      // Map user_id → crew name via _calCrewList
+      var idToName = {};
+      (_calCrewList || []).forEach(function(u) { if (u.id && u.name) idToName[u.id] = u.name; });
+      rows.forEach(function(r) {
+        var name = idToName[r.user_id] || '';
+        if (!name) return;
+        if (!_teamAvailability[name]) _teamAvailability[name] = {};
+        _teamAvailability[name][r.date] = r.status;
+      });
+      // Re-render with availability data
+      renderTeamSwimLane();
+    }).catch(function() {
+      // Availability load failed — swimlane still works with defaults
+    });
+  }
+
   async function openCalendarJobPreview(jobId) {
     try {
       var data = await api('trade_job_detail', { jobId: jobId });
@@ -10904,34 +11136,85 @@
   var _viewer3dOpen = false;
 
   window.open3DViewer = function() {
-    if (!_currentJob || !_currentJob.job.scope_json) {
-      toast('No scope data for 3D view');
+    if (!_currentJob || !_currentJob.job) {
+      toast('No job data available', true);
       return;
     }
 
     var job = _currentJob.job;
+    var scope = job.scope_json;
     var type = (job.type || 'patio').toLowerCase();
+
+    // Validate minimum scope data exists
+    var hasData = false;
+    if (scope) {
+      var config = scope.config || scope;
+      if (type === 'fencing') {
+        hasData = !!(config.totalLength || config.length || (scope.job && scope.job.runs && scope.job.runs.length > 0));
+      } else {
+        hasData = !!(config.length || config.projection);
+      }
+    }
+
+    if (!hasData) {
+      // Show clean empty state instead of broken iframe
+      var overlay = document.createElement('div');
+      overlay.id = 'viewer3dOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="text-align:center;padding:20px">' +
+        '<div style="font-size:48px;margin-bottom:16px;opacity:0.3">&#128306;</div>' +
+        '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:8px">No 3D Model Available</div>' +
+        '<div style="font-size:14px;color:rgba(255,255,255,0.6);margin-bottom:24px">Scope data hasn\'t been set for this job yet</div>' +
+        '<button onclick="close3DViewer()" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer">Close</button>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      document.body.style.overflow = 'hidden';
+      _viewer3dOpen = true;
+      return;
+    }
+
     var viewerUrl = type === 'fencing'
       ? 'https://marninms98-dotcom.github.io/fence-designer/'
       : 'https://marninms98-dotcom.github.io/patio/';
 
-    // Full-screen overlay with iframe to patio/fencing tool in embedded mode
-    // Embedded mode: 3D viewport + layer toggles + dimensions, no auth/header/forms
+    // Full-screen overlay with iframe + loading state
     var overlay = document.createElement('div');
     overlay.id = 'viewer3dOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;';
     overlay.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.9);flex-shrink:0;">' +
-      '  <span style="color:#fff;font-size:14px;font-weight:600;">🔲 ' + esc(job.job_number || '3D Model') + ' — ' + esc(job.client_name || '') + '</span>' +
-      '  <button onclick="close3DViewer()" style="background:none;border:2px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;width:44px;height:44px;border-radius:22px;cursor:pointer;font-weight:700;">✕</button>' +
+      '  <span style="color:#fff;font-size:14px;font-weight:600;">&#128306; ' + esc(job.job_number || '3D Model') + ' \u2014 ' + esc(job.client_name || '') + '</span>' +
+      '  <div style="display:flex;gap:6px;align-items:center">' +
+      '    <button onclick="open3DViewer_native()" style="background:none;border:1px solid rgba(255,255,255,0.3);color:rgba(255,255,255,0.7);font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer">Simple View</button>' +
+      '    <button onclick="close3DViewer()" style="background:none;border:2px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;width:44px;height:44px;border-radius:22px;cursor:pointer;font-weight:700;">\u2715</button>' +
+      '  </div>' +
       '</div>' +
-      '<iframe src="' + viewerUrl + '?jobId=' + job.id + '&mode=embedded&noAuth=true" ' +
-      'style="flex:1;border:none;width:100%;background:#f0f0f0;" ' +
+      '<div id="viewer3dLoading" style="position:absolute;inset:0;top:52px;display:flex;align-items:center;justify-content:center;background:#1a1a2e;z-index:1">' +
+      '  <div style="text-align:center"><div class="spinner" style="margin:0 auto 12px"></div><div style="color:rgba(255,255,255,0.6);font-size:13px">Loading 3D model...</div></div>' +
+      '</div>' +
+      '<iframe id="viewer3dFrame" src="' + viewerUrl + '?jobId=' + job.id + '&mode=embedded&noAuth=true" ' +
+      'style="flex:1;border:none;width:100%;background:#1a1a2e;" ' +
       'sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe>';
 
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
     _viewer3dOpen = true;
+
+    // Hide loading when iframe loads (or timeout after 10s)
+    var frame = document.getElementById('viewer3dFrame');
+    var loadingEl = document.getElementById('viewer3dLoading');
+    var loadTimeout = setTimeout(function() {
+      if (loadingEl) {
+        loadingEl.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:12px">Taking longer than expected...</div><button onclick="open3DViewer_native();var l=document.getElementById(\'viewer3dLoading\');if(l)l.style.display=\'none\'" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">Switch to Simple View</button></div>';
+      }
+    }, 10000);
+    if (frame) {
+      frame.onload = function() {
+        clearTimeout(loadTimeout);
+        if (loadingEl) loadingEl.style.display = 'none';
+      };
+    }
   };
 
   // Legacy: keep the old open3DViewer_native for reference but don't use it
