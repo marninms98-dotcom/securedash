@@ -2310,8 +2310,8 @@
 <!-- ══════════════════════════════════════════════════
      CAMERA VIEW (Quick Photo)
      ══════════════════════════════════════════════════ -->
-<div id="viewCamera" class="view">
-  <div class="container" id="cameraContent">
+<div id="viewActivity" class="view">
+  <div class="container" id="activityContent">
     <div class="loading-screen"><div class="spinner"></div>Loading...</div>
   </div>
 </div>
@@ -2379,9 +2379,9 @@
     <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
     Jobs
   </button>
-  <button data-view="camera" onclick="showView('camera')">
-    <svg viewBox="0 0 24 24"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>
-    Camera
+  <button data-view="activity" onclick="showView('activity')">
+    <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+    Activity
   </button>
   <button data-view="schedule" onclick="showView('schedule')" style="position:relative">
     <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
@@ -3281,7 +3281,7 @@
   var _lastViewChangeTime = 0;
 
   // Main tabs (show in bottom nav) vs sub-views (accessed from job cards)
-  var _mainTabs = ['myJobs', 'camera', 'schedule', 'hours', 'profile'];
+  var _mainTabs = ['myJobs', 'activity', 'schedule', 'hours', 'profile'];
 
   window.showView = function(view, skipHistory) {
     // Warn if leaving report with unsaved changes
@@ -3313,7 +3313,7 @@
 
     // Lazy-load data (skip reload if same job already loaded)
     if (view === 'myJobs') loadMyJobs();
-    if (view === 'camera') renderCameraView();
+    if (view === 'activity') renderActivityView();
     if (view === 'schedule') { loadTeamCalendar(); renderScheduleView(); }
     if (view === 'hours') loadHoursView();
     if (view === 'profile') renderProfileView();
@@ -3592,16 +3592,22 @@
             html += ' <span class="badge-materials pending">&#9888; Materials not confirmed</span>';
           }
         }
-        // Scope summary line (from server scope_summary, fallback to parsing scope_json)
+        // Scope summary line (always show — fallback to type name)
         var scopeSummary = job.scope_summary || buildScopeSummary(job.scope_json, type);
-        if (scopeSummary) {
-          html += '  <div style="font-size:12px;color:var(--sw-mid);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(scopeSummary) + '</div>';
-        }
+        html += '  <div style="font-size:12px;color:var(--sw-mid);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(scopeSummary) + '</div>';
         html += '  <div class="job-card-meta">';
         html += '    <span>' + formatDate(a.scheduled_date) + '</span>';
         html += '    <span data-weather-date="' + (a.scheduled_date || '') + '"></span>';
-        if (a.start_time) html += '<span>' + a.start_time.slice(0, 5) + '</span>';
-        if (a.crew_name) html += '<span>' + esc(a.crew_name) + '</span>';
+        if (a.start_time) {
+          html += '<span style="font-weight:600">' + a.start_time.slice(0, 5) + '</span>';
+        } else {
+          html += '<span style="color:var(--sw-yellow);font-weight:600">No time set</span>';
+        }
+        if (a.crew_name) {
+          html += '<span>&#128100; ' + esc(a.crew_name) + '</span>';
+        } else {
+          html += '<span style="color:var(--sw-yellow)">No crew</span>';
+        }
         html += '    <span class="status-pill ' + statusClass + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
         html += '  </div>';
         // Financial display (Tier 3 only)
@@ -3613,18 +3619,18 @@
           if (outstanding > 0) html += '<span>O/S: <strong>$' + outstanding.toFixed(0) + '</strong></span>';
           html += '  </div>';
         }
-        // Quick action icons
-        html += '  <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">';
+        // Quick action buttons (bigger, labelled)
+        html += '  <div style="display:flex;gap:6px;margin-top:8px">';
         if (job.client_phone && canCall()) {
-          html += '    <a href="tel:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--sw-light);border-radius:8px;text-decoration:none">';
-          html += '      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
-          html += '    </a>';
+          html += '    <a href="tel:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;gap:4px;height:44px;padding:0 14px;background:var(--sw-green);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">';
+          html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+          html += '      Call</a>';
         }
         if (job.site_address) {
           var navUrl = getMapsUrl(job.site_address, job.site_suburb);
-          html += '    <a href="' + navUrl + '" target="_blank" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--sw-light);border-radius:8px;text-decoration:none">';
-          html += '      <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
-          html += '    </a>';
+          html += '    <a href="' + navUrl + '" target="_blank" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;gap:4px;height:44px;padding:0 14px;background:var(--sw-mid);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">';
+          html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+          html += '      Navigate</a>';
         }
         html += '  </div>';
         html += '</div>';
@@ -4368,40 +4374,67 @@
     var checkedCount = 0;
     for (var k in saved) { if (saved[k] === 'checked') checkedCount++; }
 
+    var missingCount = 0;
+    for (var k in saved) { if (saved[k] === 'missing') missingCount++; }
+
     var h = '<div class="prep-checklist">';
-    h += '<div class="prep-checklist-title">🔧 Prep Checklist <span style="font-weight:400;font-size:11px;color:var(--sw-text-sec)">' + checkedCount + '/' + items.length + '</span></div>';
+    h += '<div class="prep-checklist-title">&#128295; Prep Checklist <span style="font-weight:400;font-size:11px;color:var(--sw-text-sec)">' + checkedCount + '/' + items.length + '</span>';
+    if (missingCount > 0) h += ' <span style="font-size:11px;color:var(--sw-red);font-weight:600">' + missingCount + ' missing</span>';
+    h += '</div>';
     for (var i = 0; i < items.length; i++) {
       var itemState = saved[items[i]] || 'unchecked'; // unchecked, checked, missing
-      var stateIcon = itemState === 'checked' ? '✅' : itemState === 'missing' ? '⚠️' : '☐';
-      var stateStyle = itemState === 'checked' ? 'opacity:0.5;text-decoration:line-through' : itemState === 'missing' ? 'color:var(--sw-yellow)' : '';
-      h += '<div class="prep-checklist-item" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--sw-border);' + stateStyle + '" data-item="' + esc(items[i]) + '">';
-      h += '<button onclick="togglePrepItem(\'' + esc(data.job.id) + '\', \'' + esc(items[i]).replace(/'/g, "\\'") + '\', \'check\')" style="background:none;border:none;font-size:18px;cursor:pointer;padding:0;line-height:1">' + stateIcon + '</button>';
-      h += '<span style="flex:1;font-size:13px">' + esc(items[i]) + '</span>';
-      if (itemState !== 'missing') {
-        h += '<button onclick="togglePrepItem(\'' + esc(data.job.id) + '\', \'' + esc(items[i]).replace(/'/g, "\\'") + '\', \'missing\')" style="background:none;border:1px solid var(--sw-border);border-radius:4px;font-size:10px;padding:2px 6px;color:var(--sw-text-sec);cursor:pointer;white-space:nowrap">Don\'t have</button>';
+      var stateIcon, stateStyle, stateBg;
+      if (itemState === 'checked') {
+        stateIcon = '&#9989;'; stateStyle = 'opacity:0.6;text-decoration:line-through'; stateBg = '';
+      } else if (itemState === 'missing') {
+        stateIcon = '&#10060;'; stateStyle = 'color:var(--sw-red);font-weight:600'; stateBg = 'background:rgba(231,76,60,0.06);';
+      } else {
+        stateIcon = '&#9711;'; stateStyle = ''; stateBg = '';
       }
+      h += '<div class="prep-checklist-item" style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-bottom:1px solid var(--sw-border);min-height:48px;cursor:pointer;' + stateBg + stateStyle + '" onclick="togglePrepItem(\'' + esc(data.job.id) + '\', \'' + esc(items[i]).replace(/'/g, "\\'") + '\')">';
+      h += '<span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">' + stateIcon + '</span>';
+      h += '<span style="flex:1;font-size:13px">' + esc(items[i]) + '</span>';
+      if (itemState === 'missing') h += '<span style="font-size:10px;color:var(--sw-red);white-space:nowrap">Ops notified</span>';
       h += '</div>';
     }
     h += '</div>';
     return h;
   }
 
-  window.togglePrepItem = function(jobId, itemName, action) {
+  window.togglePrepItem = function(jobId, itemName) {
     if (navigator.vibrate) navigator.vibrate(10);
     var checkKey = 'sw_prep_' + jobId;
     var saved = {};
     try { saved = JSON.parse(localStorage.getItem(checkKey) || '{}'); } catch(e) {}
 
-    if (action === 'check') {
-      // Toggle: unchecked → checked → unchecked
-      saved[itemName] = saved[itemName] === 'checked' ? 'unchecked' : 'checked';
-    } else if (action === 'missing') {
-      saved[itemName] = saved[itemName] === 'missing' ? 'unchecked' : 'missing';
+    // Cycle: unchecked → checked → missing → unchecked
+    var current = saved[itemName] || 'unchecked';
+    if (current === 'unchecked') {
+      saved[itemName] = 'checked';
+    } else if (current === 'checked') {
+      saved[itemName] = 'missing';
+      // Alert ops when marking as missing
+      if (_currentJobId) {
+        api('create_trade_alert', null, {
+          jobId: _currentJobId,
+          issueType: 'prep_missing',
+          description: itemName + ' — marked as missing by ' + (_user ? _user.name : 'trade')
+        }).catch(function() {}); // Non-blocking
+        toast('Ops notified: ' + itemName + ' missing');
+      }
+    } else {
+      saved[itemName] = 'unchecked';
     }
 
     localStorage.setItem(checkKey, JSON.stringify(saved));
-    // Re-render
-    if (_currentJob) renderJobDetail(_currentJob);
+    // Re-render the scope tab if it exists, otherwise full re-render
+    if (document.getElementById('jdTab_scope') && _currentJob) {
+      var phase = deriveJobPhase(_currentJob);
+      var container = document.getElementById('jdTab_scope');
+      renderJobTab_scope(_currentJob, phase, container);
+    } else if (_currentJob) {
+      renderJobDetail(_currentJob);
+    }
   };
 
   function renderScopeGallery(data, phase) {
@@ -7245,6 +7278,212 @@
       input.value = '';
     });
   };
+
+  // ══════════════════════════════════════════════════
+  // ACTIVITY VIEW — Daily timeline + quick actions
+  // ══════════════════════════════════════════════════
+
+  function renderActivityView() {
+    var container = document.getElementById('activityContent');
+    var jobs = _cachedMyJobs || [];
+    var html = '';
+
+    // ── Date header ──
+    var now = new Date();
+    var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var dateStr = days[now.getDay()] + ' ' + now.getDate() + ' ' + months[now.getMonth()];
+    html += '<div style="padding:4px 0 12px">';
+    html += '<div style="font-size:22px;font-weight:700;color:var(--sw-dark)">Activity</div>';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec)">' + dateStr + '</div>';
+    html += '</div>';
+
+    // ── Quick action buttons ──
+    html += '<div style="display:flex;gap:8px;margin-bottom:16px">';
+
+    // Add Note
+    html += '<button onclick="activityQuickNote()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;background:var(--sw-dark);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sw-font)">&#128221; Note</button>';
+
+    // Take Photo — auto-selects current/most-recent job
+    html += '<button onclick="activityQuickPhoto()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;background:var(--sw-orange);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sw-font)">&#128247; Photo</button>';
+
+    // Log Issue
+    html += '<button onclick="activityQuickIssue()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;background:var(--sw-red);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sw-font)">&#9888; Issue</button>';
+
+    html += '</div>';
+
+    // ── Build daily timeline from cached job data ──
+    var timeline = [];
+    var todayStr = now.toISOString().slice(0, 10);
+
+    // Clock state entries from localStorage
+    if (_clockState === 'on' && _clockedOnAt) {
+      timeline.push({ time: _clockedOnAt, icon: '&#128296;', text: 'Clocked on', type: 'clock' });
+    }
+    if (_travelStartTime) {
+      timeline.push({ time: _travelStartTime, icon: '&#128663;', text: 'Started travel', type: 'clock' });
+    }
+    if (_arrivedAt) {
+      timeline.push({ time: _arrivedAt, icon: '&#128205;', text: 'Arrived on site', type: 'clock' });
+    }
+
+    // Today's jobs — show as schedule entries
+    jobs.forEach(function(a) {
+      var job = a.jobs || {};
+      if (a.scheduled_date && a.scheduled_date.slice(0, 10) === todayStr) {
+        var timeStr = a.start_time ? a.start_time.slice(0, 5) : '';
+        var statusIcons = { scheduled: '&#128197;', confirmed: '&#9989;', in_progress: '&#128296;', complete: '&#127937;' };
+        var icon = statusIcons[a.status] || '&#128197;';
+        timeline.push({
+          time: a.scheduled_date + 'T' + (a.start_time || '00:00') + ':00',
+          icon: icon,
+          text: esc(job.client_name || 'Unknown') + ' \u2014 ' + esc(job.site_suburb || ''),
+          sub: (a.status || 'scheduled').replace(/_/g, ' '),
+          jobId: job.id,
+          assignmentId: a.id,
+          type: 'job'
+        });
+      }
+    });
+
+    // Sort by time
+    timeline.sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
+
+    // ── Render timeline ──
+    if (timeline.length === 0) {
+      html += '<div style="padding:40px 20px;text-align:center">';
+      html += '<div style="font-size:40px;margin-bottom:12px;opacity:0.3">&#128197;</div>';
+      html += '<div style="font-size:15px;font-weight:600;color:var(--sw-dark);margin-bottom:4px">No activity today</div>';
+      html += '<div style="font-size:13px;color:var(--sw-text-sec)">Jobs, clock events, and photos will appear here</div>';
+      html += '</div>';
+    } else {
+      html += '<div style="border-left:2px solid var(--sw-border);margin-left:12px;padding-left:16px">';
+      timeline.forEach(function(entry) {
+        var entryTime = new Date(entry.time);
+        var hrs = entryTime.getHours();
+        var mins = entryTime.getMinutes();
+        var timeLabel = (hrs < 10 ? '0' : '') + hrs + ':' + (mins < 10 ? '0' : '') + mins;
+
+        html += '<div style="position:relative;padding:10px 0;min-height:44px">';
+        // Timeline dot
+        html += '<div style="position:absolute;left:-23px;top:14px;width:8px;height:8px;border-radius:50%;background:' + (entry.type === 'clock' ? 'var(--sw-orange)' : 'var(--sw-mid)') + '"></div>';
+        html += '<div style="display:flex;align-items:flex-start;gap:10px">';
+        html += '<span style="font-size:12px;font-weight:600;color:var(--sw-text-sec);min-width:42px;font-variant-numeric:tabular-nums">' + timeLabel + '</span>';
+        html += '<span style="font-size:16px">' + entry.icon + '</span>';
+        html += '<div style="flex:1">';
+        html += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + entry.text + '</div>';
+        if (entry.sub) html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + entry.sub + '</div>';
+        html += '</div>';
+        // Tap to open job
+        if (entry.jobId) {
+          html += '<button onclick="openJob(\'' + entry.jobId + '\', \'' + (entry.assignmentId || '') + '\')" style="background:var(--sw-light);border:none;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;color:var(--sw-mid);cursor:pointer;white-space:nowrap">Open</button>';
+        }
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── Quick camera fallback (preserved from old Camera tab) ──
+    html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--sw-border)">';
+    html += '<div style="font-size:13px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Quick Photo Upload</div>';
+    html += '<div style="display:flex;gap:6px;margin-bottom:8px">';
+    var phases = [
+      { key: 'scope', label: 'Before' },
+      { key: 'in_progress', label: 'During' },
+      { key: 'completion', label: 'After' },
+      { key: 'issue', label: 'Issue' },
+    ];
+    phases.forEach(function(p) {
+      html += '<button class="btn btn-secondary btn-small" data-phase="' + p.key + '" onclick="selectCameraPhase(\'' + p.key + '\')" style="flex:1;font-size:12px;padding:8px 4px">' + p.label + '</button>';
+    });
+    html += '</div>';
+    html += '<select id="cameraJobSelect" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;margin-bottom:8px;background:#fff" onchange="_cameraJobId=this.value">';
+    html += '<option value="">Choose a job...</option>';
+    jobs.forEach(function(a) {
+      var job = a.jobs || {};
+      var selected = (_cameraJobId === job.id) ? ' selected' : '';
+      html += '<option value="' + (job.id || '') + '"' + selected + '>' + esc(job.client_name || 'Unknown') + ' \u2014 ' + esc(job.site_suburb || '') + '</option>';
+    });
+    html += '</select>';
+    html += '<div class="upload-area" onclick="triggerCameraUpload()" style="min-height:80px;padding:16px">';
+    html += '  <svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:var(--sw-mid)"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>';
+    html += '  <p style="font-size:13px;font-weight:600;margin-top:4px">Tap to take photo</p>';
+    html += '</div>';
+    html += '<input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none" onchange="handleCameraCapture(this)">';
+    html += '<div class="upload-progress" id="cameraProgress" style="display:none">';
+    html += '  <span id="cameraProgressText">Uploading...</span>';
+    html += '  <div class="upload-progress-bar"><div class="upload-progress-fill" id="cameraProgressFill"></div></div>';
+    html += '</div>';
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+
+  // ── Activity quick-action handlers ──
+
+  window.activityQuickNote = function() {
+    // Find current/most-recent job
+    var targetJob = _findCurrentJob();
+    if (!targetJob) { toast('No active job to add note to', true); return; }
+    showTextPrompt('Add Note', 'What do you want to log?', function(text) {
+      if (!text || !text.trim()) return;
+      api('add_note', null, {
+        jobId: targetJob.id,
+        text: text.trim(),
+        eventType: 'site_note',
+        metadata: { user_id: _user ? _user.id : null, user_name: _user ? _user.name : null }
+      }).then(function() {
+        toast('Note added to ' + (targetJob.client_name || 'job'));
+        renderActivityView(); // Refresh
+      }).catch(function(err) {
+        drafts.queueNote(targetJob.id, text.trim());
+        toast('Saved offline \u2014 will sync when connected');
+      });
+    });
+  };
+
+  window.activityQuickPhoto = function() {
+    var targetJob = _findCurrentJob();
+    if (targetJob) {
+      _cameraJobId = targetJob.id;
+      // Auto-detect phase
+      if (_clockState === 'on' && _arrivedAt) {
+        _cameraPhase = 'in_progress';
+      } else {
+        _cameraPhase = 'scope';
+      }
+    }
+    document.getElementById('cameraFileInput').click();
+  };
+
+  window.activityQuickIssue = function() {
+    var targetJob = _findCurrentJob();
+    if (!targetJob) { toast('No active job to report issue on', true); return; }
+    _currentJobId = targetJob.id;
+    openIssueOverlay();
+  };
+
+  // Find current clocked-on job, or most recent today's job
+  function _findCurrentJob() {
+    var jobs = _cachedMyJobs || [];
+    // If clocked on to a job, use that
+    if (_currentJobId && _clockState === 'on') {
+      for (var i = 0; i < jobs.length; i++) {
+        if ((jobs[i].jobs || {}).id === _currentJobId) return jobs[i].jobs;
+      }
+    }
+    // Otherwise, first today's job
+    var todayStr = new Date().toISOString().slice(0, 10);
+    for (var j = 0; j < jobs.length; j++) {
+      if (jobs[j].scheduled_date && jobs[j].scheduled_date.slice(0, 10) === todayStr) {
+        return jobs[j].jobs || {};
+      }
+    }
+    // Fallback: first job in list
+    if (jobs.length > 0) return jobs[0].jobs || {};
+    return null;
+  }
 
   // ══════════════════════════════════════════════════
   // SCHEDULE VIEW — Chronological assignment list
@@ -11637,7 +11876,7 @@
 
   // Build a short one-line scope summary for job cards
   function buildScopeSummary(scopeJson, type) {
-    if (!scopeJson) return '';
+    if (!scopeJson) return (type || 'patio').charAt(0).toUpperCase() + (type || 'patio').slice(1) + ' job';
     try {
       var config = scopeJson.config || scopeJson;
       var parts = [];
@@ -11659,9 +11898,10 @@
         if (config.sheetColor || config.colour) parts.push(config.sheetColor || config.colour);
       }
 
-      return parts.length > 0 ? parts.join(' · ') : '';
+      if (parts.length > 0) return parts.join(' \u00b7 ');
+      return (type || 'patio').charAt(0).toUpperCase() + (type || 'patio').slice(1) + ' job';
     } catch (e) {
-      return '';
+      return (type || 'patio').charAt(0).toUpperCase() + (type || 'patio').slice(1) + ' job';
     }
   }
 
