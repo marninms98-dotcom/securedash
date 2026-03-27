@@ -563,6 +563,12 @@ function renderCommsView(data) {
   html += '<div id="commsAutoTimeline"><div class="loading" style="text-align:center;padding:12px;font-size:12px;color:var(--sw-text-sec);">Loading...</div></div>';
   html += '</div>';
 
+  // ── Client Email Thread ──
+  html += '<div id="commsClientEmailSection" style="margin-top:16px;border-top:2px solid var(--sw-border);padding-top:12px;">';
+  html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Client Emails</div>';
+  html += '<div id="commsClientEmailThread"><div class="loading" style="text-align:center;padding:12px;font-size:12px;color:var(--sw-text-sec);">Loading...</div></div>';
+  html += '</div>';
+
   html += '</div>'; // end commsClientView
 
   // ── Supplier View ──
@@ -618,6 +624,9 @@ function renderCommsView(data) {
 
   // Load automated comms timeline
   loadAutoCommsTimeline(j.id);
+
+  // Load client email thread
+  loadClientEmailThread(j.id);
 
   // Load supplier email threads
   if (pos.length > 0) {
@@ -1890,6 +1899,22 @@ var COMMS_STATUS_ICONS = {
   bounced: { icon: '&#10007;', color: 'var(--sw-red)', label: 'Bounced' },
   failed: { icon: '&#10007;', color: 'var(--sw-red)', label: 'Failed' },
 };
+
+async function loadClientEmailThread(jobId) {
+  var el = document.getElementById('commsClientEmailThread');
+  if (!el) return;
+  try {
+    var resp = await opsFetch('list_job_communications', { job_id: jobId });
+    var emails = resp.emails || [];
+    if (emails.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec);padding:8px 0;font-style:italic;">No client emails sent yet.</div>';
+      return;
+    }
+    el.innerHTML = renderPOEmailThread(emails, jobId);
+  } catch (e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:8px 0;">Could not load client emails.</div>';
+  }
+}
 
 async function loadAutoCommsTimeline(jobId) {
   var el = document.getElementById('commsAutoTimeline');
