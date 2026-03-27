@@ -467,18 +467,17 @@ function _renderClientCard(client) {
   }
   html += '</div></div>';
 
-  // Scope snapshot — one-line job context
-  html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;">'+_buildScopeSnapshot(client)+'</div>';
-
-  // Red flag badges (max 3 on collapsed, all on expanded)
+  // Scope + red flags on one line
   var _redFlags = _computeRedFlags(client);
-  if (_redFlags.length > 0) html += _renderRedFlagPills(_redFlags, isExpanded ? 0 : 3);
-
-  // Follow-up alert
   var fuInv = client.invoices.find(function(inv){return inv.next_follow_up&&inv.next_follow_up<=today;});
-  if (fuInv) {
-    html += '<div style="margin-top:6px;padding:5px 10px;background:#fef3f2;border-radius:6px;font-size:12px;color:#e74c3c;font-weight:600;">\u23F0 Follow-up due '+fmtDate(fuInv.next_follow_up)+'</div>';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">';
+  html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+_buildScopeSnapshot(client)+'</span>';
+  if (_redFlags.length > 0) {
+    var showFlags = isExpanded ? _redFlags : _redFlags.slice(0,3);
+    showFlags.forEach(function(f){ html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fff3cd;color:#856404;font-weight:500;">'+f.label+'</span>'; });
   }
+  if (fuInv) html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fef3f2;color:#e74c3c;font-weight:600;">\u23F0 Follow-up '+_fmtDateShort(fuInv.next_follow_up)+'</span>';
+  html += '</div>';
 
   // Invoice summary pills (collapsed)
   if (!isExpanded) {
@@ -495,32 +494,26 @@ function _renderClientCard(client) {
   if (isExpanded) {
     html += '<div style="border-top:1px solid var(--sw-border);background:#fafafa;">';
 
-    // Job timeline (compact, above tabs)
-    var timeline = _buildTimeline(client.invoices);
-    if (timeline) {
-      html += '<div style="padding:8px 16px;font-size:11px;color:var(--sw-text-sec);background:#f4f4f4;border-bottom:1px solid var(--sw-border);overflow-x:auto;white-space:nowrap;">';
-      html += timeline;
-      html += '</div>';
-    }
-
-    // Personality note (if available)
-    if (client.personality_note) {
-      var pn = client.personality_note;
-      html += '<div style="padding:6px 16px;font-size:11px;color:var(--sw-text-sec);font-style:italic;background:#f8f6f0;border-bottom:1px solid var(--sw-border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
-      html += '<span>"\u200B'+pn.notes+'"</span>';
-      html += '<span style="font-size:9px;color:#999;">\u2014 '+(pn.chased_by?pn.chased_by.split('@')[0]:'')+', '+_fmtDateShort(pn.created_at)+'</span>';
-      html += '<button onclick="event.stopPropagation();clearDebtPersonalityNote(\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\')" style="font-size:9px;background:none;border:none;color:var(--sw-mid);cursor:pointer;text-decoration:underline;">edit</button>';
-      html += '</div>';
-    } else {
-      html += '<div style="padding:4px 16px;border-bottom:1px solid var(--sw-border);"><button onclick="event.stopPropagation();clearDebtPersonalityNote(\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\')" style="font-size:10px;background:none;border:none;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">+ Add personality note</button></div>';
-    }
-
-    // Chase narrative + suggested next step
+    // ── Consolidated context block: narrative + timeline + personality note ──
     var narrative = _buildChaseNarrative(client);
     var urgColors = {high:'#e74c3c',medium:'#f39c12',low:'var(--sw-text-sec)'};
-    html += '<div style="padding:10px 16px;background:#f8f6f0;border-left:3px solid '+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';border-bottom:1px solid var(--sw-border);font-size:12px;">';
-    html += '<div style="color:var(--sw-text-sec);margin-bottom:3px;"><strong>CHASE SUMMARY:</strong> '+narrative.summary+'</div>';
-    html += '<div style="color:'+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';font-weight:600;">\u2192 '+narrative.suggestion+'</div>';
+    var timeline = _buildTimeline(client.invoices);
+    var pnBtnArgs = '\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\'';
+
+    html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);border-left:3px solid '+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';background:#fafafa;font-size:12px;">';
+    // Suggested action (the most important line)
+    html += '<div style="color:'+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';font-weight:600;margin-bottom:4px;">\u2192 '+narrative.suggestion+'</div>';
+    // Chase summary (muted, one line)
+    html += '<div style="color:var(--sw-text-sec);font-size:11px;">'+narrative.summary+'</div>';
+    // Timeline (muted, compact)
+    if (timeline) html += '<div style="color:var(--sw-text-sec);font-size:10px;margin-top:4px;overflow-x:auto;white-space:nowrap;">'+timeline+'</div>';
+    // Personality note inline (if exists) or subtle add link
+    if (client.personality_note) {
+      var pn = client.personality_note;
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);font-style:italic;margin-top:4px;">"\u200B'+pn.notes+'" <span style="font-size:9px;color:#999;">\u2014 '+(pn.chased_by?pn.chased_by.split('@')[0]:'')+', '+_fmtDateShort(pn.created_at)+'</span> <button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:9px;background:none;border:none;color:var(--sw-mid);cursor:pointer;text-decoration:underline;">edit</button></div>';
+    } else {
+      html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:9px;background:none;border:none;color:#bbb;cursor:pointer;">+ personality note</button></div>';
+    }
     html += '</div>';
 
     // Tabs
