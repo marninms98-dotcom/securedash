@@ -726,6 +726,7 @@ function _renderInvoicesTab(client) {
     if (inv.classification==='blocked_by_us') html+='<button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtResolveBlocker(\''+_esc(inv.xero_invoice_id)+'\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\',\''+_esc(inv.invoice_number)+'\',\''+_esc(inv.job_number||'')+'\',\''+(inv.amount_due||0)+'\')">\u2705 Resolved</button>';
     if (inv.classification==='in_dispute') { html+='<button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtResolveDispute(\''+_esc(inv.xero_invoice_id)+'\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\',\''+_esc(inv.invoice_number)+'\',\''+_esc(inv.job_number||'')+'\',\''+(inv.amount_due||0)+'\')">\u2705 Resolved</button>'; html+='<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--sw-red);" onclick="event.stopPropagation();clearDebtClassifyDirect(\''+_esc(inv.xero_invoice_id)+'\',\'bad_debt\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\')">\u26AB Off</button>'; }
     if (inv.classification==='bad_debt') html+='<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtClassifyDirect(\''+_esc(inv.xero_invoice_id)+'\',\'unclassified\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\')">\u21A9 Reopen</button>';
+    html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--sw-red);margin-left:4px;" onclick="event.stopPropagation();clearDebtVoidInvoice(\''+_esc(inv.xero_invoice_id)+'\',\''+_esc(inv.invoice_number)+'\',\''+(inv.amount_due||0)+'\')">\uD83D\uDDD1 Void</button>';
     html += '</span></div>';
 
     // Expanded detail
@@ -779,6 +780,21 @@ function _renderInvoicesTab(client) {
     }
     html += '</div>';
   });
+
+  // Paid invoices — context for the person chasing
+  if (client.paid_invoices && client.paid_invoices.length > 0) {
+    html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--sw-border);">';
+    html += '<div style="font-size:10px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Paid Invoices</div>';
+    client.paid_invoices.forEach(function(pi) {
+      var paidDate = pi.fully_paid_on ? _fmtDateShort(pi.fully_paid_on) : (pi.invoice_date ? _fmtDateShort(pi.invoice_date) : '');
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);padding:2px 0;">';
+      html += '<span style="color:#27ae60;">\u2705</span> '+(pi.invoice_number||'-')+' '+fmt$(pi.total)+' \u2014 Paid'+(paidDate?' '+paidDate:'');
+      if (pi.reference) html += ' <span style="font-size:10px;color:#bbb;">('+pi.reference+')</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   return html;
 }
 
@@ -1045,6 +1061,32 @@ async function clearDebtClassifyDirect(xeroInvoiceId,classification,ghlContactId
 }
 async function clearDebtResolveBlocker(xeroInvoiceId,ghlContactId,invoiceNumber,jobNumber,amount){await clearDebtSetClassification(xeroInvoiceId,'genuine_debt',ghlContactId,invoiceNumber,jobNumber,amount);}
 async function clearDebtResolveDispute(xeroInvoiceId,ghlContactId,invoiceNumber,jobNumber,amount){await clearDebtSetClassification(xeroInvoiceId,'genuine_debt',ghlContactId,invoiceNumber,jobNumber,amount);}
+function clearDebtVoidInvoice(xeroInvoiceId, invoiceNumber, amount) {
+  var overlay=document.createElement('div'); overlay.className='modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
+  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:92%;">'
+    +'<h3 style="margin:0 0 12px;color:var(--sw-dark);">Void '+invoiceNumber+'?</h3>'
+    +'<div style="font-size:13px;color:var(--sw-dark);margin-bottom:8px;">This will void the invoice <strong>'+invoiceNumber+'</strong> ('+fmt$(Number(amount))+') in Xero.</div>'
+    +'<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:16px;">The client will no longer owe this amount. This cannot be undone.</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+    +'<button class="btn btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button>'
+    +'<button class="btn btn-sm" style="background:var(--sw-red);color:#fff;border-color:var(--sw-red);" onclick="clearDebtConfirmVoid(\''+_esc(xeroInvoiceId)+'\',this)">Void Invoice</button>'
+    +'</div></div>';
+  document.body.appendChild(overlay);
+}
+async function clearDebtConfirmVoid(xeroInvoiceId, btn) {
+  btn.disabled=true; btn.textContent='Voiding...';
+  try {
+    await opsPost('void_invoice',{xero_invoice_id:xeroInvoiceId,void:true});
+    showToast('Invoice voided in Xero','success');
+    var overlay=btn.closest('.modal-overlay'); if(overlay) overlay.remove();
+    loadClearDebt();
+  } catch(e) {
+    btn.disabled=false; btn.textContent='Void Invoice';
+    showToast('Void failed: '+e.message,'warning');
+  }
+}
 function clearDebtNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var overlay=document.createElement('div'); overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
