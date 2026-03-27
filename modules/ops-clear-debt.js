@@ -13,6 +13,8 @@ var _expandedTab = 'invoices';
 var _expandedInvoice = null;
 var _commsCache = {};
 var _aiIntelCache = {};
+var _aiHints = {}; // batch one-liners per client name
+var _aiHintsLoading = false;
 var _triageResults = null;
 var _triageLoading = false;
 
@@ -346,6 +348,8 @@ async function loadClearDebt() {
     renderClearDebtStats(_clearDebtData);
     renderClearDebtFilters();
     _renderClearDebtView();
+    // Fire AI batch hints in background (non-blocking)
+    _loadAIBatchHints();
   } catch(e) { container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sw-red);">Error: '+e.message+'</div>'; }
 }
 function _renderClearDebtView() {
@@ -482,6 +486,10 @@ function _renderClientCard(client) {
   }
   if (fuInv) html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fef3f2;color:#e74c3c;font-weight:600;">\u23F0 Follow-up '+_fmtDateShort(fuInv.next_follow_up)+'</span>';
   html += '</div>';
+  // AI hint (auto-loaded)
+  var aiHint = _aiHints[client.contact_name];
+  if (aiHint) html += '<div style="font-size:10px;color:#667eea;margin-top:2px;font-style:italic;">\uD83E\uDD16 '+aiHint+'</div>';
+  else if (_aiHintsLoading) html += '<div style="font-size:10px;color:#bbb;margin-top:2px;">\uD83E\uDD16 ...</div>';
 
   // Invoice summary pills (collapsed)
   if (!isExpanded) {
@@ -1083,6 +1091,27 @@ async function refreshXeroSync() {
 }
 
 // ════════════════════════════════════════════════════════════
+// ── Auto AI Batch Hints ──
+async function _loadAIBatchHints() {
+  if (_aiHintsLoading || Object.keys(_aiHints).length > 0) return;
+  _aiHintsLoading = true;
+  try {
+    var clients = (_clearDebtData?.clients||[]).slice(0,30).map(function(c){
+      var allLogs=[]; c.invoices.forEach(function(inv){if(inv.chase_logs) allLogs=allLogs.concat(inv.chase_logs);});
+      return {
+        contact_name:c.contact_name, total_owed:c.total_owed,
+        oldest_days:_oldestDays(c.invoices), classification:_worstClassification(c.invoices),
+        invoice_count:c.invoices.length, chase_count:allLogs.filter(function(l){return l.method==='call'||l.method==='sms'||l.method==='email';}).length
+      };
+    });
+    if (!clients.length) return;
+    var data = await opsPost('ai_batch_hints',{clients:clients});
+    _aiHints = data.hints||{};
+    _renderClearDebtView(); // re-render to show hints
+  } catch(e) { console.log('AI hints failed:',e.message); }
+  _aiHintsLoading = false;
+}
+
 // ── Inline Comms Reply ──
 async function commsTabSend(ghlContactId, contactName, xeroInvoiceId, jobId) {
   var textarea = document.getElementById('commsReplyText_'+ghlContactId);
@@ -1097,16 +1126,21 @@ async function commsTabSend(ghlContactId, contactName, xeroInvoiceId, jobId) {
       message: msg,
     });
     showToast('Message sent','success');
+    var sentMsg = msg;
     textarea.value = '';
     textarea.disabled = false;
     textarea.style.height = 'auto';
-    // Clear comms cache and reload to show the new message
-    delete _commsCache[ghlContactId];
-    // Small delay for GHL to process, then reload
+    // Immediately append sent message to cache so it shows in the thread
+    if (_commsCache[ghlContactId]) {
+      _commsCache[ghlContactId].push({direction:'outbound',body:sentMsg,timestamp:new Date().toISOString(),type:'SMS'});
+      renderClearDebtCards(_clearDebtData);
+    }
+    // Also reload from GHL after a delay to get the canonical version
     setTimeout(function() {
+      delete _commsCache[ghlContactId];
       var client = (_clearDebtData?.clients||[]).find(function(c){return c.ghl_contact_id===ghlContactId;});
       if (client) _loadCommsTab(client);
-    }, 1500);
+    }, 3000);
   } catch(e) {
     textarea.disabled = false;
     showToast('Send failed: '+e.message,'warning');
