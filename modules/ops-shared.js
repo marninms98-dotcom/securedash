@@ -3,8 +3,37 @@
 // ════════════════════════════════════════════════════════════
 
 var cloud = null;
-// Demo mode removed — all data from live API
+// Auth: use JWT from Supabase session, fall back to API key for backward compat
 var _swApiKey = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
+var _swAuthToken = null; // populated from Supabase session
+
+// Get fresh JWT from Supabase session
+async function _getAuthToken() {
+  try {
+    if (window.SECUREWORKS_CLOUD && window.SECUREWORKS_CLOUD.supabase) {
+      var res = await window.SECUREWORKS_CLOUD.supabase.auth.getSession();
+      var session = res.data && res.data.session;
+      if (session && session.access_token) {
+        _swAuthToken = session.access_token;
+        return session.access_token;
+      }
+    }
+  } catch(e) { /* fall back to API key */ }
+  return null;
+}
+
+// Build auth headers — prefer JWT, fall back to API key
+async function _getAuthHeaders(extra) {
+  var token = await _getAuthToken();
+  var h = { 'Content-Type': 'application/json' };
+  if (token) {
+    h['Authorization'] = 'Bearer ' + token;
+  } else {
+    h['x-api-key'] = _swApiKey;
+  }
+  if (extra) { for (var k in extra) h[k] = extra[k]; }
+  return h;
+}
 var _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
 var _digestBase = window.SUPABASE_URL + '/functions/v1/daily-digest';
 var _digestCache = null;
@@ -237,24 +266,27 @@ function renderWeatherBanner() {
   }
 }
 
-function opsFetch(action, params) {
+async function opsFetch(action, params) {
   var url = _opsApiBase + '?action=' + action;
   if (params) {
     Object.keys(params).forEach(function(k) {
       if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
     });
   }
-  return fetch(url, { headers: { 'x-api-key': _swApiKey } }).then(function(resp) {
+  var headers = await _getAuthHeaders();
+  return fetch(url, { headers: headers }).then(function(resp) {
+    if (resp.status === 401) { window.location.reload(); throw new Error('Session expired'); }
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
 }
 
-function opsPost(action, body) {
+async function opsPost(action, body) {
   body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
+  var headers = await _getAuthHeaders();
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': _swApiKey },
+    headers: headers,
     body: JSON.stringify(body),
   }).then(function(resp) {
     if (!resp.ok) {

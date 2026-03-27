@@ -9,7 +9,7 @@ var _clearDebtViewMode = 'cards';
 var _clearDebtSort = { col: 'priority', asc: false };
 var _clearDebtMaxOwed = 1; // cached max total_owed for normalised scoring
 var _expandedClient = null;
-var _expandedTab = 'invoices';
+var _expandedTab = 'activity';
 var _expandedInvoice = null;
 var _commsCache = {};
 var _commsPollingInterval = null;
@@ -50,6 +50,79 @@ function _lastChaseDesc(invoices) {
   var l=all[0]; return (icons[l.method]||'')+' '+fmtDate(l.created_at)+(l.outcome?' \u2014 '+l.outcome:'');
 }
 function _fmtDateShort(d) { if (!d) return ''; return new Date(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
+
+// ── Relative time helper ──
+function _relativeTime(dateStr) {
+  if (!dateStr) return '';
+  var diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+  return _fmtDateShort(dateStr);
+}
+
+// ── Method display helpers ──
+var _methodColors = {
+  call: '#3498db', sms: '#27ae60', auto_sms: '#95a5a6',
+  email: '#9b59b6', note: 'var(--sw-orange)', status_change: 'var(--sw-dark)',
+  personality_note: '#e91e63'
+};
+var _methodLabels = {
+  call: 'Phone Call', sms: 'SMS Sent', auto_sms: 'Auto Reminder',
+  email: 'Email', note: 'Note', status_change: 'Status Changed',
+  personality_note: 'Personality Note'
+};
+var _methodIcons = {call:'\uD83D\uDCDE',sms:'\uD83D\uDCAC',auto_sms:'\uD83E\uDD16',email:'\uD83D\uDCE7',note:'\uD83D\uDCDD',status_change:'\uD83C\uDFF7',personality_note:'\uD83D\uDE4B'};
+
+// ── Optimistic update — avoids full reload after saves ──
+var _bgSyncTimeout = null;
+function _optimisticAddLog(xeroInvoiceId, method, outcome, notes, followUpDate) {
+  if (!_clearDebtData || !_clearDebtData.clients) return;
+  var inv = null;
+  _clearDebtData.clients.forEach(function(c) {
+    c.invoices.forEach(function(i) {
+      if (i.xero_invoice_id === xeroInvoiceId) inv = i;
+    });
+  });
+  if (inv) {
+    if (!inv.chase_logs) inv.chase_logs = [];
+    inv.chase_logs.unshift({
+      method: method,
+      outcome: outcome || null,
+      notes: notes || null,
+      created_at: new Date().toISOString(),
+      chased_by: (cloud && cloud.user && cloud.user.email) || 'unknown',
+      follow_up_date: followUpDate || null,
+      _optimistic: true
+    });
+    if (followUpDate) inv.next_follow_up = followUpDate;
+  }
+  _renderClearDebtView();
+  // Scroll to newest entry
+  setTimeout(function() {
+    var el = document.querySelector('[data-optimistic="true"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 50);
+  _scheduleBgSync();
+}
+function _scheduleBgSync() {
+  if (_bgSyncTimeout) clearTimeout(_bgSyncTimeout);
+  _bgSyncTimeout = setTimeout(async function() {
+    var savedClient = _expandedClient;
+    var savedTab = _expandedTab;
+    var savedInvoice = _expandedInvoice;
+    try {
+      _clearDebtData = await opsFetch('list_overdue_invoices');
+      _clearDebtMaxOwed = Math.max.apply(null, (_clearDebtData.clients||[]).map(function(c){return c.total_owed||0;}).concat([1]));
+      _expandedClient = savedClient;
+      _expandedTab = savedTab;
+      _expandedInvoice = savedInvoice;
+      _renderClearDebtView();
+    } catch(e) { /* silent bg sync */ }
+  }, 5000);
+}
+
 function _filterClients(data) {
   if (!data||!data.clients) return [];
   var today = new Date().toISOString().slice(0,10);
@@ -492,7 +565,7 @@ function _renderClientCard(client) {
   if (aiHint) html += '<div style="font-size:10px;color:#667eea;margin-top:2px;font-style:italic;">\uD83E\uDD16 '+aiHint+'</div>';
   else if (_aiHintsLoading) html += '<div style="font-size:10px;color:#bbb;margin-top:2px;">\uD83E\uDD16 ...</div>';
 
-  // Invoice summary pills (collapsed)
+  // Invoice summary pills + last activity (collapsed)
   if (!isExpanded) {
     html += '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">';
     client.invoices.forEach(function(inv) {
@@ -500,6 +573,20 @@ function _renderClientCard(client) {
       html += '<span style="font-size:10px;padding:2px 6px;border-radius:6px;background:'+c.color+'12;color:'+c.color+';border:1px solid '+c.color+'30;">'+(inv.invoice_number||'-')+' '+fmt$(inv.amount_due)+' '+c.icon+'</span>';
     });
     html += '</div>';
+    // Last activity indicator
+    var _allLogs = [];
+    client.invoices.forEach(function(inv){ _allLogs = _allLogs.concat(inv.chase_logs || []); });
+    _allLogs.sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+    if (_allLogs.length > 0) {
+      var _last = _allLogs[0];
+      var _icon = _methodIcons[_last.method] || '\u2022';
+      var _label = _methodLabels[_last.method] || _last.method;
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:6px;">';
+      html += _icon + ' ' + _label + ' ' + _relativeTime(_last.created_at);
+      if (_last.outcome) html += ' \u2014 ' + _last.outcome;
+      if (_last.notes) html += ' \u2014 ' + _last.notes.substring(0, 80) + (_last.notes.length > 80 ? '\u2026' : '');
+      html += '</div>';
+    }
   }
   html += '</div>'; // end header
 
@@ -578,8 +665,10 @@ function _renderClientCard(client) {
 
     // Tabs
     html += '<div style="display:flex;border-bottom:1px solid var(--sw-border);background:#fff;">';
-    ['invoices','quotes','comms'].forEach(function(tab) {
-      var labels = {invoices:'Invoices ('+client.invoices.length+')',quotes:'Quotes & Scope',comms:'Comms'};
+    var allLogCount = 0;
+    client.invoices.forEach(function(inv) { allLogCount += (inv.chase_logs || []).length; });
+    ['activity','invoices','quotes','comms'].forEach(function(tab) {
+      var labels = {activity:'Activity'+(allLogCount?' ('+allLogCount+')':''),invoices:'Invoices ('+client.invoices.length+')',quotes:'Quotes & Scope',comms:'Comms'};
       var active = _expandedTab===tab;
       html += '<button style="flex:1;padding:10px;font-size:12px;font-weight:'+(active?'700':'500')+';border:none;border-bottom:2px solid '+(active?'var(--sw-orange)':'transparent')+';background:transparent;cursor:pointer;color:'+(active?'var(--sw-orange)':'var(--sw-text-sec)')+'" onclick="event.stopPropagation();switchDebtTab(\''+tab+'\',\''+clientKey+'\')">'+labels[tab]+'</button>';
     });
@@ -587,7 +676,8 @@ function _renderClientCard(client) {
 
     // Tab content
     html += '<div style="padding:12px;">';
-    if (_expandedTab==='invoices') html += _renderInvoicesTab(client);
+    if (_expandedTab==='activity') html += _renderActivityTab(client);
+    else if (_expandedTab==='invoices') html += _renderInvoicesTab(client);
     else if (_expandedTab==='quotes') html += _renderQuotesTab(client);
     else if (_expandedTab==='comms') html += _renderCommsTab(client);
     html += '</div>';
@@ -596,16 +686,33 @@ function _renderClientCard(client) {
     var ghlId=client.ghl_contact_id||'';
     var firstInvId=client.invoices[0]?.xero_invoice_id||'';
     var firstJobId=client.invoices.find(function(i){return i.job_id;})?.job_id||'';
-    html += '<div style="display:flex;gap:6px;padding:12px;border-top:1px solid var(--sw-border);flex-wrap:wrap;align-items:center;background:#fff;">';
+    html += '<div style="padding:12px;border-top:1px solid var(--sw-border);background:#fff;">';
+
+    // Row 1: Primary CTAs — Log Chase + Quick Note (big, prominent)
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+    html += '<button style="flex:1;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCCB Log Chase</button>';
+    html += '<button style="flex:1;background:transparent;color:var(--sw-orange);border:2px solid var(--sw-orange);border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtNote(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCDD Quick Note</button>';
+    html += '</div>';
+
+    // Row 2: Quick outcomes — one-tap logging
+    html += '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">';
+    html += '<span style="font-size:10px;color:var(--sw-text-sec);font-weight:600;white-space:nowrap;">Quick:</span>';
+    var quickArgs = '\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\'';
+    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'No answer\')">No Answer</button>';
+    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Voicemail\')">Voicemail</button>';
+    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Promised to pay\')">Promised</button>';
+    html += '</div>';
+
+    // Row 3: Secondary actions — Call, SMS, Pay Link
+    html += '<div style="display:flex;gap:6px;align-items:center;">';
     if (hasGHL) {
-      html += '<button class="btn btn-sm" style="font-size:11px;" onclick="event.stopPropagation();clearDebtCall(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\')">\uD83D\uDCDE Call</button>';
-      html += '<button class="btn btn-sm" style="font-size:11px;" onclick="event.stopPropagation();clearDebtSMS(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ _esc(client.invoices[0]?.invoice_number||'')+'\',\''+client.total_owed+'\')">\uD83D\uDCAC SMS</button>';
+      html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtCall(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\')">\uD83D\uDCDE Call</button>';
+      html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtSMS(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ _esc(client.invoices[0]?.invoice_number||'')+'\',\''+client.total_owed+'\')">\uD83D\uDCAC SMS</button>';
     }
-    if (firstJobId) html += '<button class="btn btn-sm" style="font-size:11px;" onclick="event.stopPropagation();clearDebtPayLink(\''+firstJobId+'\')">\uD83D\uDCB3 Pay Link</button>';
-    html += '<span style="margin-left:auto;display:flex;gap:4px;">';
-    html += '<button class="btn btn-sm" style="font-size:10px;color:var(--sw-text-sec);" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCCB Log</button>';
-    html += '<button class="btn btn-sm" style="font-size:10px;color:var(--sw-text-sec);" onclick="event.stopPropagation();clearDebtNote(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCDD Note</button>';
-    html += '</span></div>';
+    if (firstJobId) html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtPayLink(\''+firstJobId+'\')">\uD83D\uDCB3 Pay Link</button>';
+    html += '</div>';
+
+    html += '</div>';
     html += '</div>';
   }
   html += '</div>';
@@ -637,7 +744,7 @@ function _buildTimeline(invoices) {
 
 function toggleClientExpand(clientKey) {
   _stopCommsPolling();
-  if (_expandedClient===clientKey) { _expandedClient=null; } else { _expandedClient=clientKey; _expandedTab='invoices'; _expandedInvoice=null; }
+  if (_expandedClient===clientKey) { _expandedClient=null; } else { _expandedClient=clientKey; _expandedTab='activity'; _expandedInvoice=null; }
   renderClearDebtCards(_clearDebtData);
 }
 function switchDebtTab(tab, clientKey) {
@@ -652,10 +759,116 @@ function switchDebtTab(tab, clientKey) {
 }
 
 // ════════════════════════════════════════════════════════════
+// ACTIVITY TAB
+// ════════════════════════════════════════════════════════════
+
+function _renderActivityTab(client) {
+  var clientKey = _esc(client.xero_contact_id||client.contact_name);
+  var firstInvId = client.invoices[0]?.xero_invoice_id||'';
+  var firstJobId = client.invoices.find(function(i){return i.job_id;})?.job_id||'';
+  var ghlId = client.ghl_contact_id||'';
+  var html = '';
+
+  // ── Inline note composer ──
+  html += '<div style="margin-bottom:16px;background:#fff;border:1px solid var(--sw-border);border-radius:10px;padding:14px;">';
+  html += '<textarea id="inlineNote_'+clientKey+'" style="width:100%;min-height:60px;max-height:200px;resize:vertical;font-size:16px;border:2px solid var(--sw-border);border-radius:8px;padding:12px;box-sizing:border-box;font-family:inherit;color:var(--sw-dark);line-height:1.4;" placeholder="Add a quick note..." onclick="event.stopPropagation()" onfocus="this.style.borderColor=\'var(--sw-orange)\'" onblur="this.style.borderColor=\'var(--sw-border)\'"></textarea>';
+  html += '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">';
+  html += '<button style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtSaveInlineNote(\''+clientKey+'\',\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\')">Save Note</button>';
+  html += '<button style="background:transparent;color:var(--sw-mid);border:1px solid var(--sw-border);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\')">Full Chase Log</button>';
+  html += '</div></div>';
+
+  // ── Aggregate all logs across invoices ──
+  var allLogs = [];
+  client.invoices.forEach(function(inv) {
+    (inv.chase_logs || []).forEach(function(log) {
+      allLogs.push(Object.assign({}, log, { invoice_number: inv.invoice_number || '-' }));
+    });
+  });
+  allLogs.sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+
+  if (!allLogs.length) {
+    html += '<div style="text-align:center;padding:24px;color:var(--sw-text-sec);font-size:13px;">No activity yet. Add a note or log a chase above.</div>';
+    return html;
+  }
+
+  // ── Timeline ──
+  html += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Activity Timeline</div>';
+  allLogs.forEach(function(log) {
+    var mc = _methodColors[log.method] || '#999';
+    var icon = _methodIcons[log.method] || '\u2022';
+    var label = _methodLabels[log.method] || log.method;
+    var operator = log.chased_by ? log.chased_by.split('@')[0] : '';
+    var isOptimistic = log._optimistic;
+
+    html += '<div style="padding:10px 14px;margin-bottom:8px;border-left:3px solid '+mc+';border-radius:0 8px 8px 0;background:#fff;border:1px solid var(--sw-border);border-left:3px solid '+mc+';'+(isOptimistic?'opacity:0.85;':'');
+    html += '" '+(isOptimistic?'data-optimistic="true"':'')+'>';
+
+    // Header row
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:4px;">';
+    html += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);">'+icon+' '+label;
+    if (log.outcome) html += ' \u2014 <span style="font-weight:500;">'+log.outcome+'</span>';
+    html += '</span>';
+    html += '<span style="font-size:12px;color:var(--sw-text-sec);">'+_relativeTime(log.created_at);
+    if (operator) html += ' \u00B7 '+operator;
+    if (isOptimistic) html += ' <span style="font-size:9px;color:var(--sw-orange);font-weight:600;">Saving\u2026</span>';
+    html += '</span></div>';
+
+    // Notes (full text)
+    if (log.notes) {
+      html += '<div style="font-size:13px;color:var(--sw-dark);line-height:1.5;'+(log.method==='note'?'font-style:italic;':'')+'">'+log.notes+'</div>';
+    }
+
+    // Footer: invoice badge + follow-up
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">';
+    html += '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#f0f4f7;color:var(--sw-text-sec);">'+log.invoice_number+'</span>';
+    if (log.follow_up_date) html += '<span style="font-size:10px;color:var(--sw-orange);">\u23F0 Follow-up '+_fmtDateShort(log.follow_up_date)+'</span>';
+    html += '</div>';
+
+    html += '</div>';
+  });
+
+  return html;
+}
+
+// ── Inline note save (no modal) ──
+async function clearDebtSaveInlineNote(clientKey, xeroInvoiceId, jobId, ghlContactId, contactName) {
+  var textarea = document.getElementById('inlineNote_' + clientKey);
+  if (!textarea || !textarea.value.trim()) { showToast('Note is empty', 'warning'); return; }
+  var notes = textarea.value.trim();
+  textarea.value = '';
+  try {
+    await opsPost('log_chase', {
+      xero_invoice_id: xeroInvoiceId, job_id: jobId || null,
+      ghl_contact_id: ghlContactId || null, contact_name: contactName,
+      method: 'note', notes: notes
+    });
+    showToast('Note saved', 'success');
+    _optimisticAddLog(xeroInvoiceId, 'note', null, notes, null);
+  } catch(e) { showToast('Failed: ' + e.message, 'warning'); }
+}
+
+// ── Quick one-tap chase log (no modal) ──
+async function clearDebtQuickLog(xeroInvoiceId, jobId, ghlContactId, contactName, outcome) {
+  var followUpDays = outcome === 'Promised to pay' ? 1 : 3;
+  var d = new Date(); d.setDate(d.getDate() + followUpDays);
+  var followUpDate = d.toISOString().slice(0, 10);
+  try {
+    await opsPost('log_chase', {
+      xero_invoice_id: xeroInvoiceId, job_id: jobId || null,
+      ghl_contact_id: ghlContactId || null, contact_name: contactName,
+      method: 'call', outcome: outcome, follow_up_date: followUpDate
+    });
+    showToast(outcome + ' logged', 'success');
+    _optimisticAddLog(xeroInvoiceId, 'call', outcome, null, followUpDate);
+  } catch(e) { showToast('Failed: ' + e.message, 'warning'); }
+}
+
+// ════════════════════════════════════════════════════════════
 // INVOICES TAB
 // ════════════════════════════════════════════════════════════
 
 function _renderInvoicesTab(client) {
+  var clientKey = _esc(client.xero_contact_id||client.contact_name);
   // Quote vs invoiced summary
   var totalInvoiced = 0, totalPaid = 0, totalDue = 0;
   var quotedVal = 0;
@@ -766,22 +979,15 @@ function _renderInvoicesTab(client) {
       html += '<button class="btn btn-sm" style="font-size:10px;color:var(--sw-red);border-color:var(--sw-red);" onclick="event.stopPropagation();clearDebtVoidInvoice(\''+_esc(inv.xero_invoice_id)+'\',\''+_esc(inv.invoice_number)+'\',\''+(inv.amount_due||0)+'\')">\uD83D\uDDD1 Void Invoice</button>';
       html += '</div>';
 
-      // Chase history for this invoice
+      // Chase history summary — full timeline is in Activity tab
       if (inv.chase_logs && inv.chase_logs.length > 0) {
-        html += '<div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Chase History</div>';
-        var icons={call:'\uD83D\uDCDE',sms:'\uD83D\uDCAC',auto_sms:'\uD83E\uDD16',email:'\uD83D\uDCE7',note:'\uD83D\uDCDD',status_change:'\uD83C\uDFF7'};
-        inv.chase_logs.forEach(function(log) {
-          if (log.method==='note') {
-            // Notes get distinct styling — prominent background, full text
-            html += '<div style="font-size:11px;padding:4px 8px;margin:3px 0;background:#f8f6f0;border-left:2px solid var(--sw-orange);border-radius:0 4px 4px 0;">';
-            html += '\uD83D\uDCDD <span style="color:var(--sw-text-sec);">'+fmtDate(log.created_at)+(log.chased_by?' \u00B7 '+log.chased_by:'')+'</span>';
-            html += '<div style="color:var(--sw-dark);margin-top:2px;font-style:italic;">'+(log.notes||'')+'</div></div>';
-          } else if (log.method==='status_change') {
-            html += '<div style="font-size:11px;color:var(--sw-text-sec);">\uD83C\uDFF7 '+fmtDate(log.created_at)+' \u2014 '+(log.outcome?'<strong>'+log.outcome+'</strong>':'')+(log.notes?' \u2014 <em>'+log.notes.substring(0,150)+'</em>':'')+'</div>';
-          } else {
-            html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+(icons[log.method]||'\u2022')+' '+fmtDate(log.created_at)+' \u2014 '+(log.outcome?'<strong>'+log.outcome+'</strong>':'')+(log.notes?' '+log.notes.substring(0,150):'')+'</div>';
-          }
-        });
+        var logCount = inv.chase_logs.length;
+        var lastLog = inv.chase_logs[0];
+        var lastIcon = _methodIcons[lastLog.method] || '\u2022';
+        html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec);padding:6px 10px;background:#f8f9fa;border-radius:6px;display:flex;justify-content:space-between;align-items:center;">';
+        html += '<span>'+lastIcon+' '+logCount+' chase entr'+(logCount===1?'y':'ies')+' \u2014 last '+_relativeTime(lastLog.created_at)+'</span>';
+        html += '<button style="font-size:11px;background:none;border:none;color:var(--sw-orange);cursor:pointer;font-weight:600;text-decoration:underline;" onclick="event.stopPropagation();switchDebtTab(\'activity\',\''+clientKey+'\')">View in Activity \u2192</button>';
+        html += '</div>';
       }
       html += '</div>';
     }
@@ -941,7 +1147,8 @@ async function _loadCommsTab(client, force) {
   if (!client.ghl_contact_id) return;
   if (!force && _commsCache[client.ghl_contact_id]) return;
   try {
-    var resp = await fetch(window.SUPABASE_URL+'/functions/v1/ghl-proxy?action=get_conversation&contactId='+client.ghl_contact_id, {headers:{'x-api-key':'097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc'}});
+    var authH = await _getAuthHeaders();
+    var resp = await fetch(window.SUPABASE_URL+'/functions/v1/ghl-proxy?action=get_conversation&contactId='+client.ghl_contact_id, {headers:authH});
     var data = await resp.json();
     _commsCache[client.ghl_contact_id] = data.messages || [];
     renderClearDebtCards(_clearDebtData);
@@ -1078,7 +1285,7 @@ function clearDebtSMS(ghlContactId,contactName,xeroInvoiceId,jobId,invoiceNumber
 }
 async function clearDebtSendSMS(ghlContactId,xeroInvoiceId,jobId) {
   var text=document.getElementById('chaseSmsText'); if(!text||!text.value.trim()){showToast('Message is empty','warning');return;}
-  try{await opsPost('send_chase_sms',{ghl_contact_id:ghlContactId,xero_invoice_id:xeroInvoiceId||null,job_id:jobId||null,message:text.value.trim()});showToast('SMS sent','success');text.closest('.modal-overlay').remove();loadClearDebt();}catch(e){showToast('SMS failed: '+e.message,'warning');}
+  try{var msg=text.value.trim();await opsPost('send_chase_sms',{ghl_contact_id:ghlContactId,xero_invoice_id:xeroInvoiceId||null,job_id:jobId||null,message:msg});showToast('SMS sent','success');text.closest('.modal-overlay').remove();_optimisticAddLog(xeroInvoiceId,'sms','SMS sent',msg,null);}catch(e){showToast('SMS failed: '+e.message,'warning');}
 }
 async function clearDebtPayLink(jobId) {
   try{showToast('Sending payment link...','info');var r=await opsPost('send_payment_link',{job_id:jobId});showToast('Payment link sent: '+(r.invoice_number||''),'success');loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
@@ -1086,7 +1293,7 @@ async function clearDebtPayLink(jobId) {
 function clearDebtLogChase(xeroInvoiceId,jobId,ghlContactId,contactName,defaultMethod) {
   var overlay=document.createElement('div'); overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:480px;width:92%;"><h3 style="margin:0 0 16px;color:var(--sw-dark);">Log Chase \u2014 '+contactName+'</h3><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Method</label><select id="chaseMethod" class="form-input" style="width:100%;margin-bottom:12px;"><option value="call"'+(defaultMethod==='call'?' selected':'')+'>\uD83D\uDCDE Call</option><option value="sms">\uD83D\uDCAC SMS</option><option value="email">\uD83D\uDCE7 Email</option></select><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Outcome</label><select id="chaseOutcome" class="form-input" style="width:100%;margin-bottom:12px;"><option value="Promised to pay">Promised to pay</option><option value="No answer">No answer</option><option value="Voicemail">Voicemail</option><option value="Disputing">Disputing</option><option value="Financial difficulty">Financial difficulty</option><option value="Wrong number">Wrong number</option><option value="Payment plan arranged">Payment plan arranged</option><option value="Payment received">Payment received</option></select><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Follow up in</label><select id="chaseFollowUp" class="form-input" style="width:100%;margin-bottom:12px;"><option value="">No follow-up</option><option value="1" selected>Tomorrow</option><option value="3">3 days</option><option value="7">1 week</option><option value="14">2 weeks</option><option value="30">1 month</option></select><label style="font-size:12px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Notes</label><textarea id="chaseNotes" class="form-input" style="width:100%;height:60px;resize:vertical;box-sizing:border-box;" placeholder="Any extra details..."></textarea><div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;"><button class="btn btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button class="btn btn-sm btn-primary" onclick="clearDebtSubmitChase(\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\',\''+(ghlContactId||'')+'\',\''+_esc(contactName)+'\')">Save</button></div></div>';
+  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:540px;width:92%;"><h3 style="margin:0 0 16px;color:var(--sw-dark);font-size:18px;">Log Chase \u2014 '+contactName+'</h3><label style="font-size:13px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Method</label><select id="chaseMethod" class="form-input" style="width:100%;margin-bottom:12px;font-size:14px;padding:10px;min-height:44px;"><option value="call"'+(defaultMethod==='call'?' selected':'')+'>\uD83D\uDCDE Call</option><option value="sms">\uD83D\uDCAC SMS</option><option value="email">\uD83D\uDCE7 Email</option></select><label style="font-size:13px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Outcome</label><select id="chaseOutcome" class="form-input" style="width:100%;margin-bottom:12px;font-size:14px;padding:10px;min-height:44px;"><option value="Promised to pay">Promised to pay</option><option value="No answer">No answer</option><option value="Voicemail">Voicemail</option><option value="Disputing">Disputing</option><option value="Financial difficulty">Financial difficulty</option><option value="Wrong number">Wrong number</option><option value="Payment plan arranged">Payment plan arranged</option><option value="Payment received">Payment received</option></select><label style="font-size:13px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Follow up in</label><select id="chaseFollowUp" class="form-input" style="width:100%;margin-bottom:12px;font-size:14px;padding:10px;min-height:44px;"><option value="">No follow-up</option><option value="1" selected>Tomorrow</option><option value="3">3 days</option><option value="7">1 week</option><option value="14">2 weeks</option><option value="30">1 month</option></select><label style="font-size:13px;font-weight:600;color:var(--sw-text-sec);display:block;margin-bottom:4px;">Notes</label><textarea id="chaseNotes" class="form-input" style="width:100%;height:100px;resize:vertical;box-sizing:border-box;font-size:14px;padding:12px;" placeholder="Any extra details..."></textarea><div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;"><button style="background:#f5f5f5;color:var(--sw-dark);border:1px solid var(--sw-border);border-radius:8px;padding:10px 20px;font-size:14px;cursor:pointer;min-height:44px;" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="clearDebtSubmitChase(\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\',\''+(ghlContactId||'')+'\',\''+_esc(contactName)+'\')">Save</button></div></div>';
   document.body.appendChild(overlay);
 }
 async function clearDebtSubmitChase(xeroInvoiceId,jobId,ghlContactId,contactName) {
@@ -1094,10 +1301,10 @@ async function clearDebtSubmitChase(xeroInvoiceId,jobId,ghlContactId,contactName
   var followUpDate=null; if(followUpDays){var d=new Date();d.setDate(d.getDate()+parseInt(followUpDays));followUpDate=d.toISOString().slice(0,10);}
   try{
     await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:method,outcome:outcome,notes:notes||null,follow_up_date:followUpDate});
-    // Close ALL modal overlays first, then refresh
+    // Close ALL modal overlays first, then optimistic update
     document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});
     showToast('Chase logged','success');
-    loadClearDebt();
+    _optimisticAddLog(xeroInvoiceId, method, outcome, notes, followUpDate);
   }catch(e){showToast('Failed: '+e.message,'warning');}
 }
 function clearDebtClassify(xeroInvoiceId,currentClassification,ghlContactId,invoiceNumber,jobNumber,amount) {
@@ -1149,12 +1356,12 @@ async function clearDebtConfirmVoid(xeroInvoiceId, btn) {
 function clearDebtNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var overlay=document.createElement('div'); overlay.className='modal-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:92%;"><h3 style="margin:0 0 12px;color:var(--sw-dark);">Ops Note \u2014 '+contactName+'</h3><textarea id="chaseNoteText" class="form-input" style="width:100%;height:80px;resize:vertical;box-sizing:border-box;" placeholder="Internal note about this debt..."></textarea><div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;"><button class="btn btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button class="btn btn-sm btn-primary" onclick="clearDebtSaveNote(\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\',\''+(ghlContactId||'')+'\',\''+_esc(contactName)+'\')">Save</button></div></div>';
+  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:480px;width:92%;"><h3 style="margin:0 0 12px;color:var(--sw-dark);font-size:18px;">Quick Note \u2014 '+contactName+'</h3><textarea id="chaseNoteText" class="form-input" style="width:100%;height:120px;resize:vertical;box-sizing:border-box;font-size:14px;padding:12px;" placeholder="Internal note about this debt..."></textarea><div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;"><button style="background:#f5f5f5;color:var(--sw-dark);border:1px solid var(--sw-border);border-radius:8px;padding:10px 20px;font-size:14px;cursor:pointer;min-height:44px;" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="clearDebtSaveNote(\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\',\''+(ghlContactId||'')+'\',\''+_esc(contactName)+'\')">Save Note</button></div></div>';
   document.body.appendChild(overlay); overlay.querySelector('textarea').focus();
 }
 async function clearDebtSaveNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var notes=document.getElementById('chaseNoteText')?.value?.trim(); if(!notes){showToast('Note is empty','warning');return;}
-  try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'note',notes:notes});showToast('Note saved','success');document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
+  try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'note',notes:notes});showToast('Note saved','success');document.querySelectorAll('.modal-overlay').forEach(function(m){m.remove();});_optimisticAddLog(xeroInvoiceId,'note',null,notes,null);}catch(e){showToast('Failed: '+e.message,'warning');}
 }
 
 // ── Personality Note ──
@@ -1175,7 +1382,7 @@ async function clearDebtSavePersonalityNote(xeroInvoiceId,jobId,ghlContactId,con
     await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'personality_note',notes:notes});
     showToast('Personality note saved','success');
     document.querySelector('.modal-overlay').remove();
-    loadClearDebt();
+    _optimisticAddLog(xeroInvoiceId,'personality_note',null,notes,null);
   }catch(e){showToast('Failed: '+e.message,'warning');}
 }
 
