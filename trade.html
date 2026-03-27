@@ -1886,6 +1886,110 @@
       color: #fff;
     }
 
+    /* ══════════════════════════════════════════════════
+       JOB DETAIL — Action Bar (sticky Call/Text/Navigate)
+       ══════════════════════════════════════════════════ */
+    .jd-action-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--sw-card);
+      border-bottom: 1px solid var(--sw-border);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .jd-action-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 48px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--sw-font);
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .jd-action-btn:active { opacity: 0.8; }
+    .jd-action-btn.act-call {
+      background: var(--sw-green);
+      color: #fff;
+    }
+    .jd-action-btn.act-text {
+      background: var(--sw-blue);
+      color: #fff;
+    }
+    .jd-action-btn.act-nav {
+      background: var(--sw-mid);
+      color: #fff;
+    }
+
+    /* ══════════════════════════════════════════════════
+       JOB DETAIL — Tab System (pill-style)
+       ══════════════════════════════════════════════════ */
+    .jd-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--sw-light);
+      border-radius: 10px;
+      padding: 3px;
+      margin: 12px 16px;
+    }
+    .jd-tab {
+      flex: 1;
+      padding: 10px 4px;
+      border: none;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--sw-font);
+      cursor: pointer;
+      background: transparent;
+      color: var(--sw-mid);
+      text-align: center;
+      transition: all 0.15s;
+      min-height: 40px;
+      position: relative;
+    }
+    .jd-tab.active {
+      background: var(--sw-dark);
+      color: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    .jd-tab:active:not(.active) { background: rgba(0,0,0,0.04); }
+    .jd-tab .tab-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      background: var(--sw-orange);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+    }
+    .jd-tab-content {
+      display: none;
+      padding: 0 16px 16px;
+    }
+    .jd-tab-content.active {
+      display: block;
+    }
+    .jd-tab-content .detail-section {
+      margin-bottom: 12px;
+    }
+
     /* Variation Quick Presets */
     .variation-presets {
       display: flex;
@@ -5183,6 +5287,9 @@
     var type = (job.type || 'patio').toLowerCase();
     var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
 
+    // Store for tab lazy-loading
+    _currentJob = data;
+
     var html = '';
 
     // ── Back button ──
@@ -5202,11 +5309,14 @@
       html += renderSpecialInstructions(data, phase);
     }
 
-    // ── Section 3: Smart Status Flow ──
+    // ── Section 3: Smart Status Flow (creates #timerElapsed — must render before startTimerTick) ──
     html += renderSmartStatusFlow(data, phase);
 
-    // ── Travelling: minimal view — status flow + address + departure time ──
+    // ── Travelling: minimal view — status flow + address + action bar + departure time ──
     if (phase === 'travelling') {
+      // Action bar with Navigate prominent
+      html += renderActionBar(data, phase);
+
       var addr = dedupeAddress(job.site_address, job.site_suburb);
       var leftAt = _travelStartTime ? new Date(_travelStartTime).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) : '';
       html += '<div class="detail-section" style="text-align:center;padding:20px 16px">';
@@ -5215,20 +5325,20 @@
       if (leftAt) html += '  <div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px;">Left at ' + leftAt + '</div>';
       var navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
       if (navUrl) {
-        html += '  <button class="sf-action-btn" style="background:var(--sw-mid);font-size:16px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Navigate to Site</button>';
+        html += '  <button class="sf-action-btn" style="background:var(--sw-mid);font-size:16px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">&#129517; Navigate to Site</button>';
       }
       html += '</div>';
 
       // Collapsible Job Brief (collapsed by default for driving safety)
       html += '<div style="margin:0 16px;">';
-      html += '<div onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=b.style.display===\'none\'?\'▶\':\'▼\'" style="font-size:13px;color:var(--sw-mid);cursor:pointer;padding:6px 0;"><span>▶</span> Job Brief</div>';
+      html += '<div onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=b.style.display===\'none\'?\'&#9654;\':\'&#9660;\'" style="font-size:13px;color:var(--sw-mid);cursor:pointer;padding:6px 0;"><span>&#9654;</span> Job Brief</div>';
       html += '<div style="display:none;padding:8px 0;font-size:13px;">';
 
       var tScope = job.scope_json;
       if (tScope && tScope.config) {
         var tc = tScope.config;
         var tParts = [];
-        if (tc.length && tc.projection) tParts.push(tc.length + 'm × ' + tc.projection + 'm');
+        if (tc.length && tc.projection) tParts.push(tc.length + 'm \u00d7 ' + tc.projection + 'm');
         if (tc.roofStyle) tParts.push(humanise('roofStyle', tc.roofStyle));
         if (tc.roofing) tParts.push(humanise('roofing', tc.roofing));
         if (tc.colour) tParts.push(tc.colour);
@@ -5238,18 +5348,16 @@
         html += '<div style="color:var(--sw-dark);margin-bottom:6px;">' + Math.round(tTotalM) + 'm fencing, ' + tScope.job.runs.length + ' run(s)</div>';
       }
 
-      // Materials delivery status
       var tPos = data.purchaseOrders || [];
       if (tPos.length > 0) {
         var allConfirmed = tPos.every(function(p) { return p.confirmed_delivery_date || p.status === 'delivered' || p.status === 'billed'; });
         html += '<div style="color:' + (allConfirmed ? 'var(--sw-green)' : 'var(--sw-orange)') + ';margin-bottom:4px;">';
-        html += allConfirmed ? '📦 Materials: Delivered/Confirmed ✓' : '📦 Materials: Some unconfirmed';
+        html += allConfirmed ? '&#128230; Materials: Delivered/Confirmed \u2713' : '&#128230; Materials: Some unconfirmed';
         html += '</div>';
       }
 
-      // Access notes
       if (tScope && tScope.notes && tScope.notes.noteWorkOrder) {
-        html += '<div style="color:var(--sw-text-sec);">📝 ' + tScope.notes.noteWorkOrder.replace(/</g, '&lt;').slice(0, 200) + '</div>';
+        html += '<div style="color:var(--sw-text-sec);">&#128221; ' + tScope.notes.noteWorkOrder.replace(/</g, '&lt;').slice(0, 200) + '</div>';
       }
 
       html += '</div></div>';
@@ -5259,157 +5367,52 @@
       return;
     }
 
-    // ── Section 4: Safety Banner ──
-    html += renderSafetyBanner(data, phase);
+    // ══════════════════════════════════════════════════
+    // TAB LAYOUT — Non-travelling phases
+    // ══════════════════════════════════════════════════
 
-    // ── Acknowledge Banner (between status flow and scope) ──
+    // ── Action Bar (sticky Call / Text / Navigate) ──
+    html += renderActionBar(data, phase);
+
+    // ── Acknowledge Banner (between action bar and tabs) ──
     html += renderAcknowledgeBanner(data, phase);
 
-    // ── Section 5: Client Card ──
-    html += renderEnhancedClientCard(data, phase);
-
-    // ── Client Messages (GHL conversation) ──
-    if (job.ghl_contact_id) {
-      html += '<div class="detail-section" style="margin-top:8px;">';
-      html += '<div onclick="toggleClientMessages(this)" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:4px 0;">';
-      html += '<h3 style="margin:0;font-size:14px;">Client Messages</h3>';
-      html += '<span style="font-size:12px;color:var(--sw-text-sec);" id="msgToggleIcon">&#9654; Show</span>';
-      html += '</div>';
-      html += '<div id="clientMessagesBody" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto;"></div>';
-      html += '</div>';
-    }
-
-    // ── Section 6: Special Instructions ──
-    html += renderSpecialInstructions(data, phase);
-
-    // ── Site Note — quick note logging for trades ──
-    html += '<div class="detail-section" id="siteNoteSection">';
-    html += '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
-    html += '    <span style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;flex:1;">Site Notes</span>';
-    html += '  </div>';
-    html += '  <div style="display:flex;gap:8px;">';
-    html += '    <input type="text" id="siteNoteInput" placeholder="Log a note \u2014 issue, change, observation..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);" onkeydown="if(event.key===\'Enter\')submitSiteNote()">';
-    html += '    <button onclick="submitSiteNote()" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;white-space:nowrap;">Send</button>';
-    html += '  </div>';
-    html += '  <div id="siteNotesList" style="margin-top:8px;"></div>';
+    // ── Tab Bar ──
+    var mediaCount = (data.media || []).length;
+    var noteCount = (data.notes || []).length;
+    html += '<div class="jd-tabs">';
+    html += '<button class="jd-tab" data-tab="scope" onclick="switchJobTab(\'scope\')">Scope</button>';
+    html += '<button class="jd-tab" data-tab="files" onclick="switchJobTab(\'files\')">Files</button>';
+    html += '<button class="jd-tab" data-tab="photos" onclick="switchJobTab(\'photos\')">';
+    html += 'Photos';
+    if (mediaCount > 0) html += '<span class="tab-badge">' + mediaCount + '</span>';
+    html += '</button>';
+    html += '<button class="jd-tab" data-tab="comms" onclick="switchJobTab(\'comms\')">Comms</button>';
+    html += '<button class="jd-tab" data-tab="log" onclick="switchJobTab(\'log\')">';
+    html += 'Log';
+    if (noteCount > 0) html += '<span class="tab-badge">' + noteCount + '</span>';
+    html += '</button>';
     html += '</div>';
 
-    // ── Section 7: Handoff Card (multi-day, day 2+) ──
-    html += renderHandoffCard(data, phase);
-
-    // ── Section 8: Scope Photos Gallery ──
-    if (phase !== 'on_site') {
-      html += renderScopeGallery(data, phase);
-    }
-
-    // ── On-site: key dimensions card + 3D viewer + collapsible reference info ──
-    if (phase === 'on_site') {
-      html += renderKeyDimensions(data);
-      // Scope viewer removed (iframe caused kickout bug). 3D model available via "View 3D Model" button below.
-      // Fallback 3D button for full-screen parametric view
-      var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
-      if (scopeConfig.length || scopeConfig.totalLength) {
-        html += '<div style="margin:8px 0">';
-        html += '<button class="btn btn-secondary" style="width:100%;font-weight:700" onclick="open3DViewer()">';
-        html += '🔲 View 3D Model (Full Screen)</button>';
-        html += '</div>';
-      }
-      // Work Order section (on-site)
-      var wo = data.workOrder || data.work_order;
-      var scope = job.scope_json;
-      html += '<div class="detail-section" style="margin-top:8px;">';
-      html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">📋 Work Order</div>';
-
-      // Scope of work from scope_json
-      if (scope) {
-        html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-bottom:4px;">Scope</div>';
-        var scopeParts = [];
-        if (scope.config) {
-          var c = scope.config;
-          if (c.length && c.projection) scopeParts.push(c.length + 'm × ' + c.projection + 'm');
-          if (c.roofStyle) scopeParts.push(humanise('roofStyle', c.roofStyle));
-          if (c.roofing) scopeParts.push(humanise('roofing', c.roofing));
-          if (c.colour) scopeParts.push(c.colour);
-          if (c.connectionMethod || c.connection) scopeParts.push(humanise('connection', c.connectionMethod || c.connection));
-        } else if (scope.job && scope.job.runs) {
-          var totalM = scope.job.runs.reduce(function(s, r) { return s + (r.totalLength || 0); }, 0);
-          scopeParts.push(Math.round(totalM) + 'm fencing');
-          scopeParts.push(scope.job.runs.length + ' run(s)');
-        }
-        scopeParts.forEach(function(p) {
-          html += '<div style="font-size:13px;color:var(--sw-dark);padding:2px 0;">• ' + p + '</div>';
-        });
-      }
-
-      // Crew
-      var woCrew = data.crew || data.assignments || [];
-      if (woCrew.length > 0) {
-        html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-top:8px;margin-bottom:4px;">Crew</div>';
-        var crewNames = [];
-        woCrew.forEach(function(a) {
-          var n = a.crew_name || a.assigned_to || '';
-          if (n && crewNames.indexOf(n) < 0) crewNames.push(n);
-        });
-        html += '<div style="font-size:13px;color:var(--sw-dark);">' + crewNames.join(' + ') + '</div>';
-        if (scope && scope.config && scope.config.labour_days) {
-          html += '<div style="font-size:12px;color:var(--sw-text-sec);">Est. ' + scope.config.labour_days + ' days</div>';
-        } else if (scope && scope.install_days) {
-          html += '<div style="font-size:12px;color:var(--sw-text-sec);">Est. ' + scope.install_days + ' days</div>';
-        }
-      }
-
-      // Key notes from ops (scope_json.notes)
-      if (scope && scope.notes) {
-        var noteTexts = [scope.notes.noteWorkOrder, scope.notes.noteInternal].filter(Boolean);
-        if (noteTexts.length > 0) {
-          html += '<div style="font-size:12px;font-weight:600;color:var(--sw-mid);margin-top:8px;margin-bottom:4px;">Notes</div>';
-          noteTexts.forEach(function(n) {
-            html += '<div style="font-size:13px;color:var(--sw-dark);padding:2px 0;white-space:pre-wrap;">' + n.replace(/</g, '&lt;').slice(0, 500) + '</div>';
-          });
-        }
-      }
-
-      // WO PDF link
-      var woDocs = (data.documents || []).filter(function(d) { return d.type === 'work_order'; });
-      if (woDocs.length > 0) {
-        html += '<a href="' + (woDocs[0].pdf_url || woDocs[0].storage_url || '#') + '" target="_blank" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--sw-mid);font-weight:600;text-decoration:none;">View PDF ↗</a>';
-      }
-
-      html += '</div>';
-
-      var refHtml = renderEnhancedScope(data, phase) + renderTradeDocuments(data, phase) + renderEnhancedPOs(data, phase);
-      html += wrapCollapsible('📋 Reference Info — Scope, Docs & Materials', refHtml);
-    } else {
-      // ── Section 9: Enhanced Scope of Work ──
-      html += renderEnhancedScope(data, phase);
-
-      // ── Approvals & Documents ──
-      html += renderTradeDocuments(data, phase);
-
-      // ── Section 10: Enhanced Materials / POs ──
-      html += renderEnhancedPOs(data, phase);
-    }
-
-    // ── Section: Variation (when not on-site — on-site uses toolbar) ──
-    html += renderEnhancedVariation(data, phase);
-
-    // ── Remaining existing sections ──
-    html += renderExistingSections(data, phase);
+    // ── Tab Content Containers (lazy-loaded) ──
+    html += '<div class="jd-tab-content" id="jdTab_scope"></div>';
+    html += '<div class="jd-tab-content" id="jdTab_files"></div>';
+    html += '<div class="jd-tab-content" id="jdTab_photos"></div>';
+    html += '<div class="jd-tab-content" id="jdTab_comms"></div>';
+    html += '<div class="jd-tab-content" id="jdTab_log"></div>';
 
     container.innerHTML = html;
 
-    // Start timer tick if active
-    startTimerTick();
+    // ── Activate last-used tab (or default to scope) ──
+    var lastTab = 'scope';
+    try { lastTab = localStorage.getItem('sw_last_tab_' + _currentJobId) || 'scope'; } catch(e) {}
+    switchJobTab(lastTab);
 
-    // Setup sticky timer after render
+    // ── Timer system (unchanged) ──
+    startTimerTick();
     setTimeout(setupStickyTimer, 100);
 
-    // Load conversation thread async (Tier 3)
-    if (canSeeConversation() && job.ghl_contact_id) {
-      loadConversation(job.ghl_contact_id);
-    }
-
-    // Handle on-site tools: hide bottom nav, show toolbar
+    // ── On-site tools: hide bottom nav, show toolbar ──
     var bottomNav = document.getElementById('bottomNav');
     if (phase === 'on_site' && bottomNav) {
       bottomNav.style.display = 'none';
@@ -5417,7 +5420,6 @@
       bottomNav.style.display = '';
     }
 
-    // Append on-site tools to body (fixed position)
     var existingTools = document.getElementById('onsiteTools');
     if (existingTools) existingTools.remove();
     if (phase === 'on_site') {
@@ -5431,6 +5433,665 @@
     }
   }
 
+
+  // ══════════════════════════════════════════════════
+  // ACTION BAR — Sticky Call / Text / Navigate
+  // ══════════════════════════════════════════════════
+
+  function renderActionBar(data, phase) {
+    var job = data.job;
+    var h = '<div class="jd-action-bar">';
+
+    // Call button
+    if (job.client_phone && canCall()) {
+      h += '<a href="tel:' + esc(job.client_phone) + '" class="jd-action-btn act-call" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+      h += ' Call</a>';
+    } else {
+      h += '<span class="jd-action-btn act-call" style="opacity:0.3;cursor:default">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+      h += ' Call</span>';
+    }
+
+    // Text button
+    if (canMessage() && job.ghl_contact_id) {
+      h += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      h += ' Text</button>';
+    } else {
+      h += '<span class="jd-action-btn act-text" style="opacity:0.3;cursor:default">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      h += ' Text</span>';
+    }
+
+    // Navigate button
+    var navUrl = (job.site_address || (job.site_lat && job.site_lng))
+      ? getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng)
+      : null;
+    var hasStreetNum = /^\d/.test((job.site_address || '').trim());
+    if (navUrl && (hasStreetNum || job.site_lat)) {
+      h += '<button class="jd-action-btn act-nav" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+      h += ' Navigate</button>';
+    } else {
+      h += '<span class="jd-action-btn act-nav" style="opacity:0.3;cursor:default">';
+      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+      h += ' Navigate</span>';
+    }
+
+    h += '</div>';
+    return h;
+  }
+
+  // ══════════════════════════════════════════════════
+  // TAB SWITCHING — Lazy-load tab content on first open
+  // ══════════════════════════════════════════════════
+
+  var _jobTabLoaders = {
+    scope: renderJobTab_scope,
+    files: renderJobTab_files,
+    photos: renderJobTab_photos,
+    comms: renderJobTab_comms,
+    log: renderJobTab_log
+  };
+
+  window.switchJobTab = function(tabName) {
+    // Deactivate all tabs + content
+    document.querySelectorAll('.jd-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.jd-tab-content').forEach(function(c) { c.classList.remove('active'); });
+    // Activate selected
+    var tabBtn = document.querySelector('.jd-tab[data-tab="' + tabName + '"]');
+    var tabContent = document.getElementById('jdTab_' + tabName);
+    if (tabBtn) tabBtn.classList.add('active');
+    if (tabContent) {
+      tabContent.classList.add('active');
+      // Lazy-load content on first open
+      if (!tabContent.dataset.loaded && _currentJob) {
+        var phase = deriveJobPhase(_currentJob);
+        if (_jobTabLoaders[tabName]) {
+          _jobTabLoaders[tabName](_currentJob, phase, tabContent);
+          tabContent.dataset.loaded = '1';
+        }
+      }
+    }
+    // Remember last tab per job
+    if (_currentJobId) {
+      try { localStorage.setItem('sw_last_tab_' + _currentJobId, tabName); } catch(e) {}
+    }
+  };
+
+  // Force-refresh a specific tab (e.g. after photo upload)
+  window.refreshJobTab = function(tabName) {
+    var tabContent = document.getElementById('jdTab_' + tabName);
+    if (tabContent && _currentJob) {
+      tabContent.dataset.loaded = '';
+      var phase = deriveJobPhase(_currentJob);
+      if (_jobTabLoaders[tabName]) {
+        _jobTabLoaders[tabName](_currentJob, phase, tabContent);
+        tabContent.dataset.loaded = '1';
+      }
+    }
+  };
+
+  // ══════════════════════════════════════════════════
+  // TAB RENDERERS — Scope, Files, Photos, Comms, Log
+  // ══════════════════════════════════════════════════
+
+  function renderJobTab_scope(data, phase, container) {
+    var job = data.job;
+    var h = '';
+
+    // Key dimensions
+    h += renderKeyDimensions(data);
+
+    // 3D model button (if scope data available)
+    var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
+    if (scopeConfig.length || scopeConfig.totalLength || (job.scope_json && job.scope_json.job && job.scope_json.job.runs)) {
+      h += '<div style="margin:8px 0">';
+      h += '<button class="btn btn-secondary" style="width:100%;font-weight:700" onclick="open3DViewer()">';
+      h += '&#128306; View 3D Model (Full Screen)</button>';
+      h += '</div>';
+    }
+
+    // Safety banner
+    h += renderSafetyBanner(data, phase);
+
+    // Special instructions
+    h += renderSpecialInstructions(data, phase);
+
+    // Handoff card (multi-day jobs)
+    h += renderHandoffCard(data, phase);
+
+    // Scope detail
+    h += renderEnhancedScope(data, phase);
+
+    // Materials & POs
+    h += renderEnhancedPOs(data, phase);
+
+    // Prep checklist (pre_confirm / confirmed phases)
+    h += renderPrepChecklist(data, phase);
+
+    // Variation request (confirmed phase)
+    h += renderEnhancedVariation(data, phase);
+
+    // Crew list (pre_confirm / confirmed)
+    var crew = data.crew || [];
+    if (crew.length > 0) {
+      var type = (job.type || 'patio').toLowerCase();
+      var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
+      h += '<div class="detail-section">';
+      h += '  <h3>Crew</h3>';
+      crew.forEach(function(c) {
+        var userName = (c.users && c.users.name) || 'TBA';
+        var role = c.crew_name || c.role || '';
+        h += '<div class="crew-item">';
+        h += '  <div style="display:flex;align-items:center;gap:8px">';
+        h += '    <span class="crew-avatar" style="background:' + color + '">' + getCrewInitials(userName) + '</span>';
+        h += '    <div>';
+        h += '      <div class="crew-item-name">' + esc(userName) + '</div>';
+        if (role) h += '<div class="crew-item-role">' + esc(role) + '</div>';
+        h += '    </div>';
+        h += '  </div>';
+        h += '  <span class="status-pill status-' + (c.status || 'scheduled') + '">' + (c.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+        if (canReassignCrew()) {
+          h += '  <button onclick="event.stopPropagation();openReassignModal(\'' + c.id + '\', \'' + esc(userName) + '\')" style="background:none;border:1px solid var(--sw-border);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--sw-mid);cursor:pointer;margin-left:6px">Reassign</button>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+
+    // Labour budget (complete phase, Tier 2+)
+    if (phase === 'complete' && canSeePricing()) {
+      h += '<div class="detail-section" id="tabLabourBudget">';
+      h += '  <h3>Labour Budget</h3>';
+      h += '  <div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading...</div>';
+      h += '</div>';
+      setTimeout(function() {
+        api('trade_labour_budget', { jobId: job.id }).then(function(lb) {
+          var card = document.getElementById('tabLabourBudget');
+          if (!card) return;
+          var inner = '<h3>Labour Budget</h3>';
+          if (!lb || lb.budget == null || lb.budget === 0) {
+            inner += '<div style="font-size:13px;color:var(--sw-text-sec)">No labour budget allocated</div>';
+            card.innerHTML = inner; return;
+          }
+          var budget = Number(lb.budget) || 0;
+          var logged = Number(lb.logged_hours) || 0;
+          var spent = Number(lb.spent) || 0;
+          var remainder = budget - spent;
+          var remainColor = remainder >= 0 ? 'var(--sw-green)' : '#E74C3C';
+          inner += '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:12px">';
+          inner += '<div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '<div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase">Budget</div>';
+          inner += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + budget.toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:0}) + '</div></div>';
+          inner += '<div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '<div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase">Logged</div>';
+          inner += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark)">' + logged.toFixed(1) + ' hrs</div></div>';
+          inner += '<div style="flex:1;text-align:center;padding:10px 4px;background:var(--sw-light);border-radius:8px">';
+          inner += '<div style="font-size:11px;color:var(--sw-text-sec);text-transform:uppercase">Remainder</div>';
+          inner += '<div style="font-size:18px;font-weight:700;color:' + remainColor + '">$' + Math.abs(remainder).toLocaleString('en-AU', {minimumFractionDigits:0, maximumFractionDigits:0}) + (remainder < 0 ? ' over' : '') + '</div></div>';
+          inner += '</div>';
+          card.innerHTML = inner;
+        }).catch(function() {
+          var card = document.getElementById('tabLabourBudget');
+          if (card) card.innerHTML = '<h3>Labour Budget</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load</div>';
+        });
+      }, 0);
+    }
+
+    // Financials (complete, Tier 3)
+    if (phase === 'complete' && canSeeFullPricing()) {
+      var hasFinancials = job.quoted_amount != null || job.invoiced_amount != null;
+      if (hasFinancials) {
+        h += '<div class="detail-section">';
+        h += '  <h3>Financials</h3>';
+        h += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+        if (job.quoted_amount != null) {
+          h += '<div style="padding:10px;background:var(--sw-light);border-radius:8px;text-align:center">';
+          h += '<div style="font-size:11px;color:var(--sw-text-sec)">Quoted</div>';
+          h += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + Number(job.quoted_amount).toFixed(0) + '</div></div>';
+        }
+        if (job.invoiced_amount != null) {
+          h += '<div style="padding:10px;background:var(--sw-light);border-radius:8px;text-align:center">';
+          h += '<div style="font-size:11px;color:var(--sw-text-sec)">Invoiced</div>';
+          h += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark)">$' + Number(job.invoiced_amount).toFixed(0) + '</div></div>';
+        }
+        h += '</div>';
+        var outstanding = (job.quoted_amount || 0) - (job.invoiced_amount || 0);
+        if (outstanding > 0) {
+          h += '<div style="margin-top:8px;padding:8px;background:#FDE8E0;border-radius:8px;text-align:center;font-size:13px;color:var(--sw-orange);font-weight:700">Outstanding: $' + outstanding.toFixed(0) + '</div>';
+        }
+        h += '</div>';
+      }
+    }
+
+    // Service report button (complete phase)
+    if (phase === 'complete') {
+      h += '<div style="padding:8px 0 12px">';
+      h += '  <button class="btn btn-primary" onclick="showView(\'report\')" style="width:100%">';
+      h += '    &#128196; Service Report';
+      h += '  </button>';
+      h += '</div>';
+    }
+
+    if (!h.trim()) {
+      h = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No scope details available for this job</div>';
+    }
+
+    container.innerHTML = h;
+  }
+
+  function renderJobTab_files(data, phase, container) {
+    var h = '';
+
+    // Trade documents (uploaded docs)
+    h += renderTradeDocuments(data, phase);
+
+    // Work order PDF
+    var docs = data.documents || [];
+    var workOrderDocs = docs.filter(function(d) { return d.type === 'work_order'; });
+    if (workOrderDocs.length > 0) {
+      h += '<div class="detail-section">';
+      h += '  <h3>Work Orders</h3>';
+      workOrderDocs.forEach(function(wo, idx) {
+        var isLatest = idx === 0;
+        h += '<a href="' + esc(wo.pdf_url || wo.storage_url || '#') + '" target="_blank" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--sw-light);border-radius:8px;text-decoration:none;margin-bottom:6px">';
+        h += '<svg width="20" height="20" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>';
+        h += '<div style="flex:1">';
+        h += '<div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + esc(wo.file_name || 'Work Order') + ' (v' + (wo.version || 1) + ')</div>';
+        if (wo.created_at) h += '<div style="font-size:11px;color:var(--sw-text-sec)">' + formatDate(wo.created_at) + '</div>';
+        h += '</div>';
+        if (isLatest) h += '<span style="font-size:10px;font-weight:700;background:var(--sw-green);color:#fff;padding:2px 6px;border-radius:4px">Latest</span>';
+        h += '</a>';
+      });
+      h += '</div>';
+    }
+
+    // Other documents (plans, drawings, council approvals)
+    var otherDocs = docs.filter(function(d) { return d.type !== 'work_order' && d.type !== 'site_photo'; });
+    if (otherDocs.length > 0) {
+      h += '<div class="detail-section">';
+      h += '  <h3>Documents</h3>';
+      otherDocs.forEach(function(d) {
+        h += '<a href="' + esc(d.pdf_url || d.storage_url || '#') + '" target="_blank" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--sw-light);border-radius:8px;text-decoration:none;margin-bottom:4px">';
+        h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--sw-mid)"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>';
+        h += '<div style="flex:1;font-size:13px;color:var(--sw-dark)">' + esc(d.file_name || d.type || 'Document') + '</div>';
+        h += '</a>';
+      });
+      h += '</div>';
+    }
+
+    // Scope / site photos (from quoting stage)
+    var media = data.media || [];
+    var scopePhotos = media.filter(function(m) { return m.phase === 'scope'; });
+    var docPhotos = docs.filter(function(d) { return d.visible_to_trades && d.type === 'site_photo' && d.storage_url; });
+    var totalSitePhotos = scopePhotos.length + docPhotos.length;
+    if (totalSitePhotos > 0) {
+      h += '<div class="detail-section">';
+      h += '<h3>Site Photos <span style="font-weight:400;font-size:12px;color:var(--sw-text-sec)">' + totalSitePhotos + ' from scope visit</span></h3>';
+      h += '<div class="scope-gallery">';
+      scopePhotos.forEach(function(p) {
+        var src = p.thumbnail_url || p.storage_url;
+        h += '<img src="' + esc(src) + '" alt="' + esc(p.label || 'Scope') + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\', \'.scope-gallery\')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer">';
+      });
+      docPhotos.forEach(function(d) {
+        h += '<img src="' + esc(d.storage_url) + '" alt="' + esc(d.file_name || 'Site') + '" onclick="openLightbox(\'' + esc(d.storage_url) + '\')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer">';
+      });
+      h += '</div>';
+      h += '</div>';
+    }
+
+    if (!h.trim()) {
+      h = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No files available for this job</div>';
+    }
+    container.innerHTML = h;
+  }
+
+  function renderJobTab_photos(data, phase, container) {
+    var media = data.media || [];
+    var byPhase = { scope: [], in_progress: [], completion: [], issue: [] };
+    media.forEach(function(m) {
+      var p = m.phase || 'scope';
+      if (byPhase[p]) byPhase[p].push(m);
+    });
+    var h = '';
+
+    // Photo count badges
+    var photoTargets = { scope: 3, in_progress: 2, completion: 5, issue: 0 };
+    h += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">';
+    [
+      { key: 'scope', label: 'Before', icon: '&#128247;' },
+      { key: 'in_progress', label: 'During', icon: '&#128296;' },
+      { key: 'completion', label: 'After', icon: '&#9989;' },
+      { key: 'issue', label: 'Issues', icon: '&#9888;' }
+    ].forEach(function(cat) {
+      var count = byPhase[cat.key].length;
+      var target = photoTargets[cat.key];
+      var met = target === 0 || count >= target;
+      h += '<div style="flex:1;min-width:70px;padding:8px 4px;background:' + (met ? 'var(--sw-light)' : '#FEF3C7') + ';border-radius:8px;text-align:center">';
+      h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec)">' + cat.label + '</div>';
+      h += '<div style="font-size:16px;font-weight:700;color:' + (met ? 'var(--sw-dark)' : '#92400E') + '">' + count + (target > 0 ? '/' + target : '') + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+
+    // Take Photo button — opens existing camera view with this job pre-selected
+    h += '<button class="btn btn-primary" style="width:100%;margin-bottom:16px" onclick="';
+    h += '_cameraJobId=\'' + esc(data.job.id) + '\';';
+    // Auto-detect phase from clock state
+    h += 'if(_clockState===\'on\' && _arrivedAt){_cameraPhase=\'in_progress\';}';
+    h += 'else if(phase===\'complete\'){_cameraPhase=\'completion\';}';
+    h += 'else{_cameraPhase=\'scope\';}';
+    h += 'showView(\'camera\');';
+    h += '">';
+    h += '&#128247; Take Photo</button>';
+
+    // Before/After comparison (if both exist)
+    var scopePhotos = byPhase.scope;
+    var completionPhotos = byPhase.completion;
+    if (scopePhotos.length > 0 && completionPhotos.length > 0) {
+      h += '<div class="detail-section">';
+      h += '  <h3>Before / After</h3>';
+      var maxPairs = Math.min(scopePhotos.length, completionPhotos.length, 6);
+      for (var pi = 0; pi < maxPairs; pi++) {
+        var bSrc = scopePhotos[pi].thumbnail_url || scopePhotos[pi].storage_url;
+        var aSrc = completionPhotos[pi].thumbnail_url || completionPhotos[pi].storage_url;
+        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">';
+        h += '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:2px">Before</div>';
+        h += '<img src="' + esc(bSrc) + '" alt="Before" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(\'' + esc(scopePhotos[pi].storage_url) + '\')"></div>';
+        h += '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:2px">After</div>';
+        h += '<img src="' + esc(aSrc) + '" alt="After" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(\'' + esc(completionPhotos[pi].storage_url) + '\')"></div>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    // Phase galleries
+    ['scope', 'in_progress', 'completion', 'issue'].forEach(function(phaseKey) {
+      var photos = byPhase[phaseKey];
+      if (photos.length === 0) return;
+      var labels = { scope: 'Before (Scope)', in_progress: 'During (Progress)', completion: 'After (Completion)', issue: 'Issues' };
+      h += '<div class="detail-section">';
+      h += '  <h3>' + labels[phaseKey] + ' <span style="font-weight:400;font-size:12px;color:var(--sw-text-sec)">' + photos.length + '</span></h3>';
+      var gridId = 'tabPhotoGrid_' + phaseKey;
+      var collapsed = photos.length > 6 ? ' collapsed' : '';
+      h += '  <div class="photo-grid' + collapsed + '" id="' + gridId + '">';
+      photos.forEach(function(p) {
+        var src = p.thumbnail_url || p.storage_url;
+        h += '<img src="' + esc(src) + '" alt="' + esc(p.label || phaseKey) + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\', \'#' + gridId + '\')">';
+      });
+      h += '  </div>';
+      if (photos.length > 6) h += '<div class="photo-grid-more" onclick="togglePhotoGrid(\'' + gridId + '\', this)">Show all ' + photos.length + ' photos</div>';
+      h += '</div>';
+    });
+
+    // Upload area (for adding more photos in-context)
+    h += '<div class="detail-section">';
+    h += '  <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
+    h += '    <select id="tabPhotoPhase" style="height:38px;border-radius:8px;border:1px solid var(--sw-mid);padding:0 10px;font-size:14px;background:#fff">';
+    h += '      <option value="completion">After (Completion)</option>';
+    h += '      <option value="scope">Before (Site)</option>';
+    h += '      <option value="in_progress">During (Progress)</option>';
+    h += '      <option value="issue">Issue</option>';
+    h += '    </select>';
+    h += '  </div>';
+    h += '  <div class="upload-area" onclick="document.getElementById(\'tabPhotoInput\').click()">';
+    h += '    <svg viewBox="0 0 24 24"><path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3zM5 19l3-4 2 3 3-4 4 5H5z"/></svg>';
+    h += '    <p>Tap to add photos</p>';
+    h += '  </div>';
+    h += '  <input type="file" id="tabPhotoInput" accept="image/*" capture="environment" multiple style="display:none" onchange="handleTabPhotoUpload(this)">';
+    h += '  <div class="upload-progress" id="tabUploadProgress" style="display:none">';
+    h += '    <span id="tabUploadProgressText">Uploading...</span>';
+    h += '    <div class="upload-progress-bar"><div class="upload-progress-fill" id="tabUploadProgressFill"></div></div>';
+    h += '  </div>';
+    h += '</div>';
+
+    container.innerHTML = h;
+  }
+
+  // Photo upload handler for the Photos tab
+  window.handleTabPhotoUpload = function(input) {
+    var files = Array.from(input.files || []);
+    if (files.length === 0 || _uploading) return;
+    _uploading = true;
+    var phaseSelect = document.getElementById('tabPhotoPhase');
+    var selectedPhase = phaseSelect ? phaseSelect.value : 'completion';
+    var progress = document.getElementById('tabUploadProgress');
+    var progressText = document.getElementById('tabUploadProgressText');
+    var progressFill = document.getElementById('tabUploadProgressFill');
+    if (progress) progress.style.display = 'block';
+
+    uploadPhotosSequential(files, _currentJobId, selectedPhase, function(done, total) {
+      if (progressText) progressText.textContent = 'Uploading ' + done + '/' + total + '...';
+      if (progressFill) progressFill.style.width = Math.round((done / total) * 100) + '%';
+    }).then(function() {
+      _uploading = false;
+      if (progress) progress.style.display = 'none';
+      toast(files.length + ' photo(s) uploaded');
+      input.value = '';
+      // Reload job detail to refresh photo data, then re-render photos tab
+      loadJobDetail(_currentJobId);
+    }).catch(function(err) {
+      _uploading = false;
+      if (progress) progress.style.display = 'none';
+      toast('Upload failed — ' + friendlyError(err), true);
+      input.value = '';
+    });
+  };
+
+  function renderJobTab_comms(data, phase, container) {
+    var job = data.job;
+    var h = '';
+
+    if (!job.ghl_contact_id) {
+      h = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No GHL contact linked to this job</div>';
+      container.innerHTML = h;
+      return;
+    }
+
+    // Chat thread container (loaded async)
+    h += '<div id="tabCommsThread" style="max-height:400px;overflow-y:auto;margin-bottom:12px">';
+    h += '  <div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading messages...</div>';
+    h += '</div>';
+
+    // Quick-reply templates (Tier 2+)
+    if (canMessage()) {
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+      var templates = [
+        { label: 'On my way', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', on my way to you now.' },
+        { label: 'Running late', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', running about 15 minutes late. Apologies for the delay.' },
+        { label: 'Job complete', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', we\'ve finished up at your property. Everything looks great \u2014 you\'ll receive your invoice shortly.' },
+        { label: 'Gate code?', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', could you please let me know the gate code? Thanks!' }
+      ];
+      templates.forEach(function(t) {
+        h += '<button style="padding:6px 12px;border:1px solid var(--sw-border);border-radius:100px;font-size:12px;font-weight:600;background:#fff;color:var(--sw-text);cursor:pointer;font-family:var(--sw-font)" onclick="document.getElementById(\'tabCommsInput\').value=\'' + t.msg.replace(/'/g, "\\'") + '\';document.getElementById(\'tabCommsInput\').focus();">' + t.label + '</button>';
+      });
+      h += '</div>';
+
+      // Send input
+      h += '<div style="display:flex;gap:6px">';
+      h += '  <input type="text" id="tabCommsInput" placeholder="Type a message..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font)" onkeydown="if(event.key===\'Enter\')sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\')">';
+      h += '  <button class="btn btn-primary btn-small" onclick="sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\')">Send</button>';
+      h += '</div>';
+    } else {
+      // Tier 1 — read-only
+      h += '<div style="padding:10px;text-align:center;font-size:12px;color:var(--sw-text-sec);background:var(--sw-light);border-radius:8px">Messaging available for lead installers</div>';
+    }
+
+    container.innerHTML = h;
+
+    // Load conversation async
+    ghlApi('get_conversation', { contactId: job.ghl_contact_id }).then(function(result) {
+      var thread = document.getElementById('tabCommsThread');
+      if (!thread) return;
+      var msgs = result.messages || [];
+      if (msgs.length === 0) {
+        thread.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No messages yet</div>';
+        return;
+      }
+      var html = '';
+      msgs.forEach(function(m) {
+        var isMine = m.direction === 'outbound' || (m.user_id && _user && m.user_id === _user.id);
+        var align = isMine ? 'flex-end' : 'flex-start';
+        var bg = isMine ? 'var(--sw-blue)' : 'var(--sw-light)';
+        var color = isMine ? '#fff' : 'var(--sw-text)';
+        var metaColor = isMine ? 'rgba(255,255,255,0.7)' : 'var(--sw-text-sec)';
+        html += '<div style="display:flex;justify-content:' + align + ';margin-bottom:6px">';
+        html += '<div style="max-width:80%;padding:10px 14px;border-radius:12px;background:' + bg + ';color:' + color + ';font-size:14px;line-height:1.4">';
+        html += esc(m.body || m.message || '');
+        html += '<div style="font-size:10px;color:' + metaColor + ';margin-top:4px">' + timeAgo(m.dateAdded || m.created_at) + '</div>';
+        html += '</div></div>';
+      });
+      thread.innerHTML = html;
+      thread.scrollTop = thread.scrollHeight;
+    }).catch(function() {
+      var thread = document.getElementById('tabCommsThread');
+      if (thread) thread.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">Could not load messages</div>';
+    });
+  }
+
+  window.sendTabCommsMessage = function(contactId) {
+    var input = document.getElementById('tabCommsInput');
+    var text = (input || {}).value;
+    if (!text || !text.trim() || !_currentJobId) return;
+    input.value = '';
+    input.disabled = true;
+    ghlApi('send_sms', null, { contactId: contactId, message: text.trim(), jobId: _currentJobId }).then(function() {
+      input.disabled = false;
+      toast('Sent');
+      // Refresh comms tab
+      refreshJobTab('comms');
+    }).catch(function(err) {
+      input.disabled = false;
+      toast('Could not send \u2014 ' + friendlyError(err), true);
+    });
+  };
+
+  function renderJobTab_log(data, phase, container) {
+    var h = '';
+    var notes = data.notes || [];
+    var media = data.media || [];
+    var crew = data.crew || [];
+
+    // Add Note input at top
+    h += '<div style="display:flex;gap:8px;margin-bottom:12px">';
+    h += '  <input type="text" id="tabNoteInput" placeholder="Log a note \u2014 issue, change, observation..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);" onkeydown="if(event.key===\'Enter\')submitTabNote()">';
+    h += '  <button onclick="submitTabNote()" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;white-space:nowrap;">Send</button>';
+    h += '</div>';
+    // Voice note button
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+      h += '<button class="btn btn-secondary btn-small" id="tabBtnVoice" onclick="toggleVoiceNote()" style="margin-bottom:12px;font-size:12px">';
+      h += '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px;margin-right:4px"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
+      h += ' Voice Note</button>';
+    }
+
+    // Build merged timeline: notes + clock events + photos
+    var timeline = [];
+
+    // Notes
+    notes.forEach(function(n) {
+      timeline.push({
+        time: n.created_at,
+        type: n.event_type || 'note',
+        icon: n.event_type === 'site_note' ? '&#128221;' : (n.event_type === 'clock_event' ? '&#9201;' : (n.event_type === 'alert' ? '&#9888;' : '&#128221;')),
+        author: (n.users && n.users.name) || 'System',
+        text: (n.detail_json && n.detail_json.text) || '',
+        isAdmin: n.detail_json && n.detail_json.from_ops
+      });
+    });
+
+    // Photos (show as timeline entries)
+    media.forEach(function(m) {
+      var labels = { scope: 'Before', in_progress: 'During', completion: 'After', issue: 'Issue' };
+      timeline.push({
+        time: m.created_at,
+        type: 'photo',
+        icon: '&#128248;',
+        author: '',
+        text: (labels[m.phase] || 'Photo') + (m.label ? ': ' + m.label : ''),
+        thumb: m.thumbnail_url || m.storage_url,
+        fullUrl: m.storage_url
+      });
+    });
+
+    // Sort newest first
+    timeline.sort(function(a, b) { return new Date(b.time) - new Date(a.time); });
+
+    // Pending offline notes
+    var pendingNotes = [];
+    try { pendingNotes = JSON.parse(localStorage.getItem('sw_pending_notes') || '[]'); } catch(e) {}
+    var jobPending = pendingNotes.filter(function(n) { return n.jobId === _currentJobId; });
+    if (jobPending.length > 0) {
+      jobPending.forEach(function(pn) {
+        h += '<div style="padding:10px;margin-bottom:6px;background:#FEF3C7;border-radius:8px;border-left:3px solid var(--sw-yellow)">';
+        h += '<div style="font-size:13px;color:var(--sw-text)">' + esc(pn.text) + '</div>';
+        h += '<div style="font-size:11px;color:var(--sw-yellow);margin-top:4px">&#9888; Pending sync</div>';
+        h += '</div>';
+      });
+    }
+
+    // Render timeline
+    h += '<div id="tabNotesList">';
+    if (timeline.length === 0 && jobPending.length === 0) {
+      h += '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No activity logged yet</div>';
+    } else {
+      timeline.forEach(function(entry) {
+        var adminStyle = entry.isAdmin ? 'background:#E8F4FD;border-left:3px solid var(--sw-blue);' : '';
+        h += '<div style="padding:10px;margin-bottom:6px;border-radius:8px;background:var(--sw-light);' + adminStyle + '">';
+        h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+        h += '<span style="font-size:14px">' + entry.icon + '</span>';
+        if (entry.author) h += '<span style="font-size:12px;font-weight:600;color:var(--sw-dark)">' + esc(entry.author) + '</span>';
+        if (entry.isAdmin) h += '<span style="font-size:10px;background:var(--sw-blue);color:#fff;padding:1px 5px;border-radius:4px">Office</span>';
+        h += '<span style="flex:1"></span>';
+        h += '<span style="font-size:11px;color:var(--sw-text-sec)">' + timeAgo(entry.time) + '</span>';
+        h += '</div>';
+        if (entry.text) h += '<div style="font-size:13px;color:var(--sw-text);white-space:pre-wrap">' + esc(entry.text) + '</div>';
+        if (entry.thumb) {
+          h += '<img src="' + esc(entry.thumb) + '" onclick="openLightbox(\'' + esc(entry.fullUrl) + '\')" style="margin-top:6px;width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer">';
+        }
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+
+    container.innerHTML = h;
+  }
+
+  // Note submission from Log tab
+  window.submitTabNote = function() {
+    var input = document.getElementById('tabNoteInput');
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text || !_currentJobId) return;
+    input.disabled = true;
+
+    // Optimistic UI
+    var list = document.getElementById('tabNotesList');
+    if (list) {
+      var tmp = document.createElement('div');
+      tmp.style.cssText = 'padding:10px;margin-bottom:6px;border-radius:8px;background:var(--sw-light)';
+      tmp.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:14px">&#128221;</span><span style="font-size:12px;font-weight:600;color:var(--sw-dark)">' + esc(_user ? _user.name : 'You') + '</span><span style="flex:1"></span><span style="font-size:11px;color:var(--sw-text-sec)">Just now</span></div><div style="font-size:13px;color:var(--sw-text)">' + esc(text) + '</div>';
+      var emptyMsg = list.querySelector('div[style*="text-align:center"]');
+      if (emptyMsg) emptyMsg.remove();
+      list.insertBefore(tmp, list.firstChild);
+    }
+
+    api('add_note', null, {
+      jobId: _currentJobId,
+      text: text,
+      eventType: 'site_note',
+      metadata: { user_id: _user ? _user.id : null, user_name: _user ? _user.name : null }
+    }).then(function() {
+      input.value = '';
+      input.disabled = false;
+      toast('Note saved');
+    }).catch(function(err) {
+      input.disabled = false;
+      drafts.queueNote(_currentJobId, text);
+      toast('Saved offline \u2014 will sync when connected');
+    });
+  };
 
   // Live timer updater — ticks every 30s while on job detail
   var _timerInterval = null;
