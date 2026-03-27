@@ -125,6 +125,158 @@ function _completenessScore(client) {
   return {score: score, total: total};
 }
 
+// ── Red flag / risk badges ──
+function _computeRedFlags(client) {
+  var flags = [];
+  var today = new Date();
+  var todayStr = today.toISOString().slice(0,10);
+
+  // Quote blowout
+  var quotedVal = 0, invoicedTotal = 0;
+  client.invoices.forEach(function(inv) {
+    invoicedTotal += Number(inv.total) || 0;
+    var p = typeof inv.pricing_json === 'string' ? JSON.parse(inv.pricing_json||'{}') : (inv.pricing_json||{});
+    quotedVal = Math.max(quotedVal, p.totalIncGST || p.total || 0);
+  });
+  if (quotedVal > 0 && invoicedTotal > quotedVal * 1.3) {
+    flags.push({key:'quote_blowout', label:'\uD83D\uDCCA '+(invoicedTotal/quotedVal).toFixed(1)+'x quote', priority:1});
+  }
+
+  // No chase activity (overdue 7d+ with no logs)
+  var hasAnyChaseLogs = client.invoices.some(function(inv){return inv.chase_logs && inv.chase_logs.length > 0;});
+  var hasOld = client.invoices.some(function(inv){return inv.days_overdue >= 7;});
+  if (!hasAnyChaseLogs && hasOld) {
+    flags.push({key:'no_chase', label:'\uD83D\uDCDD No chase activity', priority:2});
+  }
+
+  // Stale follow-up
+  if (client.invoices.some(function(inv){return inv.next_follow_up && inv.next_follow_up <= todayStr;})) {
+    flags.push({key:'stale_followup', label:'\u23F0 Overdue follow-up', priority:3});
+  }
+
+  // Repeat chaser (3+ manual attempts, no payment received)
+  var allLogs = [];
+  client.invoices.forEach(function(inv){ if(inv.chase_logs) allLogs = allLogs.concat(inv.chase_logs); });
+  var manualCount = allLogs.filter(function(l){return l.method==='call'||l.method==='sms'||l.method==='email';}).length;
+  var hasPaid = allLogs.some(function(l){return l.outcome==='Payment received';});
+  if (manualCount >= 3 && !hasPaid) {
+    flags.push({key:'repeat_chaser', label:'\uD83D\uDD04 '+manualCount+' chases', priority:4});
+  }
+
+  // Comms gone cold (14+ days)
+  if (allLogs.length > 0) {
+    allLogs.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+    var daysSince = Math.floor((today - new Date(allLogs[0].created_at)) / 86400000);
+    if (daysSince >= 14) flags.push({key:'comms_cold', label:'\uD83D\uDCAC Cold '+daysSince+'d', priority:5});
+  }
+
+  // First client (from backend)
+  if (client.first_client) {
+    flags.push({key:'first_client', label:'\uD83C\uDD95 First client', priority:6});
+  }
+
+  // No job linked
+  if (client.invoices.some(function(inv){return !inv.job_id;})) {
+    flags.push({key:'no_job', label:'\uD83D\uDD17 Unlinked invoice', priority:7});
+  }
+
+  flags.sort(function(a,b){return a.priority - b.priority;});
+  return flags;
+}
+function _renderRedFlagPills(flags, max) {
+  var show = max ? flags.slice(0,max) : flags;
+  if (!show.length) return '';
+  return '<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap;">'+show.map(function(f){
+    return '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fff3cd;color:#856404;font-weight:500;">'+f.label+'</span>';
+  }).join('')+'</div>';
+}
+
+// ── Chase narrative + suggested next step ──
+function _buildChaseNarrative(client) {
+  var today = new Date();
+  var todayStr = today.toISOString().slice(0,10);
+
+  // Gather ALL chase logs across ALL invoices, sorted newest first
+  var allLogs = [];
+  client.invoices.forEach(function(inv){ if(inv.chase_logs) allLogs = allLogs.concat(inv.chase_logs); });
+  allLogs.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+
+  var autoCount = allLogs.filter(function(l){return l.method==='auto_sms';}).length;
+  var manualLogs = allLogs.filter(function(l){return l.method==='call'||l.method==='sms'||l.method==='email';});
+  var promises = allLogs.filter(function(l){return l.outcome==='Promised to pay';});
+  var lastLog = allLogs.length > 0 ? allLogs[0] : null;
+  var daysSinceLast = lastLog ? Math.floor((today - new Date(lastLog.created_at)) / 86400000) : null;
+
+  // Build narrative
+  var parts = [];
+  if (autoCount > 0) {
+    var autoDates = allLogs.filter(function(l){return l.method==='auto_sms';}).slice(0,3).map(function(l){return _fmtDateShort(l.created_at);}).join(', ');
+    parts.push(autoCount+' auto-reminder'+(autoCount!==1?'s':'')+' sent ('+autoDates+')');
+  }
+  manualLogs.slice(0,3).forEach(function(log) {
+    var who = log.chased_by ? log.chased_by.split('@')[0] : '';
+    var method = log.method==='call'?'called':log.method==='sms'?'SMS\'d':'emailed';
+    parts.push((who?who+' ':'')+method+' '+_fmtDateShort(log.created_at)+(log.outcome?' \u2014 '+log.outcome:''));
+  });
+  if (promises.length > 0) {
+    var lastPromise = promises[0];
+    var promiseDate = lastPromise.follow_up_date || lastPromise.created_at;
+    if (promiseDate && promiseDate < todayStr) {
+      parts.push('Promise to pay passed with no payment');
+    }
+  }
+  if (daysSinceLast !== null && daysSinceLast > 14) parts.push('No contact in '+daysSinceLast+' days');
+  if (allLogs.length === 0) parts.push('No chase activity yet');
+
+  var summary = parts.join('. ')+'.';
+
+  // Determine suggestion based on client-level worst classification
+  var worst = _worstClassification(client.invoices);
+  var suggestion = '';
+  var urgency = 'low';
+
+  // Check conditions in priority order
+  var hasFollowUpDue = client.invoices.some(function(inv){return inv.next_follow_up && inv.next_follow_up <= todayStr;});
+  var hasBrokenPromise = promises.length > 0 && promises[0].follow_up_date && promises[0].follow_up_date < todayStr;
+
+  if (worst === 'blocked_by_us') {
+    suggestion = 'Resolve internal blocker before chasing';
+    urgency = 'medium';
+  } else if (worst === 'in_dispute') {
+    suggestion = 'Dispute needs resolution \u2014 don\'t chase for payment';
+    urgency = 'low';
+  } else if (allLogs.length === 0) {
+    suggestion = 'Needs first contact \u2014 call or SMS';
+    urgency = 'high';
+  } else if (hasBrokenPromise) {
+    suggestion = 'Follow up on broken promise from ' + _fmtDateShort(promises[0].follow_up_date);
+    urgency = 'high';
+  } else if (hasFollowUpDue) {
+    suggestion = 'Follow-up is due \u2014 contact ' + (client.contact_name||'').split(' ')[0];
+    urgency = 'high';
+  } else if (autoCount > 0 && manualLogs.length === 0) {
+    suggestion = 'Auto-reminders haven\'t worked \u2014 needs a manual call';
+    urgency = 'high';
+  } else if (manualLogs.length >= 3 && !allLogs.some(function(l){return l.outcome==='Payment received';})) {
+    suggestion = 'Consider escalation or formal demand';
+    urgency = 'medium';
+  } else if (daysSinceLast !== null && daysSinceLast < 3) {
+    suggestion = 'Chased '+daysSinceLast+'d ago \u2014 wait for response';
+    urgency = 'low';
+  } else {
+    suggestion = 'Follow up with ' + (client.contact_name||'').split(' ')[0];
+    urgency = 'medium';
+  }
+
+  // Mixed classification note
+  var unclassCount = client.invoices.filter(function(inv){return inv.classification==='unclassified';}).length;
+  if (unclassCount > 0 && worst !== 'unclassified') {
+    suggestion += ' (also '+unclassCount+' unclassified inv \u2014 triage needed)';
+  }
+
+  return { summary: summary, suggestion: suggestion, urgency: urgency };
+}
+
 // ── Chase priority scoring (client-level) ──
 function _chasePriorityScore(client) {
   var score = 0;
@@ -208,7 +360,14 @@ function renderClearDebtStats(data) {
   var html = '<div class="stat-card" style="grid-column:span 2;border-left:4px solid var(--sw-red);">';
   html += '<div class="stat-body"><div class="stat-label" style="display:flex;align-items:center;gap:6px;">TOTAL OVERDUE <button onclick="showClassificationGuide()" style="background:none;border:1px solid var(--sw-border);border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;color:var(--sw-text-sec);line-height:1;" title="Classification guide">?</button></div>';
   html += '<div class="stat-value" style="color:var(--sw-red);font-size:24px;">'+fmt$(data.total_outstanding)+'</div>';
-  html += '<div class="stat-sub">'+data.total_invoices+' invoices \u00B7 '+data.total_clients+' clients</div></div></div>';
+  // Xero sync timestamp
+  var syncLine = '';
+  if (data.last_synced_at) {
+    var minsAgo = Math.floor((Date.now() - new Date(data.last_synced_at).getTime()) / 60000);
+    var syncColor = minsAgo > 30 ? 'var(--sw-orange)' : 'var(--sw-text-sec)';
+    syncLine = ' \u00B7 <span style="color:'+syncColor+';">Xero synced '+minsAgo+'m ago</span> <button onclick="event.stopPropagation();refreshXeroSync()" style="font-size:9px;background:none;border:1px solid var(--sw-border);border-radius:4px;padding:0 4px;cursor:pointer;color:var(--sw-text-sec);">\u21BB</button>';
+  }
+  html += '<div class="stat-sub">'+data.total_invoices+' invoices \u00B7 '+data.total_clients+' clients'+syncLine+'</div></div></div>';
   ['genuine_debt','blocked_by_us','in_dispute','unclassified','bad_debt'].forEach(function(key) {
     var count=s[key]||0, amount=a[key]||0;
     if (count===0&&key!=='genuine_debt'&&key!=='unclassified') return;
@@ -311,6 +470,10 @@ function _renderClientCard(client) {
   // Scope snapshot — one-line job context
   html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;">'+_buildScopeSnapshot(client)+'</div>';
 
+  // Red flag badges (max 3 on collapsed, all on expanded)
+  var _redFlags = _computeRedFlags(client);
+  if (_redFlags.length > 0) html += _renderRedFlagPills(_redFlags, isExpanded ? 0 : 3);
+
   // Follow-up alert
   var fuInv = client.invoices.find(function(inv){return inv.next_follow_up&&inv.next_follow_up<=today;});
   if (fuInv) {
@@ -339,6 +502,26 @@ function _renderClientCard(client) {
       html += timeline;
       html += '</div>';
     }
+
+    // Personality note (if available)
+    if (client.personality_note) {
+      var pn = client.personality_note;
+      html += '<div style="padding:6px 16px;font-size:11px;color:var(--sw-text-sec);font-style:italic;background:#f8f6f0;border-bottom:1px solid var(--sw-border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
+      html += '<span>"\u200B'+pn.notes+'"</span>';
+      html += '<span style="font-size:9px;color:#999;">\u2014 '+(pn.chased_by?pn.chased_by.split('@')[0]:'')+', '+_fmtDateShort(pn.created_at)+'</span>';
+      html += '<button onclick="event.stopPropagation();clearDebtPersonalityNote(\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\')" style="font-size:9px;background:none;border:none;color:var(--sw-mid);cursor:pointer;text-decoration:underline;">edit</button>';
+      html += '</div>';
+    } else {
+      html += '<div style="padding:4px 16px;border-bottom:1px solid var(--sw-border);"><button onclick="event.stopPropagation();clearDebtPersonalityNote(\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\')" style="font-size:10px;background:none;border:none;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">+ Add personality note</button></div>';
+    }
+
+    // Chase narrative + suggested next step
+    var narrative = _buildChaseNarrative(client);
+    var urgColors = {high:'#e74c3c',medium:'#f39c12',low:'var(--sw-text-sec)'};
+    html += '<div style="padding:10px 16px;background:#f8f6f0;border-left:3px solid '+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';border-bottom:1px solid var(--sw-border);font-size:12px;">';
+    html += '<div style="color:var(--sw-text-sec);margin-bottom:3px;"><strong>CHASE SUMMARY:</strong> '+narrative.summary+'</div>';
+    html += '<div style="color:'+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';font-weight:600;">\u2192 '+narrative.suggestion+'</div>';
+    html += '</div>';
 
     // Tabs
     html += '<div style="display:flex;border-bottom:1px solid var(--sw-border);background:#fff;">';
@@ -796,4 +979,38 @@ function clearDebtNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
 async function clearDebtSaveNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
   var notes=document.getElementById('chaseNoteText')?.value?.trim(); if(!notes){showToast('Note is empty','warning');return;}
   try{await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'note',notes:notes});showToast('Note saved','success');document.querySelector('.modal-overlay').remove();loadClearDebt();}catch(e){showToast('Failed: '+e.message,'warning');}
+}
+
+// ── Personality Note ──
+function clearDebtPersonalityNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
+  var existing = '';
+  // Try to find existing note from client data
+  var client = (_clearDebtData?.clients||[]).find(function(c){return c.invoices.some(function(i){return i.xero_invoice_id===xeroInvoiceId;});});
+  if (client && client.personality_note) existing = client.personality_note.notes || '';
+  var overlay=document.createElement('div'); overlay.className='modal-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:92%;"><h3 style="margin:0 0 4px;color:var(--sw-dark);">Personality Note</h3><div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:12px;">What\'s '+((contactName||'').split(' ')[0]||'this person')+' like? This helps the next caller.</div><textarea id="personalityNoteText" class="form-input" style="width:100%;height:60px;resize:vertical;box-sizing:border-box;" placeholder="e.g. Friendly but non-committal on dates...">'+(existing||'')+'</textarea><div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;"><button class="btn btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button class="btn btn-sm btn-primary" onclick="clearDebtSavePersonalityNote(\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\',\''+(ghlContactId||'')+'\',\''+_esc(contactName)+'\')">Save</button></div></div>';
+  document.body.appendChild(overlay); overlay.querySelector('textarea').focus();
+}
+async function clearDebtSavePersonalityNote(xeroInvoiceId,jobId,ghlContactId,contactName) {
+  var notes=document.getElementById('personalityNoteText')?.value?.trim();
+  if(!notes){showToast('Note is empty','warning');return;}
+  try{
+    await opsPost('log_chase',{xero_invoice_id:xeroInvoiceId,job_id:jobId||null,ghl_contact_id:ghlContactId||null,contact_name:contactName,method:'personality_note',notes:notes});
+    showToast('Personality note saved','success');
+    document.querySelector('.modal-overlay').remove();
+    loadClearDebt();
+  }catch(e){showToast('Failed: '+e.message,'warning');}
+}
+
+// ── Xero Sync Refresh ──
+async function refreshXeroSync() {
+  showToast('Syncing with Xero...','info');
+  try {
+    await opsPost('trigger_xero_sync',{});
+    // Wait briefly for sync to process
+    await new Promise(function(r){setTimeout(r,3000);});
+    showToast('Xero data refreshed','success');
+    loadClearDebt();
+  } catch(e) { showToast('Sync failed: '+e.message,'warning'); }
 }
