@@ -262,11 +262,23 @@ function _computeRedFlags(client) {
   flags.sort(function(a,b){return a.priority - b.priority;});
   return flags;
 }
+var _flagSeverity = {
+  no_chase:'high', stale_followup:'high', quote_blowout:'high',
+  repeat_chaser:'medium', comms_cold:'medium',
+  first_client:'low', no_job:'low'
+};
+var _flagStyles = {
+  high: 'background:#fef2f2;color:#dc3545;border:1px solid #dc354520;',
+  medium: 'background:#fff7ed;color:#e67e22;border:1px solid #e67e2220;',
+  low: 'background:#f5f6f8;color:var(--sw-text-sec);border:1px solid var(--sw-border);'
+};
 function _renderRedFlagPills(flags, max) {
   var show = max ? flags.slice(0,max) : flags;
   if (!show.length) return '';
   return '<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap;">'+show.map(function(f){
-    return '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fff3cd;color:#856404;font-weight:500;">'+f.label+'</span>';
+    var sev = _flagSeverity[f.key] || 'low';
+    var style = _flagStyles[sev] || _flagStyles.low;
+    return '<span style="font-size:9px;padding:1px 5px;border-radius:8px;font-weight:500;'+style+'">'+f.label+'</span>';
   }).join('')+'</div>';
 }
 
@@ -530,7 +542,10 @@ function _renderClientCard(client) {
     invoicedTotal += Number(inv.amount_due) + Number(inv.amount_paid || 0);
   });
 
-  var html = '<div class="chase-card" style="background:#fff;border:1px solid var(--sw-border);border-left:4px solid '+wc.color+';border-radius:8px;overflow:hidden;">';
+  var _cs = _completenessScore(client);
+  var _csColor = _cs.score>=5?'#27ae60':_cs.score>=3?'#f39c12':'#e74c3c';
+  var html = '<div class="chase-card" style="background:#fff;border:1px solid var(--sw-border);border-left:4px solid '+wc.color+';border-radius:8px;overflow:hidden;position:relative;">';
+  if (_cs.score<_cs.total) html += '<div style="position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:'+_csColor+'15;color:'+_csColor+';border:1px solid '+_csColor+'30;" title="Data completeness: '+_cs.score+' of '+_cs.total+' fields populated">'+_cs.score+'/'+_cs.total+'</div>';
 
   // ── Clickable header ──
   html += '<div style="padding:16px;cursor:pointer;" onclick="toggleClientExpand(\''+clientKey+'\')">';
@@ -541,8 +556,7 @@ function _renderClientCard(client) {
   html += '</div>';
   html += '<div style="text-align:right;">';
   html += '<div style="font-size:22px;font-weight:700;color:'+agingColor+';font-family:var(--sw-font-num);">'+fmt$(client.total_owed)+'</div>';
-  var _cs = _completenessScore(client);
-  html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+client.invoices.length+' inv \u00B7 '+oldest+'d oldest'+(_cs.score<_cs.total?' \u00B7 <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:'+(_cs.score>=5?'#27ae6018':'#f39c1218')+';color:'+(_cs.score>=5?'#27ae60':'#f39c12')+';font-weight:600;">'+_cs.score+'/'+_cs.total+'</span>':'')+'</div>';
+  html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+client.invoices.length+' inv \u00B7 '+oldest+'d oldest</div>';
   // Days since completion badge
   if (completedJob && completedJob.days_since_completion) {
     html += '<div style="font-size:10px;margin-top:2px;padding:1px 6px;border-radius:8px;background:#e74c3c12;color:#e74c3c;font-weight:600;display:inline-block;">Job done '+completedJob.days_since_completion+'d ago</div>';
@@ -556,7 +570,7 @@ function _renderClientCard(client) {
   html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+_buildScopeSnapshot(client)+'</span>';
   if (_redFlags.length > 0) {
     var showFlags = isExpanded ? _redFlags : _redFlags.slice(0,3);
-    showFlags.forEach(function(f){ html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fff3cd;color:#856404;font-weight:500;">'+f.label+'</span>'; });
+    showFlags.forEach(function(f){ var sev=_flagSeverity[f.key]||'low'; var st=_flagStyles[sev]||_flagStyles.low; html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;font-weight:500;'+st+'">'+f.label+'</span>'; });
   }
   if (fuInv) html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:#fef3f2;color:#e74c3c;font-weight:600;">\u23F0 Follow-up '+_fmtDateShort(fuInv.next_follow_up)+'</span>';
   html += '</div>';
@@ -592,7 +606,7 @@ function _renderClientCard(client) {
 
   // ── Expanded accordion ──
   if (isExpanded) {
-    html += '<div style="border-top:1px solid var(--sw-border);background:#fafafa;">';
+    html += '<div style="border-top:1px solid var(--sw-border);background:#fff;">';
 
     // ── Consolidated context block: narrative + timeline + personality note ──
     var narrative = _buildChaseNarrative(client);
@@ -600,19 +614,18 @@ function _renderClientCard(client) {
     var timeline = _buildTimeline(client.invoices);
     var pnBtnArgs = '\''+_esc(client.invoices[0]?.xero_invoice_id||'')+'\',\''+(client.invoices.find(function(i){return i.job_id;})?.job_id||'')+'\',\''+(client.ghl_contact_id||'')+'\',\''+_esc(client.contact_name)+'\'';
 
-    html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);border-left:3px solid '+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';background:#fafafa;font-size:12px;">';
-    // Suggested action (the most important line)
-    html += '<div style="color:'+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';font-weight:600;margin-bottom:4px;">\u2192 '+narrative.suggestion+'</div>';
-    // Chase summary (muted, one line)
-    html += '<div style="color:var(--sw-text-sec);font-size:11px;">'+narrative.summary+'</div>';
-    // Timeline (muted, compact)
-    if (timeline) html += '<div style="color:var(--sw-text-sec);font-size:10px;margin-top:4px;overflow-x:auto;white-space:nowrap;">'+timeline+'</div>';
+    html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);border-left:3px solid '+(urgColors[narrative.urgency]||'var(--sw-text-sec)')+';background:#f5f6f8;font-size:12px;">';
+    // Suggested action (the most important line — dark text, border provides urgency colour)
+    html += '<div style="color:var(--sw-dark);font-weight:600;font-size:13px;margin-bottom:6px;line-height:1.3;">\u2192 '+narrative.suggestion+'</div>';
+    // Chase summary + timeline (uniform muted context)
+    html += '<div style="color:var(--sw-text-sec);font-size:11px;line-height:1.4;">'+narrative.summary+'</div>';
+    if (timeline) html += '<div style="color:var(--sw-text-sec);font-size:11px;margin-top:2px;overflow-x:auto;white-space:nowrap;line-height:1.4;">'+timeline+'</div>';
     // Personality note inline (if exists) or subtle add link
     if (client.personality_note) {
       var pn = client.personality_note;
-      html += '<div style="font-size:10px;color:var(--sw-text-sec);font-style:italic;margin-top:4px;">"\u200B'+pn.notes+'" <span style="font-size:9px;color:#999;">\u2014 '+(pn.chased_by?pn.chased_by.split('@')[0]:'')+', '+_fmtDateShort(pn.created_at)+'</span> <button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:9px;background:none;border:none;color:var(--sw-mid);cursor:pointer;text-decoration:underline;">edit</button></div>';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;line-height:1.4;">"\u200B'+pn.notes+'" <span style="color:var(--sw-text-sec);">\u2014 '+(pn.chased_by?pn.chased_by.split('@')[0]:'')+', '+_fmtDateShort(pn.created_at)+'</span> <button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:11px;background:none;border:none;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">edit</button></div>';
     } else {
-      html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:9px;background:none;border:none;color:#bbb;cursor:pointer;">+ personality note</button></div>';
+      html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:11px;background:none;border:none;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">+ personality note</button></div>';
     }
     html += '</div>';
 
@@ -620,7 +633,7 @@ function _renderClientCard(client) {
     var aiClientKey = client.xero_contact_id||client.contact_name;
     var aiIntel = _aiIntelCache[aiClientKey];
     if (!aiIntel) {
-      html += '<div style="padding:6px 16px;border-bottom:1px solid var(--sw-border);"><button onclick="event.stopPropagation();loadAIIntel(\''+_esc(aiClientKey)+'\')" style="font-size:11px;padding:4px 10px;border-radius:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;cursor:pointer;font-weight:600;">\uD83E\uDD16 Analyse</button></div>';
+      html += '<div style="padding:6px 16px;border-bottom:1px solid var(--sw-border);"><button onclick="event.stopPropagation();loadAIIntel(\''+_esc(aiClientKey)+'\')" style="font-size:11px;padding:4px 10px;border-radius:6px;background:var(--sw-dark);color:#fff;border:none;cursor:pointer;font-weight:600;">\uD83E\uDD16 Analyse</button></div>';
     } else if (aiIntel.loading) {
       html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);font-size:12px;color:var(--sw-text-sec);"><span class="ai-spin"></span> Reading conversation & analysing...</div>';
     } else if (aiIntel.error) {
@@ -629,10 +642,10 @@ function _renderClientCard(client) {
       var riskColors={high:'#e74c3c',medium:'#f39c12',low:'#27ae60'};
       var payColors={high:'#27ae60',medium:'#f39c12',low:'#e74c3c'};
       var rc=riskColors[aiIntel.risk_level]||'#999', pc=payColors[aiIntel.payment_likelihood]||'#999';
-      html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);background:linear-gradient(135deg,#f8f9ff,#f0f4ff);font-size:12px;">';
+      html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);background:#fff;font-size:12px;">';
       // Header
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-      html += '<span style="font-size:10px;font-weight:700;color:var(--sw-dark);text-transform:uppercase;letter-spacing:0.5px;">\uD83E\uDD16 AI Assessment</span>';
+      html += '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-text-sec);">AI Assessment</span>';
       html += '<div style="display:flex;gap:4px;">';
       html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:'+rc+'15;color:'+rc+';font-weight:600;">Risk: '+(aiIntel.risk_level||'?').toUpperCase()+'</span>';
       html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:'+pc+'15;color:'+pc+';font-weight:600;">Pay: '+(aiIntel.payment_likelihood||'?').toUpperCase()+'</span>';
@@ -648,12 +661,12 @@ function _renderClientCard(client) {
       }
       // Suggested approach
       if (aiIntel.suggested_approach) {
-        html += '<div style="padding:5px 8px;background:#fff;border-left:2px solid var(--sw-orange);border-radius:0 4px 4px 0;margin-bottom:5px;font-size:11px;color:var(--sw-dark);">'+aiIntel.suggested_approach+'</div>';
+        html += '<div style="padding:5px 8px;background:#fff;border-left:2px solid var(--sw-dark);border-radius:0 4px 4px 0;margin-bottom:5px;font-size:11px;color:var(--sw-dark);">'+aiIntel.suggested_approach+'</div>';
       }
       // Draft SMS
       if (aiIntel.draft_sms) {
-        html += '<div style="display:flex;align-items:flex-start;gap:4px;padding:5px 8px;background:#e8f5e9;border-radius:4px;margin-bottom:4px;">';
-        html += '<div style="flex:1;font-size:10px;color:#2e7d32;"><strong>\uD83D\uDCAC</strong> '+aiIntel.draft_sms+'</div>';
+        html += '<div style="display:flex;align-items:flex-start;gap:4px;padding:5px 8px;background:#f5f6f8;border-radius:4px;margin-bottom:4px;">';
+        html += '<div style="flex:1;font-size:10px;color:var(--sw-text-sec);"><strong>\uD83D\uDCAC</strong> '+aiIntel.draft_sms+'</div>';
         html += '<button onclick="event.stopPropagation();navigator.clipboard.writeText(\''+_esc(aiIntel.draft_sms)+'\');showToast(\'Copied\',\'success\')" style="font-size:10px;background:none;border:none;cursor:pointer;" title="Copy">\uD83D\uDCCB</button>';
         html += '</div>';
       }
@@ -670,7 +683,7 @@ function _renderClientCard(client) {
     ['activity','invoices','quotes','comms'].forEach(function(tab) {
       var labels = {activity:'Activity'+(allLogCount?' ('+allLogCount+')':''),invoices:'Invoices ('+client.invoices.length+')',quotes:'Quotes & Scope',comms:'Comms'};
       var active = _expandedTab===tab;
-      html += '<button style="flex:1;padding:10px;font-size:12px;font-weight:'+(active?'700':'500')+';border:none;border-bottom:2px solid '+(active?'var(--sw-orange)':'transparent')+';background:transparent;cursor:pointer;color:'+(active?'var(--sw-orange)':'var(--sw-text-sec)')+'" onclick="event.stopPropagation();switchDebtTab(\''+tab+'\',\''+clientKey+'\')">'+labels[tab]+'</button>';
+      html += '<button style="flex:1;padding:10px;font-size:12px;font-weight:'+(active?'700':'500')+';border:none;border-bottom:2px solid '+(active?'var(--sw-dark)':'transparent')+';background:transparent;cursor:pointer;color:'+(active?'var(--sw-dark)':'var(--sw-text-sec)')+'" onclick="event.stopPropagation();switchDebtTab(\''+tab+'\',\''+clientKey+'\')">'+labels[tab]+'</button>';
     });
     html += '</div>';
 
@@ -686,30 +699,25 @@ function _renderClientCard(client) {
     var ghlId=client.ghl_contact_id||'';
     var firstInvId=client.invoices[0]?.xero_invoice_id||'';
     var firstJobId=client.invoices.find(function(i){return i.job_id;})?.job_id||'';
-    html += '<div style="padding:12px;border-top:1px solid var(--sw-border);background:#fff;">';
+    html += '<div style="padding:10px 12px;border-top:1px solid var(--sw-border);background:#fff;">';
 
-    // Row 1: Primary CTAs — Log Chase + Quick Note (big, prominent)
-    html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
-    html += '<button style="flex:1;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCCB Log Chase</button>';
-    html += '<button style="flex:1;background:transparent;color:var(--sw-orange);border:2px solid var(--sw-orange);border-radius:8px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtNote(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCDD Quick Note</button>';
+    // Row 1: Log Chase (primary CTA) + Call/SMS/Pay Link (secondary)
+    html += '<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">';
+    html += '<button style="background:var(--sw-orange);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;min-height:36px;" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ghlId+'\',\''+_esc(client.contact_name)+'\')">\uD83D\uDCCB Log Chase</button>';
+    if (hasGHL) {
+      html += '<button style="background:var(--sw-dark);color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;min-height:36px;" onclick="event.stopPropagation();clearDebtCall(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\')">\uD83D\uDCDE Call</button>';
+      html += '<button style="background:var(--sw-dark);color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;min-height:36px;" onclick="event.stopPropagation();clearDebtSMS(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ _esc(client.invoices[0]?.invoice_number||'')+'\',\''+client.total_owed+'\')">\uD83D\uDCAC SMS</button>';
+    }
+    if (firstJobId) html += '<button style="background:var(--sw-dark);color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;min-height:36px;" onclick="event.stopPropagation();clearDebtPayLink(\''+firstJobId+'\')">\uD83D\uDCB3 Pay Link</button>';
     html += '</div>';
 
     // Row 2: Quick outcomes — one-tap logging
-    html += '<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">';
+    html += '<div style="display:flex;gap:6px;align-items:center;">';
     html += '<span style="font-size:10px;color:var(--sw-text-sec);font-weight:600;white-space:nowrap;">Quick:</span>';
     var quickArgs = '\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\'';
-    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'No answer\')">No Answer</button>';
-    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Voicemail\')">Voicemail</button>';
-    html += '<button style="flex:1;background:#f5f5f5;border:1px solid var(--sw-border);border-radius:6px;padding:8px 6px;font-size:11px;cursor:pointer;min-height:36px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Promised to pay\')">Promised</button>';
-    html += '</div>';
-
-    // Row 3: Secondary actions — Call, SMS, Pay Link
-    html += '<div style="display:flex;gap:6px;align-items:center;">';
-    if (hasGHL) {
-      html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtCall(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\')">\uD83D\uDCDE Call</button>';
-      html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtSMS(\''+ghlId+'\',\''+_esc(client.contact_name)+'\',\''+_esc(firstInvId)+'\',\''+firstJobId+'\',\''+ _esc(client.invoices[0]?.invoice_number||'')+'\',\''+client.total_owed+'\')">\uD83D\uDCAC SMS</button>';
-    }
-    if (firstJobId) html += '<button class="btn btn-sm" style="font-size:12px;" onclick="event.stopPropagation();clearDebtPayLink(\''+firstJobId+'\')">\uD83D\uDCB3 Pay Link</button>';
+    html += '<button style="flex:1;background:#fff;border:1px solid var(--sw-border);border-radius:6px;padding:6px 8px;font-size:11px;font-weight:500;cursor:pointer;min-height:32px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'No answer\')">\uD83D\uDCF5 No Answer</button>';
+    html += '<button style="flex:1;background:#fff;border:1px solid var(--sw-border);border-radius:6px;padding:6px 8px;font-size:11px;font-weight:500;cursor:pointer;min-height:32px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Voicemail\')">\uD83D\uDCF1 Voicemail</button>';
+    html += '<button style="flex:1;background:#fff;border:1px solid var(--sw-border);border-radius:6px;padding:6px 8px;font-size:11px;font-weight:500;cursor:pointer;min-height:32px;color:var(--sw-dark);" onclick="event.stopPropagation();clearDebtQuickLog('+quickArgs+',\'Promised to pay\')">\uD83E\uDD1D Promised</button>';
     html += '</div>';
 
     html += '</div>';
@@ -770,12 +778,10 @@ function _renderActivityTab(client) {
   var html = '';
 
   // ── Inline note composer ──
-  html += '<div style="margin-bottom:16px;background:#fff;border:1px solid var(--sw-border);border-radius:10px;padding:14px;">';
-  html += '<textarea id="inlineNote_'+clientKey+'" style="width:100%;min-height:60px;max-height:200px;resize:vertical;font-size:16px;border:2px solid var(--sw-border);border-radius:8px;padding:12px;box-sizing:border-box;font-family:inherit;color:var(--sw-dark);line-height:1.4;" placeholder="Add a quick note..." onclick="event.stopPropagation()" onfocus="this.style.borderColor=\'var(--sw-orange)\'" onblur="this.style.borderColor=\'var(--sw-border)\'"></textarea>';
-  html += '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">';
-  html += '<button style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtSaveInlineNote(\''+clientKey+'\',\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\')">Save Note</button>';
-  html += '<button style="background:transparent;color:var(--sw-mid);border:1px solid var(--sw-border);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;min-height:44px;" onclick="event.stopPropagation();clearDebtLogChase(\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\')">Full Chase Log</button>';
-  html += '</div></div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-start;">';
+  html += '<textarea id="inlineNote_'+clientKey+'" style="flex:1;min-height:40px;max-height:200px;resize:vertical;font-size:13px;border:1px solid var(--sw-border);border-radius:6px;padding:8px 10px;box-sizing:border-box;font-family:inherit;color:var(--sw-dark);line-height:1.4;" placeholder="Add a quick note..." onclick="event.stopPropagation()" onfocus="this.style.borderColor=\'var(--sw-dark)\'" onblur="this.style.borderColor=\'var(--sw-border)\'"></textarea>';
+  html += '<button style="background:#f5f6f8;color:var(--sw-dark);border:1px solid var(--sw-border);border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;min-height:36px;white-space:nowrap;" onclick="event.stopPropagation();clearDebtSaveInlineNote(\''+clientKey+'\',\''+_esc(firstInvId)+'\',\''+(firstJobId||'')+'\',\''+(ghlId||'')+'\',\''+_esc(client.contact_name)+'\')">Save</button>';
+  html += '</div>';
 
   // ── Aggregate all logs across invoices ──
   var allLogs = [];
@@ -787,7 +793,7 @@ function _renderActivityTab(client) {
   allLogs.sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });
 
   if (!allLogs.length) {
-    html += '<div style="text-align:center;padding:24px;color:var(--sw-text-sec);font-size:13px;">No activity yet. Add a note or log a chase above.</div>';
+    html += '<div style="text-align:center;padding:16px;color:var(--sw-text-sec);font-size:12px;">No activity yet.</div>';
     return html;
   }
 
@@ -800,7 +806,7 @@ function _renderActivityTab(client) {
     var operator = log.chased_by ? log.chased_by.split('@')[0] : '';
     var isOptimistic = log._optimistic;
 
-    html += '<div style="padding:10px 14px;margin-bottom:8px;border-left:3px solid '+mc+';border-radius:0 8px 8px 0;background:#fff;border:1px solid var(--sw-border);border-left:3px solid '+mc+';'+(isOptimistic?'opacity:0.85;':'');
+    html += '<div style="padding:10px 14px;border-left:3px solid '+mc+';border-bottom:1px solid var(--sw-border);'+(isOptimistic?'opacity:0.85;':'');
     html += '" '+(isOptimistic?'data-optimistic="true"':'')+'>';
 
     // Header row
@@ -821,7 +827,7 @@ function _renderActivityTab(client) {
     // Footer: invoice badge + follow-up
     html += '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;">';
     html += '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#f0f4f7;color:var(--sw-text-sec);">'+log.invoice_number+'</span>';
-    if (log.follow_up_date) html += '<span style="font-size:10px;color:var(--sw-orange);">\u23F0 Follow-up '+_fmtDateShort(log.follow_up_date)+'</span>';
+    if (log.follow_up_date) html += '<span style="font-size:10px;color:var(--sw-text-sec);">\u23F0 Follow-up '+_fmtDateShort(log.follow_up_date)+'</span>';
     html += '</div>';
 
     html += '</div>';
@@ -894,23 +900,27 @@ function _renderInvoicesTab(client) {
     costEst = Math.max(costEst, p.costEstimate || p.totalCost || p.cost || 0);
   });
 
-  html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;padding:8px 12px;background:#f0f4f7;border-radius:6px;">';
+  html += '<div style="margin-bottom:10px;padding:8px 12px;background:#f0f4f7;border-radius:6px;">';
+  // 2-column grid layout
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;">';
   if (quotedVal > 0) {
-    html += '<div style="display:flex;flex-wrap:wrap;gap:2px 4px;align-items:baseline;">';
-    html += '<strong>Quoted:</strong> '+fmt$(quotedVal);
-    if (hasVariations) html += ' \u2192 <strong>Variations:</strong> <span style="color:'+(variationDelta>0?'var(--sw-orange)':'var(--sw-green)')+';">'+(variationDelta>0?'+':'')+fmt$(variationDelta)+'</span>';
-    html += ' \u2192 <strong>Invoiced:</strong> '+fmt$(totalInvoiced);
-    html += ' \u2192 <strong>Paid:</strong> <span style="color:var(--sw-green);">'+fmt$(totalPaid)+'</span>';
-    html += ' \u2192 <strong>Outstanding:</strong> <span style="color:#e74c3c;">'+fmt$(totalDue)+'</span>';
-    html += '</div>';
-  } else {
-    html += '<strong>Invoiced:</strong> '+fmt$(totalInvoiced)+' \u00B7 <strong>Paid:</strong> <span style="color:var(--sw-green);">'+fmt$(totalPaid)+'</span> \u00B7 <strong>Outstanding:</strong> <span style="color:#e74c3c;">'+fmt$(totalDue)+'</span>';
+    html += '<div><span style="font-size:11px;color:var(--sw-text-sec);">Quoted</span><div style="font-size:13px;font-weight:600;color:var(--sw-dark);">'+fmt$(quotedVal)+'</div></div>';
   }
-  // Progress bar
-  html += '<div style="height:5px;background:#e8e8e8;border-radius:3px;margin-top:6px;overflow:hidden;">';
+  html += '<div><span style="font-size:11px;color:var(--sw-text-sec);">Outstanding</span><div style="font-size:13px;font-weight:600;color:#e74c3c;">'+fmt$(totalDue)+'</div></div>';
+  html += '<div><span style="font-size:11px;color:var(--sw-text-sec);">Invoiced</span><div style="font-size:13px;font-weight:600;color:var(--sw-dark);">'+fmt$(totalInvoiced)+'</div></div>';
+  html += '<div><span style="font-size:11px;color:var(--sw-text-sec);">Paid</span><div style="font-size:13px;font-weight:600;color:var(--sw-green);">'+fmt$(totalPaid)+'</div></div>';
+  if (hasVariations) {
+    html += '<div><span style="font-size:11px;color:var(--sw-text-sec);">Variations</span><div style="font-size:13px;font-weight:600;color:var(--sw-dark);">'+(variationDelta>0?'+':'')+fmt$(variationDelta)+'</div></div>';
+  }
+  html += '</div>';
+  // Progress bar with percentage
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">';
+  html += '<div style="flex:1;height:5px;background:#e8e8e8;border-radius:3px;overflow:hidden;">';
   html += '<div style="height:100%;width:'+paidPct+'%;background:var(--sw-green);border-radius:3px;transition:width 0.3s;"></div></div>';
+  html += '<span style="font-size:11px;color:var(--sw-text-sec);white-space:nowrap;">'+paidPct+'% paid</span>';
+  html += '</div>';
   // Blowout warning
-  if (blowoutRatio > 1.3) html += '<div style="font-size:11px;color:#e67e22;margin-top:4px;">\u26A0\uFE0F Invoice is '+blowoutRatio.toFixed(1)+'x the original quote</div>';
+  if (blowoutRatio > 1.3) html += '<div style="font-size:11px;color:#dc3545;margin-top:4px;">\u26A0\uFE0F Invoice is '+blowoutRatio.toFixed(1)+'x the original quote</div>';
   // Margin line
   if (costEst > 0 && quotedVal > 0) {
     var marginOnQuote = Math.round((quotedVal - costEst) / quotedVal * 100);
@@ -926,29 +936,28 @@ function _renderInvoicesTab(client) {
     var invKey = _esc(inv.xero_invoice_id);
 
     html += '<div style="border:1px solid var(--sw-border);border-radius:6px;margin-bottom:6px;background:#fff;overflow:hidden;">';
-    // Summary row
-    html += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;cursor:pointer;flex-wrap:wrap;" onclick="event.stopPropagation();toggleInvoiceExpand(\''+invKey+'\')">';
+    // Row 1: Invoice summary (clickable)
+    html += '<div style="padding:8px 10px;cursor:pointer;" onclick="event.stopPropagation();toggleInvoiceExpand(\''+invKey+'\')">';
+    html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
     html += '<span style="font-size:12px;color:var(--sw-text-sec);">'+(isOpen?'\u25BC':'\u25B6')+'</span>';
     html += '<span style="font-weight:600;font-size:13px;color:var(--sw-dark);min-width:70px;">'+(inv.invoice_number||'-')+'</span>';
     if (inv.job_type) html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+inv.job_type+'</span>';
-    if (inv.job_number) html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+inv.job_number+'</span>';
     html += '<span style="font-weight:700;color:'+ag+';font-family:var(--sw-font-num);font-size:13px;">'+fmt$(inv.amount_due)+'</span>';
     html += '<span style="font-size:11px;color:'+ag+';">'+inv.days_overdue+'d</span>';
     html += '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+c.color+'18;color:'+c.color+';font-weight:600;"'+(inv.classification_reason?' title="'+_esc(inv.classification_reason)+'"':'')+'>'+c.icon+' '+c.short+(inv.auto_classified?' (auto)':'')+'</span>';
-    if (inv.classification_reason && !inv.auto_classified) html += '<span style="font-size:9px;color:var(--sw-text-sec);font-style:italic;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle;">'+inv.classification_reason.substring(0,60)+'</span>';
-    if (inv.flags&&inv.flags.length) inv.flags.forEach(function(f){html+='<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#fff3cd;color:#856404;">\u26A0 '+f+'</span>';});
-    // Per-invoice actions
-    html += '<span style="margin-left:auto;display:flex;gap:4px;flex-shrink:0;">';
+    html += '</div>';
+    // Row 2: Action buttons (right-aligned)
+    html += '<div style="display:flex;justify-content:flex-end;gap:4px;margin-top:4px;">';
     html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtClassify(\''+_esc(inv.xero_invoice_id)+'\',\''+inv.classification+'\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\',\''+_esc(inv.invoice_number)+'\',\''+_esc(inv.job_number||'')+'\',\''+(inv.amount_due||0)+'\')">Classify</button>';
     if (inv.classification==='blocked_by_us') html+='<button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtResolveBlocker(\''+_esc(inv.xero_invoice_id)+'\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\',\''+_esc(inv.invoice_number)+'\',\''+_esc(inv.job_number||'')+'\',\''+(inv.amount_due||0)+'\')">\u2705 Resolved</button>';
     if (inv.classification==='in_dispute') { html+='<button class="btn btn-sm btn-primary" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtResolveDispute(\''+_esc(inv.xero_invoice_id)+'\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\',\''+_esc(inv.invoice_number)+'\',\''+_esc(inv.job_number||'')+'\',\''+(inv.amount_due||0)+'\')">\u2705 Resolved</button>'; html+='<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--sw-red);" onclick="event.stopPropagation();clearDebtClassifyDirect(\''+_esc(inv.xero_invoice_id)+'\',\'bad_debt\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\')">\u26AB Off</button>'; }
     if (inv.classification==='bad_debt') html+='<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();clearDebtClassifyDirect(\''+_esc(inv.xero_invoice_id)+'\',\'unclassified\',\''+(inv.ghl_contact_id||client.ghl_contact_id||'')+'\')">\u21A9 Reopen</button>';
-    html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--sw-red);margin-left:4px;" onclick="event.stopPropagation();clearDebtVoidInvoice(\''+_esc(inv.xero_invoice_id)+'\',\''+_esc(inv.invoice_number)+'\',\''+(inv.amount_due||0)+'\')">\uD83D\uDDD1 Void</button>';
-    html += '</span></div>';
+    html += '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--sw-red);" onclick="event.stopPropagation();clearDebtVoidInvoice(\''+_esc(inv.xero_invoice_id)+'\',\''+_esc(inv.invoice_number)+'\',\''+(inv.amount_due||0)+'\')">\uD83D\uDDD1 Void</button>';
+    html += '</div></div>';
 
     // Expanded detail
     if (isOpen) {
-      html += '<div style="padding:10px 12px;border-top:1px solid var(--sw-border);background:#f8f8f8;">';
+      html += '<div style="padding:10px 12px;border-top:1px solid var(--sw-border);background:#fff;">';
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px;margin-bottom:10px;">';
       html += '<div><span style="color:var(--sw-text-sec);">Invoice Date:</span> '+(inv.invoice_date?fmtDate(inv.invoice_date):'-')+'</div>';
       html += '<div><span style="color:var(--sw-text-sec);">Status:</span> <strong>'+(inv.invoice_status||inv.status||'-')+'</strong></div>';
@@ -986,7 +995,7 @@ function _renderInvoicesTab(client) {
         var lastIcon = _methodIcons[lastLog.method] || '\u2022';
         html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec);padding:6px 10px;background:#f8f9fa;border-radius:6px;display:flex;justify-content:space-between;align-items:center;">';
         html += '<span>'+lastIcon+' '+logCount+' chase entr'+(logCount===1?'y':'ies')+' \u2014 last '+_relativeTime(lastLog.created_at)+'</span>';
-        html += '<button style="font-size:11px;background:none;border:none;color:var(--sw-orange);cursor:pointer;font-weight:600;text-decoration:underline;" onclick="event.stopPropagation();switchDebtTab(\'activity\',\''+clientKey+'\')">View in Activity \u2192</button>';
+        html += '<button style="font-size:11px;background:none;border:none;color:var(--sw-mid);cursor:pointer;font-weight:600;text-decoration:underline;" onclick="event.stopPropagation();switchDebtTab(\'activity\',\''+clientKey+'\')">View in Activity \u2192</button>';
         html += '</div>';
       }
       html += '</div>';
@@ -996,13 +1005,13 @@ function _renderInvoicesTab(client) {
 
   // Paid invoices — context for the person chasing (expandable with line items)
   if (client.paid_invoices && client.paid_invoices.length > 0) {
-    html += '<div style="margin-top:12px;padding:10px;background:#f0faf0;border:1px solid #27ae6030;border-radius:6px;">';
-    html += '<div style="font-size:11px;font-weight:600;color:#27ae60;margin-bottom:6px;">\u2705 '+client.paid_invoices.length+' Paid Invoice'+(client.paid_invoices.length!==1?'s':'')+'</div>';
+    html += '<div style="margin-top:12px;padding:8px;background:#fff;border:1px solid var(--sw-border);border-radius:6px;">';
+    html += '<div style="font-size:11px;font-weight:600;color:#27ae60;margin-bottom:4px;">\u2705 '+client.paid_invoices.length+' Paid Invoice'+(client.paid_invoices.length!==1?'s':'')+'</div>';
     client.paid_invoices.forEach(function(pi, idx) {
       var paidDate = pi.fully_paid_on ? _fmtDateShort(pi.fully_paid_on) : (pi.invoice_date ? _fmtDateShort(pi.invoice_date) : '');
       var piKey = 'paid_'+idx+'_'+(pi.invoice_number||'');
       var piExpanded = _expandedInvoice === piKey;
-      html += '<div style="border:1px solid #27ae6020;border-radius:4px;margin-bottom:4px;background:#fff;overflow:hidden;">';
+      html += '<div style="border:1px solid var(--sw-border);border-radius:4px;margin-bottom:3px;background:#fff;overflow:hidden;">';
       html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;" onclick="event.stopPropagation();toggleInvoiceExpand(\''+_esc(piKey)+'\')">';
       html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+(piExpanded?'\u25BC':'\u25B6')+'</span>';
       html += '<span style="font-size:12px;font-weight:600;color:var(--sw-dark);">'+(pi.invoice_number||'-')+'</span>';
@@ -1186,8 +1195,9 @@ function _renderCommsTimeline(messages) {
       html += '<div style="text-align:center;font-size:11px;color:var(--sw-text-sec);padding:4px 0;">\uD83D\uDCDE Call \u00B7 '+time+(dur?' \u00B7 '+dur:'')+(msg.body?' \u2014 '+msg.body:'')+'</div>';
     } else {
       var align = isOut?'margin-left:auto;':'margin-right:auto;';
-      var bg = isOut?'background:var(--sw-dark);color:#fff;':'background:#e8e8e8;color:var(--sw-dark);';
-      html += '<div style="max-width:75%;'+align+'padding:8px 12px;border-radius:12px;'+bg+'font-size:13px;word-wrap:break-word;">';
+      var bg = isOut?'background:#3b82f6;color:#fff;':'background:#f0f1f3;color:var(--sw-dark);';
+      var radius = isOut?'border-radius:12px 12px 2px 12px;':'border-radius:12px 12px 12px 2px;';
+      html += '<div style="max-width:75%;'+align+'padding:8px 12px;'+radius+bg+'font-size:13px;word-wrap:break-word;">';
       if (msg.subject) html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;opacity:0.8;">'+msg.subject+'</div>';
       html += '<div>'+(msg.body||'').replace(/\n/g,'<br>')+'</div>';
       html += '<div style="font-size:10px;opacity:0.6;margin-top:4px;text-align:right;">'+time+'</div></div>';
