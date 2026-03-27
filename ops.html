@@ -1108,6 +1108,8 @@
       transition: all 0.15s;
     }
     .filter-chip.active { background: var(--sw-dark); color: #fff; border-color: var(--sw-dark); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ai-spin { display:inline-block;width:12px;height:12px;border:2px solid #ccc;border-top-color:#667eea;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:4px; }
     .filter-search {
       padding: 6px 12px;
       border: 1px solid var(--sw-border);

@@ -12,6 +12,9 @@ var _expandedClient = null;
 var _expandedTab = 'invoices';
 var _expandedInvoice = null;
 var _commsCache = {};
+var _aiIntelCache = {};
+var _triageResults = null;
+var _triageLoading = false;
 
 var _debtClassLabels = {
   unclassified: { label: 'Unclassified', icon: '\u2B1C', color: '#999', short: 'Triage' },
@@ -401,6 +404,7 @@ function renderClearDebtFilters() {
   html += '</select>';
 
   // View toggle
+  html += '<button id="aiTriageBtn" onclick="runAITriage()" style="margin-left:8px;font-size:10px;padding:4px 10px;border-radius:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;cursor:pointer;font-weight:600;">\uD83E\uDD16 AI Triage</button>';
   html += '<div style="margin-left:auto;display:flex;gap:2px;border:1px solid var(--sw-border);border-radius:6px;overflow:hidden;">';
   html += '<button style="padding:4px 10px;font-size:11px;border:none;cursor:pointer;background:'+(_clearDebtViewMode==='cards'?'var(--sw-dark);color:#fff':'#fff;color:var(--sw-text-sec)')+';" onclick="setClearDebtView(\'cards\')">Cards</button>';
   html += '<button style="padding:4px 10px;font-size:11px;border:none;cursor:pointer;background:'+(_clearDebtViewMode==='list'?'var(--sw-dark);color:#fff':'#fff;color:var(--sw-text-sec)')+';" onclick="setClearDebtView(\'list\')">List</button>';
@@ -515,6 +519,53 @@ function _renderClientCard(client) {
       html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();clearDebtPersonalityNote('+pnBtnArgs+')" style="font-size:9px;background:none;border:none;color:#bbb;cursor:pointer;">+ personality note</button></div>';
     }
     html += '</div>';
+
+    // ── AI Intel Card (opt-in) ──
+    var aiClientKey = client.xero_contact_id||client.contact_name;
+    var aiIntel = _aiIntelCache[aiClientKey];
+    if (!aiIntel) {
+      html += '<div style="padding:6px 16px;border-bottom:1px solid var(--sw-border);"><button onclick="event.stopPropagation();loadAIIntel(\''+_esc(aiClientKey)+'\')" style="font-size:11px;padding:4px 10px;border-radius:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;cursor:pointer;font-weight:600;">\uD83E\uDD16 Analyse</button></div>';
+    } else if (aiIntel.loading) {
+      html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);font-size:12px;color:var(--sw-text-sec);"><span class="ai-spin"></span> Reading conversation & analysing...</div>';
+    } else if (aiIntel.error) {
+      html += '<div style="padding:6px 16px;border-bottom:1px solid var(--sw-border);font-size:11px;color:var(--sw-text-sec);">AI unavailable \u2014 <button onclick="event.stopPropagation();delete _aiIntelCache[\''+_esc(aiClientKey)+'\'];loadAIIntel(\''+_esc(aiClientKey)+'\')" style="font-size:10px;background:none;border:none;color:var(--sw-mid);cursor:pointer;text-decoration:underline;">retry</button></div>';
+    } else {
+      var riskColors={high:'#e74c3c',medium:'#f39c12',low:'#27ae60'};
+      var payColors={high:'#27ae60',medium:'#f39c12',low:'#e74c3c'};
+      var rc=riskColors[aiIntel.risk_level]||'#999', pc=payColors[aiIntel.payment_likelihood]||'#999';
+      html += '<div style="padding:10px 16px;border-bottom:1px solid var(--sw-border);background:linear-gradient(135deg,#f8f9ff,#f0f4ff);font-size:12px;">';
+      // Header
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+      html += '<span style="font-size:10px;font-weight:700;color:var(--sw-dark);text-transform:uppercase;letter-spacing:0.5px;">\uD83E\uDD16 AI Assessment</span>';
+      html += '<div style="display:flex;gap:4px;">';
+      html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:'+rc+'15;color:'+rc+';font-weight:600;">Risk: '+(aiIntel.risk_level||'?').toUpperCase()+'</span>';
+      html += '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:'+pc+'15;color:'+pc+';font-weight:600;">Pay: '+(aiIntel.payment_likelihood||'?').toUpperCase()+'</span>';
+      html += '</div></div>';
+      // Situation + tone
+      if (aiIntel.situation_summary) html += '<div style="font-size:11px;color:var(--sw-dark);margin-bottom:4px;">'+aiIntel.situation_summary+'</div>';
+      if (aiIntel.tone_assessment && aiIntel.tone_assessment.indexOf('No conversation')<0) html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:4px;"><em>Tone: '+aiIntel.tone_assessment+'</em></div>';
+      // Risk signals
+      if (aiIntel.risk_signals&&aiIntel.risk_signals.length) {
+        html += '<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:5px;">';
+        aiIntel.risk_signals.forEach(function(s){html+='<span style="font-size:9px;padding:1px 4px;border-radius:6px;background:#fff3cd;color:#856404;">\u26A0 '+s+'</span>';});
+        html += '</div>';
+      }
+      // Suggested approach
+      if (aiIntel.suggested_approach) {
+        html += '<div style="padding:5px 8px;background:#fff;border-left:2px solid var(--sw-orange);border-radius:0 4px 4px 0;margin-bottom:5px;font-size:11px;color:var(--sw-dark);">'+aiIntel.suggested_approach+'</div>';
+      }
+      // Draft SMS
+      if (aiIntel.draft_sms) {
+        html += '<div style="display:flex;align-items:flex-start;gap:4px;padding:5px 8px;background:#e8f5e9;border-radius:4px;margin-bottom:4px;">';
+        html += '<div style="flex:1;font-size:10px;color:#2e7d32;"><strong>\uD83D\uDCAC</strong> '+aiIntel.draft_sms+'</div>';
+        html += '<button onclick="event.stopPropagation();navigator.clipboard.writeText(\''+_esc(aiIntel.draft_sms)+'\');showToast(\'Copied\',\'success\')" style="font-size:10px;background:none;border:none;cursor:pointer;" title="Copy">\uD83D\uDCCB</button>';
+        html += '</div>';
+      }
+      // Refresh
+      var cacheAge=aiIntel._ts?Math.round((Date.now()-aiIntel._ts)/60000):0;
+      html += '<div style="text-align:right;"><button onclick="event.stopPropagation();delete _aiIntelCache[\''+_esc(aiClientKey)+'\'];loadAIIntel(\''+_esc(aiClientKey)+'\')" style="font-size:9px;background:none;border:none;color:#bbb;cursor:pointer;">\u21BB'+(cacheAge>0?' '+cacheAge+'m ago':'')+'</button></div>';
+      html += '</div>';
+    }
 
     // Tabs
     html += '<div style="display:flex;border-bottom:1px solid var(--sw-border);background:#fff;">';
@@ -924,6 +975,12 @@ function clearDebtSMS(ghlContactId,contactName,xeroInvoiceId,jobId,invoiceNumber
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
   overlay.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:480px;width:92%;"><h3 style="margin:0 0 12px;color:var(--sw-dark);">SMS to '+contactName+'</h3><textarea id="chaseSmsText" style="width:100%;height:120px;border:1px solid var(--sw-border);border-radius:6px;padding:10px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;">'+template+'</textarea><div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;">Edit the message above before sending.</div><div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;"><button class="btn btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">Cancel</button><button class="btn btn-sm btn-primary" onclick="clearDebtSendSMS(\''+ghlContactId+'\',\''+_esc(xeroInvoiceId)+'\',\''+(jobId||'')+'\')">Send SMS</button></div></div>';
   document.body.appendChild(overlay); overlay.querySelector('textarea').focus();
+  // Add AI Draft button
+  var client=(_clearDebtData?.clients||[]).find(function(c){return c.ghl_contact_id===ghlContactId||c.contact_name===contactName;});
+  var worst=client?_worstClassification(client.invoices):'unclassified';
+  var pNote=client&&client.personality_note?client.personality_note.notes:'';
+  var narr=client?_buildChaseNarrative(client):{summary:'',suggestion:''};
+  setTimeout(function(){_addAIDraftButton(ghlContactId,contactName,amount,worst,pNote,narr.summary,narr.suggestion);},50);
 }
 async function clearDebtSendSMS(ghlContactId,xeroInvoiceId,jobId) {
   var text=document.getElementById('chaseSmsText'); if(!text||!text.value.trim()){showToast('Message is empty','warning');return;}
@@ -1006,4 +1063,148 @@ async function refreshXeroSync() {
     showToast('Xero data refreshed','success');
     loadClearDebt();
   } catch(e) { showToast('Sync failed: '+e.message,'warning'); }
+}
+
+// ════════════════════════════════════════════════════════════
+// AI INTELLIGENCE
+// ════════════════════════════════════════════════════════════
+
+async function loadAIIntel(clientKey) {
+  if (_aiIntelCache[clientKey] && !_aiIntelCache[clientKey].error) return;
+  _aiIntelCache[clientKey] = {loading:true};
+  renderClearDebtCards(_clearDebtData);
+
+  var client = (_clearDebtData?.clients||[]).find(function(c){return (c.xero_contact_id||c.contact_name)===clientKey;});
+  if (!client) { _aiIntelCache[clientKey]={error:'Client not found'}; renderClearDebtCards(_clearDebtData); return; }
+
+  var jobIds=[]; var seen={};
+  client.invoices.forEach(function(inv){if(inv.job_id&&!seen[inv.job_id]){seen[inv.job_id]=true;jobIds.push(inv.job_id);}});
+
+  try {
+    var resp = await opsPost('ai_analyse_debt_client', {
+      contact_name: client.contact_name,
+      xero_contact_id: client.xero_contact_id||'',
+      ghl_contact_id: client.ghl_contact_id||'',
+      invoices: client.invoices.map(function(inv){return {
+        invoice_number:inv.invoice_number, amount_due:inv.amount_due,
+        days_overdue:inv.days_overdue, classification:inv.classification,
+        chase_logs:inv.chase_logs||[]
+      };}),
+      job_ids: jobIds,
+      personality_note: client.personality_note?client.personality_note.notes:'',
+      total_owed: client.total_owed
+    });
+    resp._ts = Date.now();
+    _aiIntelCache[clientKey] = resp;
+  } catch(e) {
+    _aiIntelCache[clientKey] = {error:e.message};
+  }
+  renderClearDebtCards(_clearDebtData);
+}
+
+async function runAITriage() {
+  if (_triageLoading) return;
+  _triageLoading = true;
+  var btn=document.getElementById('aiTriageBtn');
+  if(btn) btn.textContent='\u23F3 Analysing...';
+  _triageResults = null;
+  _renderTriagePanel();
+
+  try {
+    var clients = _sortClients(_filterClients(_clearDebtData)).slice(0,20);
+    var top = clients.map(function(c){
+      var allLogs=[]; c.invoices.forEach(function(inv){if(inv.chase_logs) allLogs=allLogs.concat(inv.chase_logs);});
+      allLogs.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+      var lastLog=allLogs[0];
+      var manualCount=allLogs.filter(function(l){return l.method==='call'||l.method==='sms'||l.method==='email';}).length;
+      var commsGap=lastLog?Math.round((Date.now()-new Date(lastLog.created_at).getTime())/86400000):999;
+      return {
+        contact_name:c.contact_name, total_owed:c.total_owed, oldest_days:_oldestDays(c.invoices),
+        classification:_worstClassification(c.invoices), invoice_count:c.invoices.length,
+        chase_count:manualCount, last_chase_date:lastLog?lastLog.created_at:null,
+        last_chase_outcome:lastLog?lastLog.outcome:null,
+        has_broken_promise:allLogs.some(function(l){return l.outcome==='Promised to pay';}),
+        personality_note:c.personality_note?c.personality_note.notes:'',
+        comms_gap_days:commsGap
+      };
+    });
+    var totalVal = (_clearDebtData?.total_outstanding)||0;
+    var data = await opsPost('ai_triage_debt_portfolio',{clients:top,total_portfolio_value:totalVal});
+    _triageResults = data.actions||data||[];
+  } catch(e) {
+    _triageResults = [{error:e.message}];
+  }
+  _triageLoading = false;
+  if(btn) btn.textContent='\uD83E\uDD16 AI Triage';
+  _renderTriagePanel();
+}
+
+function _renderTriagePanel() {
+  var existing=document.getElementById('aiTriagePanel');
+  if(existing) existing.remove();
+  if(!_triageResults&&!_triageLoading) return;
+
+  var container=document.getElementById('clearDebtCards');
+  var panel=document.createElement('div');
+  panel.id='aiTriagePanel';
+  panel.style.cssText='margin-bottom:16px;border:1px solid #667eea30;border-radius:8px;overflow:hidden;background:#fff;';
+
+  var html='<div style="padding:12px 16px;background:linear-gradient(135deg,#667eea08,#764ba208);border-bottom:1px solid #667eea20;">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:center;">';
+  html+='<span style="font-weight:700;font-size:14px;color:var(--sw-dark);">\uD83E\uDD16 AI Triage \u2014 Today\'s Priority Actions</span>';
+  html+='<button onclick="document.getElementById(\'aiTriagePanel\').remove();_triageResults=null;" style="background:none;border:none;font-size:16px;cursor:pointer;color:#999;">&times;</button>';
+  html+='</div></div>';
+
+  if (_triageLoading) {
+    html+='<div style="padding:24px;text-align:center;color:var(--sw-text-sec);font-size:13px;"><span class="ai-spin"></span> Analysing portfolio...</div>';
+  } else if (_triageResults&&_triageResults.length>0&&!_triageResults[0].error) {
+    var icons={call:'\uD83D\uDCDE',sms:'\uD83D\uDCAC',email:'\uD83D\uDCE7',investigate:'\uD83D\uDD0D',escalate:'\u26A0\uFE0F',write_off_candidate:'\u26AB',resolve_blocker:'\uD83D\uDFE1',resolve_dispute:'\uD83D\uDFE0'};
+    html+='<div style="padding:8px 12px;">';
+    _triageResults.forEach(function(item,idx){
+      html+='<div style="display:flex;gap:10px;padding:8px 4px;border-bottom:1px solid var(--sw-border);align-items:flex-start;">';
+      html+='<span style="font-size:16px;font-weight:700;color:#667eea;min-width:22px;">'+(idx+1)+'</span>';
+      html+='<div style="flex:1;">';
+      html+='<div style="font-weight:600;font-size:13px;color:var(--sw-dark);">'+(icons[item.action]||'')+' '+item.contact_name+' <span style="color:var(--sw-orange);font-family:var(--sw-font-num);">'+fmt$(item.total_owed)+'</span></div>';
+      html+='<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">'+item.reasoning+'</div>';
+      html+='</div>';
+      html+='<span style="font-size:10px;color:var(--sw-text-sec);white-space:nowrap;">'+(item.time_estimate||'')+'</span>';
+      html+='</div>';
+    });
+    html+='</div>';
+  } else {
+    html+='<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px;">'+(_triageResults&&_triageResults[0]&&_triageResults[0].error?'Error: '+_triageResults[0].error:'No results.')+'</div>';
+  }
+  panel.innerHTML=html;
+  container.parentNode.insertBefore(panel,container);
+}
+
+// ── AI SMS Draft ──
+function _addAIDraftButton(ghlId, contactName, totalOwed, classification, personalityNote, narrativeSummary, narrativeSuggestion) {
+  var textarea=document.getElementById('chaseSmsText');
+  if(!textarea) return;
+  var parent=textarea.parentNode;
+  var existing=document.getElementById('aiDraftBtn');
+  if(existing) return;
+  var btn=document.createElement('button');
+  btn.id='aiDraftBtn';
+  btn.className='btn btn-sm';
+  btn.style.cssText='font-size:10px;padding:3px 8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:4px;cursor:pointer;margin-top:4px;';
+  btn.textContent='\uD83E\uDD16 AI Draft';
+  btn.onclick=async function(e){
+    e.stopPropagation();
+    btn.textContent='\u23F3 Drafting...';btn.disabled=true;
+    try{
+      var data=await opsPost('ai_draft_chase_message',{
+        contact_name:contactName, ghl_contact_id:ghlId, channel:'sms',
+        total_owed:Number(totalOwed)||0, classification:classification||'unclassified',
+        personality_note:personalityNote||'', last_chase_summary:narrativeSummary||'',
+        context_hint:narrativeSuggestion||''
+      });
+      if(data.draft&&textarea) textarea.value=data.draft;
+      btn.textContent='\uD83E\uDD16 AI Draft';btn.disabled=false;
+    }catch(err){btn.textContent='\uD83E\uDD16 AI Draft';btn.disabled=false;showToast('Draft failed: '+err.message,'warning');}
+  };
+  // Insert after the hint text below textarea
+  var hint=textarea.nextElementSibling;
+  if(hint) hint.after(btn); else parent.appendChild(btn);
 }
