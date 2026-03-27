@@ -1892,12 +1892,9 @@
     .jd-action-bar {
       display: flex;
       gap: 8px;
-      padding: 10px 16px;
-      background: var(--sw-dark);
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      position: sticky;
-      top: 0;
-      z-index: 50;
+      padding: 8px 16px;
+      background: var(--sw-card);
+      border-bottom: 1px solid var(--sw-border);
     }
     .jd-action-btn {
       flex: 1;
@@ -1905,31 +1902,23 @@
       align-items: center;
       justify-content: center;
       gap: 6px;
-      min-height: 48px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 700;
+      min-height: 44px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
       font-family: var(--sw-font);
       cursor: pointer;
       text-decoration: none;
       transition: all 0.15s;
+      border: 1px solid var(--sw-border);
+      background: var(--sw-card);
+      color: var(--sw-dark);
     }
-    .jd-action-btn:active { opacity: 0.7; }
-    .jd-action-btn.act-call {
-      background: rgba(39,174,96,0.15);
-      color: #27ae60;
-      border: 1px solid rgba(39,174,96,0.3);
-    }
-    .jd-action-btn.act-text {
-      background: rgba(52,152,219,0.15);
-      color: #3498db;
-      border: 1px solid rgba(52,152,219,0.3);
-    }
-    .jd-action-btn.act-nav {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.2);
-    }
+    .jd-action-btn:active { background: var(--sw-light); }
+    .jd-action-btn svg { fill: var(--sw-mid); }
+    .jd-action-btn.act-call svg { fill: var(--sw-green); }
+    .jd-action-btn.act-text svg { fill: var(--sw-blue); }
+    .jd-action-btn.act-nav svg { fill: var(--sw-mid); }
 
     /* ══════════════════════════════════════════════════
        JOB DETAIL — Tab System (pill-style)
