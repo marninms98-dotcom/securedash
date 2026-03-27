@@ -1807,9 +1807,7 @@
       gap: 6px;
     }
     .prep-checklist-item::before {
-      content: '☐';
-      color: var(--sw-text-sec);
-      font-size: 14px;
+      content: none;
     }
 
     /* Scope Gallery — horizontal swipeable */
@@ -4855,9 +4853,6 @@
       h += '</div>';
     }
 
-    // Prep checklist
-    h += renderPrepChecklist(data, phase);
-
     h += '</div>';
     return h;
   }
@@ -5599,12 +5594,13 @@
     // Key dimensions
     h += renderKeyDimensions(data);
 
-    // 3D model button (if scope data available)
+    // 3D model preview card (if scope data available)
     var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
     if (scopeConfig.length || scopeConfig.totalLength || (job.scope_json && job.scope_json.job && job.scope_json.job.runs)) {
-      h += '<div style="margin:8px 0">';
-      h += '<button class="btn btn-secondary" style="width:100%;font-weight:700" onclick="open3DViewer()">';
-      h += '&#128306; View 3D Model (Full Screen)</button>';
+      h += '<div onclick="open3DViewer()" style="margin:12px 0;padding:20px;background:linear-gradient(135deg,#1a1a2e,#293C46);border-radius:12px;cursor:pointer;text-align:center">';
+      h += '<div style="font-size:40px;margin-bottom:8px">&#128306;</div>';
+      h += '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px">View 3D Model</div>';
+      h += '<div style="font-size:12px;color:rgba(255,255,255,0.6)">Tap to open interactive model viewer</div>';
       h += '</div>';
     }
 
@@ -7638,7 +7634,7 @@
   var _calCrewList = [];
   var _scheduleSubTab = 'calendar';
 
-  function showScheduleSubTab(tab) {
+  window.showScheduleSubTab = function(tab) {
     _scheduleSubTab = tab;
     var calView = document.getElementById('scheduleCalendarView');
     var availView = document.getElementById('scheduleAvailView');
@@ -7668,14 +7664,14 @@
     }
   }
 
-  function calNavWeek(delta) {
+  window.calNavWeek = function(delta) {
     if (!_calWeekStart) _calWeekStart = getMonday(new Date());
     _calWeekStart = new Date(_calWeekStart.getTime() + delta * 7 * 86400000);
     _calCacheTime = 0; // Force reload
     loadTeamCalendar();
   }
 
-  function setCalRange(range) {
+  window.setCalRange = function(range) {
     _calRange = range;
     var weekBtn = document.getElementById('calRangeWeek');
     var monthBtn = document.getElementById('calRangeMonth');
@@ -8264,7 +8260,7 @@
   // AVAILABILITY — existing functionality
   // ══════════════════════════════════════════════════
 
-  function renderScheduleView() {
+  window.renderScheduleView = function() {
     var container = document.getElementById('scheduleContent');
     if (!container) return;
     if (!_calendarMonth) {
@@ -8407,7 +8403,7 @@
   };
 
   var _activeNoteDate = null;
-  function showAvailNote(dateStr) {
+  window.showAvailNote = function(dateStr) {
     _activeNoteDate = dateStr;
     var box = document.getElementById('availNoteBox');
     var label = document.getElementById('availNoteDate');
@@ -9198,7 +9194,7 @@
     html += '  <div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">My Hourly Rate</div>';
     html += '  <div style="display:flex;gap:8px;align-items:center">';
     html += '    <span style="font-size:18px;font-weight:700;color:var(--sw-mid)">$</span>';
-    html += '    <input type="number" id="inputTradeRate" step="0.01" min="0" placeholder="55.00" style="flex:1;padding:10px 12px;border:2px solid var(--sw-border);border-radius:8px;font-size:16px;font-weight:600;color:var(--sw-dark);font-family:var(--sw-font)" />';
+    html += '    <input type="number" id="inputTradeRate" step="0.01" min="0" placeholder="35.00" style="flex:1;padding:10px 12px;border:2px solid var(--sw-border);border-radius:8px;font-size:16px;font-weight:600;color:var(--sw-dark);font-family:var(--sw-font)" />';
     html += '    <span style="font-size:14px;color:var(--sw-text-sec)">/hr</span>';
     html += '    <button onclick="updateTradeRate()" style="padding:10px 16px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Update</button>';
     html += '  </div>';
@@ -12619,12 +12615,12 @@
     overlay.classList.add('active');
   }
 
-  function closeIssueOverlay() {
+  window.closeIssueOverlay = function() {
     document.getElementById('issueOverlay').classList.remove('active');
     _selectedIssue = null;
-  }
+  };
 
-  function selectIssue(btn, type) {
+  window.selectIssue = function(btn, type) {
     _selectedIssue = type;
     var opts = btn.parentElement.querySelectorAll('.issue-option');
     for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
@@ -12641,7 +12637,7 @@
     }
   }
 
-  function submitIssue() {
+  window.submitIssue = function() {
     if (!_selectedIssue || !_currentJob) return;
     var detail = document.getElementById('issueDetail').value.trim();
     var btn = document.getElementById('issueSubmitBtn');
