@@ -6,7 +6,8 @@ var _clearDebtData = null;
 var _clearDebtFilter = 'all';
 var _clearDebtSearch = '';
 var _clearDebtViewMode = 'cards';
-var _clearDebtSort = { col: 'total', asc: false };
+var _clearDebtSort = { col: 'priority', asc: false };
+var _clearDebtMaxOwed = 1; // cached max total_owed for normalised scoring
 var _expandedClient = null;
 var _expandedTab = 'invoices';
 var _expandedInvoice = null;
@@ -58,13 +59,118 @@ function _filterClients(data) {
 }
 function _esc(s){return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 
+// Build one-line scope snapshot for collapsed card
+function _buildScopeSnapshot(client) {
+  var jobsSeen = {}, primary = null, jobCount = 0;
+  client.invoices.forEach(function(inv) {
+    if (inv.job_id && !jobsSeen[inv.job_id]) {
+      jobsSeen[inv.job_id] = true; jobCount++;
+      if (!primary || (Number(inv.amount_due) > Number(primary.amount_due))) primary = inv;
+    }
+  });
+  var suburbs = []; client.invoices.forEach(function(inv){ if (inv.site_suburb && suburbs.indexOf(inv.site_suburb)<0) suburbs.push(inv.site_suburb); });
+  var pin = suburbs.length ? '\uD83D\uDCCD '+suburbs.join(', ')+' \u2014 ' : '';
+  if (!primary || !primary.job_id) return pin ? pin+'<span style="color:var(--sw-orange);">No job linked</span>' : '<span style="color:var(--sw-orange);">\uD83D\uDCCD No job linked</span>';
+
+  var desc = '';
+  var scope = typeof primary.scope_json === 'string' ? JSON.parse(primary.scope_json||'{}') : (primary.scope_json||{});
+  if (primary.job_type === 'fencing' && scope && Object.keys(scope).length > 0) {
+    var fj = scope.job || scope;
+    var runs = fj.runs || scope.sections || [];
+    var totalM = runs.reduce(function(s,r){return s+(r.length||r.totalLength||r.lengthM||0);},0);
+    var gates = fj.gates || [];
+    desc = Math.round(totalM)+'m';
+    if (fj.sheetColour||fj.colour) desc += ' '+(fj.sheetColour||fj.colour);
+    desc += ' fence';
+    if (gates.length) desc += ' + '+gates.length+' gate'+(gates.length!==1?'s':'');
+  } else if (scope && Object.keys(scope).length > 0) {
+    var cfg = scope.config || {};
+    if (cfg.length && cfg.projection) {
+      desc = cfg.length+'m \u00D7 '+cfg.projection+'m';
+      if (cfg.roofStyle) desc += ' '+cfg.roofStyle;
+      desc += ' patio';
+      if (cfg.sheetColor) { var sc = typeof cfg.sheetColor==='object'?cfg.sheetColor.name:cfg.sheetColor; if(sc) desc += ', '+sc; }
+    } else {
+      desc = (primary.job_type||'Job').charAt(0).toUpperCase()+(primary.job_type||'job').slice(1)+' job';
+      if (primary.job_number) desc += ' \u00B7 '+primary.job_number;
+    }
+  } else {
+    desc = (primary.job_type||'Job').charAt(0).toUpperCase()+(primary.job_type||'job').slice(1)+' job';
+    if (primary.job_number) desc += ' \u00B7 '+primary.job_number;
+  }
+  if (jobCount > 1) desc += ' <span style="color:var(--sw-text-sec);font-size:10px;">+ '+(jobCount-1)+' more</span>';
+  return pin + desc;
+}
+
+// ── Completeness score ──
+function _completenessScore(client) {
+  var score = 0, total = 7;
+  var hasJob = client.invoices.some(function(i){return !!i.job_id;});
+  var hasStatus = client.invoices.some(function(i){return !!i.job_status;});
+  var hasScope = client.invoices.some(function(i){
+    var s = typeof i.scope_json==='string'?JSON.parse(i.scope_json||'{}'):(i.scope_json||{});
+    return s && Object.keys(s).length > 0;
+  });
+  var hasQuote = client.invoices.some(function(i){
+    var p = typeof i.pricing_json==='string'?JSON.parse(i.pricing_json||'{}'):(i.pricing_json||{});
+    return p && (p.totalIncGST || p.total);
+  });
+  var hasChase = client.invoices.some(function(i){return i.chase_logs && i.chase_logs.length > 0;});
+  var hasComms = !!client.ghl_contact_id;
+  var worst = _worstClassification(client.invoices);
+  var hasFollowUp = worst!=='genuine_debt' || client.invoices.some(function(i){return !!i.next_follow_up;});
+  if (hasJob) score++; if (hasStatus) score++; if (hasScope) score++;
+  if (hasQuote) score++; if (hasChase) score++; if (hasComms) score++;
+  if (hasFollowUp) score++;
+  return {score: score, total: total};
+}
+
+// ── Chase priority scoring (client-level) ──
+function _chasePriorityScore(client) {
+  var score = 0;
+  var today = new Date();
+
+  // Classification weight — use worst (most actionable) across all invoices
+  var worst = _worstClassification(client.invoices);
+  if (worst==='genuine_debt') score += 10;
+  else if (worst==='unclassified') score += 5;
+  // blocked/dispute/bad_debt = 0
+
+  // Amount (normalised 0-10)
+  score += (_clearDebtMaxOwed > 0 ? ((client.total_owed||0) / _clearDebtMaxOwed) * 10 : 0);
+
+  // Age (0-10, capped at 90 days)
+  var oldest = _oldestDays(client.invoices);
+  score += Math.min(oldest / 9, 10);
+
+  // Chase recency — CLIENT-LEVEL: gather all logs across all invoices
+  var allLogs = [];
+  client.invoices.forEach(function(inv){ if(inv.chase_logs) allLogs = allLogs.concat(inv.chase_logs); });
+  allLogs.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+  if (allLogs.length > 0) {
+    var daysSinceChase = Math.floor((today - new Date(allLogs[0].created_at)) / 86400000);
+    if (daysSinceChase < 3) score -= 5;
+    else if (daysSinceChase < 7) score -= 2;
+    if (daysSinceChase >= 14) score += 3; // stale boost
+  } else {
+    score += 3; // never chased = stale
+  }
+
+  // Follow-up boost
+  var todayStr = today.toISOString().slice(0,10);
+  if (client.invoices.some(function(inv){return inv.next_follow_up && inv.next_follow_up <= todayStr;})) score += 5;
+
+  return score;
+}
+
 // ── Sort clients ──
 function _sortClients(clients) {
   var col=_clearDebtSort.col, asc=_clearDebtSort.asc;
   return clients.slice().sort(function(a,b) {
     var va,vb;
     if (col==='name'){va=a.contact_name||'';vb=b.contact_name||'';return asc?va.localeCompare(vb):vb.localeCompare(va);}
-    if (col==='invoices'){va=a.invoices.length;vb=b.invoices.length;}
+    if (col==='priority'){va=_chasePriorityScore(a);vb=_chasePriorityScore(b);}
+    else if (col==='invoices'){va=a.invoices.length;vb=b.invoices.length;}
     else if (col==='oldest'){va=_oldestDays(a.invoices);vb=_oldestDays(b.invoices);}
     else {va=a.total_owed||0;vb=b.total_owed||0;} // default: total
     return asc?va-vb:vb-va;
@@ -80,6 +186,8 @@ async function loadClearDebt() {
   container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sw-text-sec);">Loading overdue invoices...</div>';
   try {
     _clearDebtData = await opsFetch('list_overdue_invoices');
+    // Cache max owed for priority scoring normalisation
+    _clearDebtMaxOwed = Math.max.apply(null, (_clearDebtData.clients||[]).map(function(c){return c.total_owed||0;}).concat([1]));
     renderClearDebtStats(_clearDebtData);
     renderClearDebtFilters();
     _renderClearDebtView();
@@ -127,6 +235,7 @@ function renderClearDebtFilters() {
 
   // Sort dropdown
   html += '<select style="margin-left:8px;font-size:11px;padding:4px 8px;border:1px solid var(--sw-border);border-radius:6px;background:#fff;color:var(--sw-text-sec);cursor:pointer;" onchange="sortClearDebt(this.value)">';
+  html += '<option value="priority"' + (_clearDebtSort.col==='priority'?' selected':'') + '>Sort: Priority</option>';
   html += '<option value="total"' + (_clearDebtSort.col==='total'?' selected':'') + '>Sort: Amount</option>';
   html += '<option value="oldest"' + (_clearDebtSort.col==='oldest'?' selected':'') + '>Sort: Oldest</option>';
   html += '<option value="name"' + (_clearDebtSort.col==='name'?' selected':'') + '>Sort: Name</option>';
@@ -144,7 +253,7 @@ function filterClearDebt(key){_clearDebtFilter=key;renderClearDebtFilters();_ren
 function searchClearDebt(q){_clearDebtSearch=(q||'').toLowerCase();_renderClearDebtView();}
 function setClearDebtView(mode){_clearDebtViewMode=mode;_expandedClient=null;renderClearDebtFilters();_renderClearDebtView();}
 function sortClearDebt(col){
-  if (typeof col === 'string' && ['total','oldest','name'].indexOf(col)>=0) {
+  if (typeof col === 'string' && ['priority','total','oldest','name'].indexOf(col)>=0) {
     _clearDebtSort.col=col; _clearDebtSort.asc=col==='name';
   } else { if(_clearDebtSort.col===col){_clearDebtSort.asc=!_clearDebtSort.asc;}else{_clearDebtSort.col=col;_clearDebtSort.asc=col==='name';} }
   renderClearDebtFilters(); _renderClearDebtView();
@@ -188,16 +297,19 @@ function _renderClientCard(client) {
   html += '<div style="flex:1;min-width:180px;">';
   html += '<div style="font-weight:700;font-size:16px;color:var(--sw-dark);">'+(client.contact_name||'Unknown')+' <span style="font-size:12px;color:var(--sw-text-sec);font-weight:400;">'+(isExpanded?'\u25B2':'\u25BC')+'</span></div>';
   if (client.phone) html += '<div style="font-size:12px;color:var(--sw-text-sec);">'+_fmtPhone(client.phone)+'</div>';
-  if (suburbs.length) html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+suburbs.join(', ')+'</div>';
   html += '</div>';
   html += '<div style="text-align:right;">';
   html += '<div style="font-size:22px;font-weight:700;color:'+agingColor+';font-family:var(--sw-font-num);">'+fmt$(client.total_owed)+'</div>';
-  html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+client.invoices.length+' inv \u00B7 '+oldest+'d oldest</div>';
+  var _cs = _completenessScore(client);
+  html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+client.invoices.length+' inv \u00B7 '+oldest+'d oldest'+(_cs.score<_cs.total?' \u00B7 <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:'+(_cs.score>=5?'#27ae6018':'#f39c1218')+';color:'+(_cs.score>=5?'#27ae60':'#f39c12')+';font-weight:600;">'+_cs.score+'/'+_cs.total+'</span>':'')+'</div>';
   // Days since completion badge
   if (completedJob && completedJob.days_since_completion) {
     html += '<div style="font-size:10px;margin-top:2px;padding:1px 6px;border-radius:8px;background:#e74c3c12;color:#e74c3c;font-weight:600;display:inline-block;">Job done '+completedJob.days_since_completion+'d ago</div>';
   }
   html += '</div></div>';
+
+  // Scope snapshot — one-line job context
+  html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;">'+_buildScopeSnapshot(client)+'</div>';
 
   // Follow-up alert
   var fuInv = client.invoices.find(function(inv){return inv.next_follow_up&&inv.next_follow_up<=today;});
@@ -317,13 +429,43 @@ function _renderInvoicesTab(client) {
   });
 
   var html = '';
+  // Enhanced money story bar
+  var variationDelta = quotedVal > 0 ? totalInvoiced - quotedVal : 0;
+  var hasVariations = quotedVal > 0 && Math.abs(variationDelta) > quotedVal * 0.1;
+  var blowoutRatio = quotedVal > 0 ? (totalInvoiced / quotedVal) : 0;
+  var paidPct = totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0;
+
+  // Get cost estimate for margin calc
+  var costEst = 0;
+  client.invoices.forEach(function(inv) {
+    var p = typeof inv.pricing_json === 'string' ? JSON.parse(inv.pricing_json||'{}') : (inv.pricing_json||{});
+    costEst = Math.max(costEst, p.costEstimate || p.totalCost || p.cost || 0);
+  });
+
+  html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;padding:8px 12px;background:#f0f4f7;border-radius:6px;">';
   if (quotedVal > 0) {
-    var remaining = Math.max(0, quotedVal - totalInvoiced);
-    html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:10px;padding:6px 10px;background:#f0f4f7;border-radius:6px;">';
-    html += '<strong>Quoted:</strong> '+fmt$(quotedVal)+' \u00B7 <strong>Invoiced:</strong> '+fmt$(totalInvoiced)+' \u00B7 <strong>Paid:</strong> <span style="color:var(--sw-green);">'+fmt$(totalPaid)+'</span>';
-    if (remaining > 0) html += ' \u00B7 <strong>Still to invoice:</strong> <span style="color:var(--sw-orange);">'+fmt$(remaining)+'</span>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:2px 4px;align-items:baseline;">';
+    html += '<strong>Quoted:</strong> '+fmt$(quotedVal);
+    if (hasVariations) html += ' \u2192 <strong>Variations:</strong> <span style="color:'+(variationDelta>0?'var(--sw-orange)':'var(--sw-green)')+';">'+(variationDelta>0?'+':'')+fmt$(variationDelta)+'</span>';
+    html += ' \u2192 <strong>Invoiced:</strong> '+fmt$(totalInvoiced);
+    html += ' \u2192 <strong>Paid:</strong> <span style="color:var(--sw-green);">'+fmt$(totalPaid)+'</span>';
+    html += ' \u2192 <strong>Outstanding:</strong> <span style="color:#e74c3c;">'+fmt$(totalDue)+'</span>';
     html += '</div>';
+  } else {
+    html += '<strong>Invoiced:</strong> '+fmt$(totalInvoiced)+' \u00B7 <strong>Paid:</strong> <span style="color:var(--sw-green);">'+fmt$(totalPaid)+'</span> \u00B7 <strong>Outstanding:</strong> <span style="color:#e74c3c;">'+fmt$(totalDue)+'</span>';
   }
+  // Progress bar
+  html += '<div style="height:5px;background:#e8e8e8;border-radius:3px;margin-top:6px;overflow:hidden;">';
+  html += '<div style="height:100%;width:'+paidPct+'%;background:var(--sw-green);border-radius:3px;transition:width 0.3s;"></div></div>';
+  // Blowout warning
+  if (blowoutRatio > 1.3) html += '<div style="font-size:11px;color:#e67e22;margin-top:4px;">\u26A0\uFE0F Invoice is '+blowoutRatio.toFixed(1)+'x the original quote</div>';
+  // Margin line
+  if (costEst > 0 && quotedVal > 0) {
+    var marginOnQuote = Math.round((quotedVal - costEst) / quotedVal * 100);
+    var marginAfterVar = totalInvoiced > 0 ? Math.round((totalInvoiced - costEst) / totalInvoiced * 100) : 0;
+    html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:3px;">Margin: '+(hasVariations?marginOnQuote+'% on quote \u00B7 '+marginAfterVar+'% after variations':marginOnQuote+'%')+'</div>';
+  }
+  html += '</div>';
 
   client.invoices.forEach(function(inv) {
     var c=_debtClassLabels[inv.classification]||_debtClassLabels.unclassified;
@@ -340,7 +482,8 @@ function _renderInvoicesTab(client) {
     if (inv.job_number) html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+inv.job_number+'</span>';
     html += '<span style="font-weight:700;color:'+ag+';font-family:var(--sw-font-num);font-size:13px;">'+fmt$(inv.amount_due)+'</span>';
     html += '<span style="font-size:11px;color:'+ag+';">'+inv.days_overdue+'d</span>';
-    html += '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+c.color+'18;color:'+c.color+';font-weight:600;">'+c.icon+' '+c.short+(inv.auto_classified?' (auto)':'')+'</span>';
+    html += '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+c.color+'18;color:'+c.color+';font-weight:600;"'+(inv.classification_reason?' title="'+_esc(inv.classification_reason)+'"':'')+'>'+c.icon+' '+c.short+(inv.auto_classified?' (auto)':'')+'</span>';
+    if (inv.classification_reason && !inv.auto_classified) html += '<span style="font-size:9px;color:var(--sw-text-sec);font-style:italic;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle;">'+inv.classification_reason.substring(0,60)+'</span>';
     if (inv.flags&&inv.flags.length) inv.flags.forEach(function(f){html+='<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#fff3cd;color:#856404;">\u26A0 '+f+'</span>';});
     // Per-invoice actions
     html += '<span style="margin-left:auto;display:flex;gap:4px;flex-shrink:0;">';
@@ -385,7 +528,16 @@ function _renderInvoicesTab(client) {
         html += '<div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Chase History</div>';
         var icons={call:'\uD83D\uDCDE',sms:'\uD83D\uDCAC',auto_sms:'\uD83E\uDD16',email:'\uD83D\uDCE7',note:'\uD83D\uDCDD',status_change:'\uD83C\uDFF7'};
         inv.chase_logs.forEach(function(log) {
-          html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+(icons[log.method]||'\u2022')+' '+fmtDate(log.created_at)+' \u2014 '+(log.outcome?'<strong>'+log.outcome+'</strong>':'')+(log.notes?' '+log.notes.substring(0,100):'')+'</div>';
+          if (log.method==='note') {
+            // Notes get distinct styling — prominent background, full text
+            html += '<div style="font-size:11px;padding:4px 8px;margin:3px 0;background:#f8f6f0;border-left:2px solid var(--sw-orange);border-radius:0 4px 4px 0;">';
+            html += '\uD83D\uDCDD <span style="color:var(--sw-text-sec);">'+fmtDate(log.created_at)+(log.chased_by?' \u00B7 '+log.chased_by:'')+'</span>';
+            html += '<div style="color:var(--sw-dark);margin-top:2px;font-style:italic;">'+(log.notes||'')+'</div></div>';
+          } else if (log.method==='status_change') {
+            html += '<div style="font-size:11px;color:var(--sw-text-sec);">\uD83C\uDFF7 '+fmtDate(log.created_at)+' \u2014 '+(log.outcome?'<strong>'+log.outcome+'</strong>':'')+(log.notes?' \u2014 <em>'+log.notes.substring(0,150)+'</em>':'')+'</div>';
+          } else {
+            html += '<div style="font-size:11px;color:var(--sw-text-sec);">'+(icons[log.method]||'\u2022')+' '+fmtDate(log.created_at)+' \u2014 '+(log.outcome?'<strong>'+log.outcome+'</strong>':'')+(log.notes?' '+log.notes.substring(0,150):'')+'</div>';
+          }
         });
       }
       html += '</div>';
