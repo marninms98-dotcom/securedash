@@ -860,8 +860,25 @@ function _renderQuotesTab(client) {
 function _renderCommsTab(client) {
   if (!client.ghl_contact_id) return '<div style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px;">No GHL contact linked \u2014 cannot load conversation.</div>';
   var cached = _commsCache[client.ghl_contact_id];
-  if (cached) return _renderCommsTimeline(cached);
-  return '<div id="commsLoading_'+client.ghl_contact_id+'" style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px;">Loading conversation...</div>';
+  var timeline = cached ? _renderCommsTimeline(cached) : '<div id="commsLoading_'+client.ghl_contact_id+'" style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px;">Loading conversation...</div>';
+
+  // Inline reply composer
+  var ghlId = _esc(client.ghl_contact_id);
+  var cName = _esc(client.contact_name);
+  var firstInvId = _esc(client.invoices[0]?.xero_invoice_id||'');
+  var firstJobId = client.invoices.find(function(i){return i.job_id;})?.job_id||'';
+
+  var composer = '<div style="border-top:1px solid var(--sw-border);padding:8px;background:#fff;">';
+  composer += '<div style="display:flex;gap:6px;align-items:flex-end;">';
+  composer += '<textarea id="commsReplyText_'+ghlId+'" style="flex:1;border:1px solid var(--sw-border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;resize:none;min-height:38px;max-height:120px;line-height:1.4;box-sizing:border-box;" placeholder="Type a message..." oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,120)+\'px\'" onclick="event.stopPropagation()"></textarea>';
+  composer += '<button onclick="event.stopPropagation();commsTabSend(\''+ghlId+'\',\''+cName+'\',\''+firstInvId+'\',\''+firstJobId+'\')" style="padding:8px 14px;background:var(--sw-dark);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600;white-space:nowrap;">\u2191 Send</button>';
+  composer += '</div>';
+  composer += '<div style="display:flex;gap:8px;margin-top:4px;align-items:center;">';
+  composer += '<span style="font-size:10px;color:var(--sw-text-sec);">Sends as SMS via GHL</span>';
+  composer += '</div>';
+  composer += '</div>';
+
+  return timeline + composer;
 }
 async function _loadCommsTab(client) {
   if (!client.ghl_contact_id || _commsCache[client.ghl_contact_id]) return;
@@ -1066,6 +1083,36 @@ async function refreshXeroSync() {
 }
 
 // ════════════════════════════════════════════════════════════
+// ── Inline Comms Reply ──
+async function commsTabSend(ghlContactId, contactName, xeroInvoiceId, jobId) {
+  var textarea = document.getElementById('commsReplyText_'+ghlContactId);
+  if (!textarea || !textarea.value.trim()) { showToast('Message is empty','warning'); return; }
+  var msg = textarea.value.trim();
+  textarea.disabled = true;
+  try {
+    await opsPost('send_chase_sms', {
+      ghl_contact_id: ghlContactId,
+      xero_invoice_id: xeroInvoiceId || null,
+      job_id: jobId || null,
+      message: msg,
+    });
+    showToast('Message sent','success');
+    textarea.value = '';
+    textarea.disabled = false;
+    textarea.style.height = 'auto';
+    // Clear comms cache and reload to show the new message
+    delete _commsCache[ghlContactId];
+    // Small delay for GHL to process, then reload
+    setTimeout(function() {
+      var client = (_clearDebtData?.clients||[]).find(function(c){return c.ghl_contact_id===ghlContactId;});
+      if (client) _loadCommsTab(client);
+    }, 1500);
+  } catch(e) {
+    textarea.disabled = false;
+    showToast('Send failed: '+e.message,'warning');
+  }
+}
+
 // AI INTELLIGENCE
 // ════════════════════════════════════════════════════════════
 
