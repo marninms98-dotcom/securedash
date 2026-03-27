@@ -33,10 +33,10 @@
       --sw-dark: #293C46;
       --sw-mid: #4C6A7C;
       --sw-light: #F0F4F7;
-      --sw-bg: #F7F8FA;
-      --sw-border: #EAEDF0;
+      --sw-bg: #f5f6f8;
+      --sw-border: #e8eaed;
       --sw-text: #1A2332;
-      --sw-text-sec: #7C8898;
+      --sw-text-sec: #6b7280;
       --sw-green: #27AE60;
       --sw-red: #E74C3C;
       --sw-yellow: #E67E22;
@@ -1891,9 +1891,8 @@
       display: flex;
       gap: 8px;
       padding: 10px 16px;
-      background: var(--sw-card);
-      border-bottom: 1px solid var(--sw-border);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      background: var(--sw-dark);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
       position: sticky;
       top: 0;
       z-index: 50;
@@ -1905,27 +1904,29 @@
       justify-content: center;
       gap: 6px;
       min-height: 48px;
-      border: none;
       border-radius: 10px;
       font-size: 14px;
       font-weight: 700;
       font-family: var(--sw-font);
       cursor: pointer;
       text-decoration: none;
-      transition: opacity 0.15s;
+      transition: all 0.15s;
     }
-    .jd-action-btn:active { opacity: 0.8; }
+    .jd-action-btn:active { opacity: 0.7; }
     .jd-action-btn.act-call {
-      background: var(--sw-green);
-      color: #fff;
+      background: rgba(39,174,96,0.15);
+      color: #27ae60;
+      border: 1px solid rgba(39,174,96,0.3);
     }
     .jd-action-btn.act-text {
-      background: var(--sw-blue);
-      color: #fff;
+      background: rgba(52,152,219,0.15);
+      color: #3498db;
+      border: 1px solid rgba(52,152,219,0.3);
     }
     .jd-action-btn.act-nav {
-      background: var(--sw-mid);
+      background: rgba(255,255,255,0.12);
       color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
     }
 
     /* ══════════════════════════════════════════════════
@@ -1937,19 +1938,24 @@
       background: var(--sw-light);
       border-radius: 10px;
       padding: 3px;
-      margin: 12px 16px;
+      margin: 8px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .jd-tab {
       flex: 1;
       padding: 10px 4px;
       border: none;
       border-radius: 8px;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 500;
       font-family: var(--sw-font);
       cursor: pointer;
       background: transparent;
-      color: var(--sw-mid);
+      color: var(--sw-dark);
+      opacity: 0.6;
       text-align: center;
       transition: all 0.15s;
       min-height: 40px;
@@ -1958,13 +1964,15 @@
     .jd-tab.active {
       background: var(--sw-dark);
       color: #fff;
+      opacity: 1;
+      font-weight: 700;
       box-shadow: 0 1px 3px rgba(0,0,0,0.12);
     }
     .jd-tab:active:not(.active) { background: rgba(0,0,0,0.04); }
     .jd-tab .tab-badge {
       position: absolute;
-      top: 4px;
-      right: 4px;
+      top: 2px;
+      right: 2px;
       min-width: 16px;
       height: 16px;
       border-radius: 8px;
@@ -1979,13 +1987,13 @@
     }
     .jd-tab-content {
       display: none;
-      padding: 0 16px 16px;
+      padding: 0 16px 12px;
     }
     .jd-tab-content.active {
       display: block;
     }
     .jd-tab-content .detail-section {
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     /* Variation Quick Presets */
@@ -4219,14 +4227,14 @@
 
     var hasHumanNotes = jobNotes && !/^Synced from/i.test(jobNotes);
     if (adminNotes.length === 0 && !hasHumanNotes) {
-      return '<div class="site-notes" style="opacity:0.5"><div class="site-notes-title">📋 Site Notes</div><div style="font-size:13px;color:var(--sw-text-sec)">No special instructions for this job</div></div>';
+      return '<div style="font-size:11px;color:var(--sw-text-sec);padding:4px 0">No site notes</div>';
     }
 
-    var h = '<div class="site-notes">';
-    h += '<div class="site-notes-title">📋 Site Notes</div>';
+    var h = '<div class="detail-section" style="padding:10px 12px;background:var(--sw-card);border-radius:8px">';
+    h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-text-sec);margin-bottom:6px">Site Notes</div>';
 
     if (jobNotes && !/^Synced from/i.test(jobNotes)) {
-      h += '<div class="site-notes-item">' + esc(jobNotes) + '</div>';
+      h += '<div style="font-size:13px;color:var(--sw-text);padding:2px 0">' + esc(jobNotes) + '</div>';
     }
 
     for (var i = 0; i < Math.min(adminNotes.length, 5); i++) {
@@ -4235,8 +4243,8 @@
       if (n.detail_json && n.detail_json.text) text = n.detail_json.text;
       if (!text) continue;
       var date = n.created_at ? new Date(n.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
-      h += '<div class="site-notes-item">';
-      h += '<span class="site-notes-author">' + esc(n.users.name || '') + (date ? ' (' + date + ')' : '') + ':</span> ';
+      h += '<div style="font-size:13px;color:var(--sw-text);padding:2px 0">';
+      h += '<span style="font-weight:600;color:var(--sw-text-sec)">' + esc(n.users.name || '') + (date ? ' (' + date + ')' : '') + ':</span> ';
       h += esc(text);
       h += '</div>';
     }
@@ -5346,14 +5354,6 @@
     // ── Section 2: Weather Strip ──
     html += renderWeatherStrip(data, phase);
 
-    // ── Scope-first layout: on first visit of the day, show key specs before clock buttons ──
-    var myAsgn = getMyAssignment(data);
-    var scopeFirstToday = !myAsgn?.acknowledged_at && job.scope_json && (phase === 'pre_confirm' || phase === 'confirmed');
-    if (scopeFirstToday) {
-      html += renderKeyDimensions(data);
-      html += renderSpecialInstructions(data, phase);
-    }
-
     // ── Section 3: Smart Status Flow (creates #timerElapsed — must render before startTimerTick) ──
     html += renderSmartStatusFlow(data, phase);
 
@@ -5490,47 +5490,36 @@
 
   function renderActionBar(data, phase) {
     var job = data.job;
-    var h = '<div class="jd-action-bar">';
+    var buttons = '';
 
-    // Call button
+    // Call button — only if phone available
     if (job.client_phone && canCall()) {
-      h += '<a href="tel:' + esc(job.client_phone) + '" class="jd-action-btn act-call" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
-      h += ' Call</a>';
-    } else {
-      h += '<span class="jd-action-btn act-call" style="opacity:0.3;cursor:default">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
-      h += ' Call</span>';
+      buttons += '<a href="tel:' + esc(job.client_phone) + '" class="jd-action-btn act-call" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">';
+      buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+      buttons += ' Call</a>';
     }
 
-    // Text button
+    // Text button — only if GHL contact linked
     if (canMessage() && job.ghl_contact_id) {
-      h += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-      h += ' Text</button>';
-    } else {
-      h += '<span class="jd-action-btn act-text" style="opacity:0.3;cursor:default">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-      h += ' Text</span>';
+      buttons += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
+      buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      buttons += ' Text</button>';
     }
 
-    // Navigate button
+    // Navigate button — only if valid address
     var navUrl = (job.site_address || (job.site_lat && job.site_lng))
       ? getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng)
       : null;
     var hasStreetNum = /^\d/.test((job.site_address || '').trim());
     if (navUrl && (hasStreetNum || job.site_lat)) {
-      h += '<button class="jd-action-btn act-nav" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
-      h += ' Navigate</button>';
-    } else {
-      h += '<span class="jd-action-btn act-nav" style="opacity:0.3;cursor:default">';
-      h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
-      h += ' Navigate</span>';
+      buttons += '<button class="jd-action-btn act-nav" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
+      buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+      buttons += ' Navigate</button>';
     }
 
-    h += '</div>';
-    return h;
+    // Don't render the bar at all if no buttons available
+    if (!buttons) return '';
+    return '<div class="jd-action-bar">' + buttons + '</div>';
   }
 
   // ══════════════════════════════════════════════════
@@ -5591,66 +5580,44 @@
     var job = data.job;
     var h = '';
 
-    // Key dimensions
-    h += renderKeyDimensions(data);
-
-    // 3D model preview card (if scope data available)
-    var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
-    if (scopeConfig.length || scopeConfig.totalLength || (job.scope_json && job.scope_json.job && job.scope_json.job.runs)) {
-      h += '<div onclick="open3DViewer()" style="margin:12px 0;padding:20px;background:linear-gradient(135deg,#1a1a2e,#293C46);border-radius:12px;cursor:pointer;text-align:center">';
-      h += '<div style="font-size:40px;margin-bottom:8px">&#128306;</div>';
-      h += '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px">View 3D Model</div>';
-      h += '<div style="font-size:12px;color:rgba(255,255,255,0.6)">Tap to open interactive model viewer</div>';
-      h += '</div>';
-    }
-
-    // Safety banner
-    h += renderSafetyBanner(data, phase);
-
-    // Special instructions
-    h += renderSpecialInstructions(data, phase);
-
-    // Handoff card (multi-day jobs)
-    h += renderHandoffCard(data, phase);
-
-    // Scope detail
+    // 1. Scope of Work (primary content — includes dimensions)
     h += renderEnhancedScope(data, phase);
 
-    // Materials & POs
-    h += renderEnhancedPOs(data, phase);
-
-    // Prep checklist (pre_confirm / confirmed phases)
-    h += renderPrepChecklist(data, phase);
-
-    // Variation request (confirmed phase)
-    h += renderEnhancedVariation(data, phase);
-
-    // Crew list (pre_confirm / confirmed)
-    var crew = data.crew || [];
-    if (crew.length > 0) {
-      var type = (job.type || 'patio').toLowerCase();
-      var color = JOB_TYPE_COLORS[type] || JOB_TYPE_COLORS.patio;
-      h += '<div class="detail-section">';
-      h += '  <h3>Crew</h3>';
-      crew.forEach(function(c) {
-        var userName = (c.users && c.users.name) || 'TBA';
-        var role = c.crew_name || c.role || '';
-        h += '<div class="crew-item">';
-        h += '  <div style="display:flex;align-items:center;gap:8px">';
-        h += '    <span class="crew-avatar" style="background:' + color + '">' + getCrewInitials(userName) + '</span>';
-        h += '    <div>';
-        h += '      <div class="crew-item-name">' + esc(userName) + '</div>';
-        if (role) h += '<div class="crew-item-role">' + esc(role) + '</div>';
-        h += '    </div>';
-        h += '  </div>';
-        h += '  <span class="status-pill status-' + (c.status || 'scheduled') + '">' + (c.status || 'scheduled').replace(/_/g, ' ') + '</span>';
-        if (canReassignCrew()) {
-          h += '  <button onclick="event.stopPropagation();openReassignModal(\'' + c.id + '\', \'' + esc(userName) + '\')" style="background:none;border:1px solid var(--sw-border);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--sw-mid);cursor:pointer;margin-left:6px">Reassign</button>';
-        }
-        h += '</div>';
-      });
+    // 3D model button (inside scope flow, not standalone)
+    var scopeConfig = (job.scope_json && (job.scope_json.config || job.scope_json)) || {};
+    if (scopeConfig.length || scopeConfig.totalLength || (job.scope_json && job.scope_json.job && job.scope_json.job.runs)) {
+      h += '<div onclick="open3DViewer()" style="margin:4px 0 12px;padding:14px;background:linear-gradient(135deg,#1a1a2e,#293C46);border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:12px">';
+      h += '<div style="font-size:28px">&#128306;</div>';
+      h += '<div><div style="font-size:14px;font-weight:700;color:#fff">View 3D Model</div>';
+      h += '<div style="font-size:11px;color:rgba(255,255,255,0.5)">Interactive model viewer</div></div>';
       h += '</div>';
     }
+
+    // 2. Materials & POs
+    h += renderEnhancedPOs(data, phase);
+
+    // 3. Prep checklist
+    h += renderPrepChecklist(data, phase);
+
+    // 4. Handoff card (multi-day context)
+    h += renderHandoffCard(data, phase);
+
+    // 5. Variation request
+    h += renderEnhancedVariation(data, phase);
+
+    // 6. Crew (compact inline)
+    var crew = data.crew || [];
+    if (crew.length > 0) {
+      var crewNames = [];
+      crew.forEach(function(c) {
+        var name = (c.users && c.users.name) || 'TBA';
+        if (crewNames.indexOf(name) < 0) crewNames.push(name);
+      });
+      h += '<div style="font-size:12px;color:var(--sw-text-sec);padding:4px 0">&#128100; Crew: ' + crewNames.map(function(n) { return esc(n); }).join(', ') + '</div>';
+    }
+
+    // 7. Special instructions (compact — no card if empty)
+    h += renderSpecialInstructions(data, phase);
 
     // Labour budget (complete phase, Tier 2+)
     if (phase === 'complete' && canSeePricing()) {
