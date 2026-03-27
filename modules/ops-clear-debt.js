@@ -790,13 +790,13 @@ function _renderInvoicesTab(client) {
 
   // Paid invoices — context for the person chasing
   if (client.paid_invoices && client.paid_invoices.length > 0) {
-    html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--sw-border);">';
-    html += '<div style="font-size:10px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Paid Invoices</div>';
+    html += '<div style="margin-top:12px;padding:10px;background:#f0faf0;border:1px solid #27ae6030;border-radius:6px;">';
+    html += '<div style="font-size:11px;font-weight:600;color:#27ae60;margin-bottom:6px;">\u2705 '+client.paid_invoices.length+' Paid Invoice'+(client.paid_invoices.length!==1?'s':'')+'</div>';
     client.paid_invoices.forEach(function(pi) {
       var paidDate = pi.fully_paid_on ? _fmtDateShort(pi.fully_paid_on) : (pi.invoice_date ? _fmtDateShort(pi.invoice_date) : '');
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);padding:2px 0;">';
-      html += '<span style="color:#27ae60;">\u2705</span> '+(pi.invoice_number||'-')+' '+fmt$(pi.total)+' \u2014 Paid'+(paidDate?' '+paidDate:'');
-      if (pi.reference) html += ' <span style="font-size:10px;color:#bbb;">('+pi.reference+')</span>';
+      html += '<div style="font-size:12px;color:var(--sw-dark);padding:3px 0;">';
+      html += (pi.invoice_number||'-')+' <strong>'+fmt$(pi.total)+'</strong> \u2014 Paid'+(paidDate?' '+paidDate:'');
+      if (pi.reference) html += ' <span style="font-size:10px;color:var(--sw-text-sec);">('+pi.reference+')</span>';
       html += '</div>';
     });
     html += '</div>';
