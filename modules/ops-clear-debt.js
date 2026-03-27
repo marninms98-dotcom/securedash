@@ -788,15 +788,41 @@ function _renderInvoicesTab(client) {
     html += '</div>';
   });
 
-  // Paid invoices — context for the person chasing
+  // Paid invoices — context for the person chasing (expandable with line items)
   if (client.paid_invoices && client.paid_invoices.length > 0) {
     html += '<div style="margin-top:12px;padding:10px;background:#f0faf0;border:1px solid #27ae6030;border-radius:6px;">';
     html += '<div style="font-size:11px;font-weight:600;color:#27ae60;margin-bottom:6px;">\u2705 '+client.paid_invoices.length+' Paid Invoice'+(client.paid_invoices.length!==1?'s':'')+'</div>';
-    client.paid_invoices.forEach(function(pi) {
+    client.paid_invoices.forEach(function(pi, idx) {
       var paidDate = pi.fully_paid_on ? _fmtDateShort(pi.fully_paid_on) : (pi.invoice_date ? _fmtDateShort(pi.invoice_date) : '');
-      html += '<div style="font-size:12px;color:var(--sw-dark);padding:3px 0;">';
-      html += (pi.invoice_number||'-')+' <strong>'+fmt$(pi.total)+'</strong> \u2014 Paid'+(paidDate?' '+paidDate:'');
-      if (pi.reference) html += ' <span style="font-size:10px;color:var(--sw-text-sec);">('+pi.reference+')</span>';
+      var piKey = 'paid_'+idx+'_'+(pi.invoice_number||'');
+      var piExpanded = _expandedInvoice === piKey;
+      html += '<div style="border:1px solid #27ae6020;border-radius:4px;margin-bottom:4px;background:#fff;overflow:hidden;">';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;" onclick="event.stopPropagation();toggleInvoiceExpand(\''+_esc(piKey)+'\')">';
+      html += '<span style="font-size:11px;color:var(--sw-text-sec);">'+(piExpanded?'\u25BC':'\u25B6')+'</span>';
+      html += '<span style="font-size:12px;font-weight:600;color:var(--sw-dark);">'+(pi.invoice_number||'-')+'</span>';
+      html += '<span style="font-size:12px;color:#27ae60;font-weight:700;font-family:var(--sw-font-num);">'+fmt$(pi.total)+'</span>';
+      html += '<span style="font-size:11px;color:var(--sw-text-sec);">Paid'+(paidDate?' '+paidDate:'')+'</span>';
+      if (pi.reference) html += '<span style="font-size:10px;color:#bbb;">('+pi.reference+')</span>';
+      html += '</div>';
+      if (piExpanded) {
+        html += '<div style="padding:8px 10px;border-top:1px solid #27ae6020;background:#f8fdf8;font-size:12px;">';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;margin-bottom:6px;">';
+        html += '<div><span style="color:var(--sw-text-sec);">Invoice Date:</span> '+(pi.invoice_date?fmtDate(pi.invoice_date):'-')+'</div>';
+        html += '<div><span style="color:var(--sw-text-sec);">Total:</span> '+fmt$(pi.total)+'</div>';
+        html += '<div><span style="color:var(--sw-text-sec);">Paid:</span> <span style="color:#27ae60;">'+fmt$(pi.amount_paid)+'</span></div>';
+        if (pi.fully_paid_on) html += '<div><span style="color:var(--sw-text-sec);">Paid On:</span> '+fmtDate(pi.fully_paid_on)+'</div>';
+        html += '</div>';
+        var items = pi.line_items;
+        if (items && Array.isArray(items) && items.length > 0) {
+          html += '<div style="font-size:10px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Line Items</div>';
+          html += '<table style="width:100%;font-size:11px;border-collapse:collapse;"><thead><tr style="border-bottom:1px solid #27ae6030;text-align:left;"><th style="padding:2px 4px;">Description</th><th style="padding:2px 4px;text-align:center;">Qty</th><th style="padding:2px 4px;text-align:right;">Unit</th><th style="padding:2px 4px;text-align:right;">Amount</th></tr></thead><tbody>';
+          items.forEach(function(li) {
+            html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:2px 4px;">'+(li.Description||li.description||'-')+'</td><td style="padding:2px 4px;text-align:center;">'+(li.Quantity||li.quantity||1)+'</td><td style="padding:2px 4px;text-align:right;">'+fmt$(li.UnitAmount||li.unit_amount||0)+'</td><td style="padding:2px 4px;text-align:right;font-weight:600;">'+fmt$(li.LineAmount||li.line_amount||li.Amount||0)+'</td></tr>';
+          });
+          html += '</tbody></table>';
+        }
+        html += '</div>';
+      }
       html += '</div>';
     });
     html += '</div>';
