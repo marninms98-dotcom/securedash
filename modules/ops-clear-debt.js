@@ -12,6 +12,7 @@ var _expandedClient = null;
 var _expandedTab = 'invoices';
 var _expandedInvoice = null;
 var _commsCache = {};
+var _commsPollingInterval = null;
 var _aiIntelCache = {};
 var _aiHints = {}; // batch one-liners per client name
 var _aiHintsLoading = false;
@@ -635,6 +636,7 @@ function _buildTimeline(invoices) {
 }
 
 function toggleClientExpand(clientKey) {
+  _stopCommsPolling();
   if (_expandedClient===clientKey) { _expandedClient=null; } else { _expandedClient=clientKey; _expandedTab='invoices'; _expandedInvoice=null; }
   renderClearDebtCards(_clearDebtData);
 }
@@ -642,7 +644,9 @@ function switchDebtTab(tab, clientKey) {
   _expandedTab=tab; _expandedInvoice=null;
   if (tab==='comms') {
     var client = (_clearDebtData?.clients||[]).find(function(c){return (c.xero_contact_id||c.contact_name)===clientKey;});
-    if (client && client.ghl_contact_id) _loadCommsTab(client);
+    if (client && client.ghl_contact_id) { _loadCommsTab(client); _startCommsPolling(client); }
+  } else {
+    _stopCommsPolling();
   }
   renderClearDebtCards(_clearDebtData);
 }
@@ -904,14 +908,31 @@ function _renderCommsTab(client) {
 
   return timeline + composer;
 }
-async function _loadCommsTab(client) {
-  if (!client.ghl_contact_id || _commsCache[client.ghl_contact_id]) return;
+async function _loadCommsTab(client, force) {
+  if (!client.ghl_contact_id) return;
+  if (!force && _commsCache[client.ghl_contact_id]) return;
   try {
     var resp = await fetch(window.SUPABASE_URL+'/functions/v1/ghl-proxy?action=get_conversation&contactId='+client.ghl_contact_id, {headers:{'x-api-key':'097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc'}});
     var data = await resp.json();
     _commsCache[client.ghl_contact_id] = data.messages || [];
     renderClearDebtCards(_clearDebtData);
   } catch(e) { var el=document.getElementById('commsLoading_'+client.ghl_contact_id); if(el) el.innerHTML='<span style="color:var(--sw-red);">Failed: '+e.message+'</span>'; }
+}
+function _startCommsPolling(client) {
+  _stopCommsPolling();
+  if (!client || !client.ghl_contact_id) return;
+  _commsPollingInterval = setInterval(function() {
+    // Only poll if we're still on comms tab for this client
+    var clientKey = client.xero_contact_id||client.contact_name;
+    if (_expandedClient === clientKey && _expandedTab === 'comms') {
+      _loadCommsTab(client, true);
+    } else {
+      _stopCommsPolling();
+    }
+  }, 30000);
+}
+function _stopCommsPolling() {
+  if (_commsPollingInterval) { clearInterval(_commsPollingInterval); _commsPollingInterval = null; }
 }
 function _renderCommsTimeline(messages) {
   if (!messages||!messages.length) return '<div style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px;">No conversation history.</div>';
