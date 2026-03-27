@@ -758,10 +758,13 @@ function _renderInvoicesTab(client) {
         html += '</tbody></table>';
       }
 
-      // View Job link
+      // Action row: View Job + Void Invoice
+      html += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;">';
       if (inv.job_id) {
-        html += '<div style="margin-top:8px;"><button class="btn btn-sm" style="font-size:10px;color:var(--sw-mid);" onclick="event.stopPropagation();openJobDetail(\''+inv.job_id+'\')">View Job \u2192</button></div>';
+        html += '<button class="btn btn-sm" style="font-size:10px;color:var(--sw-mid);" onclick="event.stopPropagation();openJobDetail(\''+inv.job_id+'\')">View Job \u2192</button>';
       }
+      html += '<button class="btn btn-sm" style="font-size:10px;color:var(--sw-red);border-color:var(--sw-red);" onclick="event.stopPropagation();clearDebtVoidInvoice(\''+_esc(inv.xero_invoice_id)+'\',\''+_esc(inv.invoice_number)+'\',\''+(inv.amount_due||0)+'\')">\uD83D\uDDD1 Void Invoice</button>';
+      html += '</div>';
 
       // Chase history for this invoice
       if (inv.chase_logs && inv.chase_logs.length > 0) {
