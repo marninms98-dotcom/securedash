@@ -954,6 +954,9 @@ function _startCommsPolling(client) {
     // Only poll if we're still on comms tab for this client
     var clientKey = client.xero_contact_id||client.contact_name;
     if (_expandedClient === clientKey && _expandedTab === 'comms') {
+      // Don't refresh if user is typing — would wipe their message
+      var textarea = document.getElementById('commsReplyText_'+client.ghl_contact_id);
+      if (textarea && textarea.value.trim()) return; // skip this cycle
       _loadCommsTab(client, true);
     } else {
       _stopCommsPolling();
