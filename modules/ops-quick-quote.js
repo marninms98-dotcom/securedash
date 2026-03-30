@@ -232,6 +232,35 @@ async function sendQuickQuote() {
   try {
     var res = await opsPost('create_misc_job', data);
     showToast('Quote created: ' + (res.job.job_number || ''), 'success');
+
+    // Create GHL contact if none was linked (fire-and-forget)
+    if (!data.ghl_contact_id && (data.client_email || data.client_phone)) {
+      try {
+        var ghlRes = await fetch(window.SUPABASE_URL + '/functions/v1/ghl-proxy?action=create_contact_and_opportunity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY || '' },
+          body: JSON.stringify({
+            firstName: data.client_first_name,
+            lastName: data.client_last_name,
+            email: data.client_email,
+            phone: data.client_phone,
+            address: data.site_address,
+            suburb: data.site_suburb,
+            toolType: 'miscellaneous',
+            skipOpportunity: true,
+          })
+        });
+        if (ghlRes.ok) {
+          var ghlData = await ghlRes.json();
+          if (ghlData.contactId && res.job.id) {
+            // Backfill GHL contact ID on the job
+            opsPost('update_job', { id: res.job.id, ghl_contact_id: ghlData.contactId }).catch(function() {});
+            console.log('[QuickQuote] GHL contact created/linked:', ghlData.contactId, ghlData.contactExisted ? '(existing)' : '(new)');
+          }
+        }
+      } catch (e) { console.log('[QuickQuote] GHL contact creation failed (non-blocking):', e.message); }
+    }
+
     // Generate PDF automatically
     await generateQuickQuotePDF(res.job);
     closeQuickQuote();

@@ -402,6 +402,10 @@ function renderJobPeek(data) {
   if (['accepted', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openUnifiedInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
   }
+  // Quick Quote shortcut: Accept & Create Deposit Invoice in one click
+  if (j.status === 'quoted' && j.pricing_json && j.pricing_json.source === 'quick_quote') {
+    html += '<button class="btn btn-sm" onclick="acceptAndDepositQuickQuote(\'' + j.id + '\')" style="background:var(--sw-green); color:#fff; font-weight:600;">Accept &amp; Deposit</button>';
+  }
   // Mark Lost — available for quoted/accepted/scheduled jobs
   if (['quoted', 'accepted', 'scheduled'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="markJobLost(\'' + j.id + '\')" style="border-color:var(--sw-red); color:var(--sw-red); margin-left:auto;">Mark Lost</button>';
@@ -3191,6 +3195,32 @@ function getNextStatuses(current) {
     'invoiced': [],
   };
   return transitions[current] || [];
+}
+
+// Quick Quote: Accept quote and create deposit invoice in one step
+async function acceptAndDepositQuickQuote(jobId) {
+  if (!confirm('Accept this quote and create a deposit invoice?')) return;
+  try {
+    // 1. Accept the job
+    await opsPost('update_job_status', { jobId: jobId, status: 'accepted' });
+    showToast('Quote accepted', 'success');
+    // 2. Create deposit invoice (50% default)
+    try {
+      var invoiceRes = await opsPost('create_deposit_invoice', { job_id: jobId, deposit_percent: 50 });
+      showToast('Deposit invoice created: ' + (invoiceRes.invoice_number || ''), 'success');
+    } catch (e2) {
+      showToast('Quote accepted but deposit invoice failed: ' + e2.message, 'warning');
+    }
+    // Refresh view
+    if (document.getElementById('jobDetailView').classList.contains('active')) {
+      refreshJobDetail();
+    } else {
+      openJobPeek(jobId);
+    }
+    refreshActiveView();
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'warning');
+  }
 }
 
 async function changeJobStatus(jobId, status) {
