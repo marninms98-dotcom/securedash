@@ -1840,15 +1840,14 @@
     /* On-Site Tools (replaces bottom nav) */
     .onsite-tools {
       position: fixed;
-      bottom: 0;
+      bottom: calc(60px + env(safe-area-inset-bottom, 0px));
       left: 0;
       right: 0;
       background: var(--sw-dark);
       display: flex;
       gap: 4px;
       padding: 8px 12px;
-      padding-bottom: max(8px, env(safe-area-inset-bottom));
-      z-index: 100;
+      z-index: 99;
     }
     .onsite-tool-btn {
       flex: 1;
@@ -3662,12 +3661,18 @@
           html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
           html += '      Call</a>';
         }
-        if (canMessage() && job.ghl_contact_id) {
-          html += '    <button onclick="event.stopPropagation();openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
-          html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-          html += '      Text</button>';
+        if (canMessage()) {
+          if (job.ghl_contact_id) {
+            html += '    <button onclick="event.stopPropagation();openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
+            html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+            html += '      Text</button>';
+          } else if (job.client_phone) {
+            html += '    <a href="sms:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">';
+            html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+            html += '      SMS</a>';
+          }
         }
-        if (job.site_address) {
+        if (job.site_address || job.site_suburb) {
           var navUrl = getMapsUrl(job.site_address, job.site_suburb);
           html += '    <a href="' + navUrl + '" target="_blank" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-mid);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">';
           html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
@@ -4634,11 +4639,7 @@
       if (job.client_phone && canCall()) {
         h += '<a href="tel:' + esc(job.client_phone) + '" class="action-btn" style="padding:8px 12px;font-size:12px" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">📞 Call</a>';
       }
-      var navUrl;
-      if (job.site_address || (job.site_lat && job.site_lng)) {
-        navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
-      }
-      if (navUrl) {
+      if (job.site_address || job.site_suburb || (job.site_lat && job.site_lng)) {
         h += '<button class="action-btn" style="padding:8px 12px;font-size:12px" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">🧭 Nav</button>';
       }
       h += '</div>';
@@ -4671,8 +4672,6 @@
     // Action buttons
     h += '  <div class="action-row">';
     if (job.client_phone && canCall()) {
-      // Validate address has a street number
-      var hasStreetNum = /^\d/.test((job.site_address || '').trim());
       h += '    <a href="tel:' + esc(job.client_phone) + '" class="action-btn" onclick="scheduleCallNotes(\'' + esc(job.id) + '\')">';
       h += '      <svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
       h += '      Call';
@@ -4684,21 +4683,13 @@
       h += '      Message';
       h += '    </button>';
     }
-    var navUrl;
-    if (job.site_address || (job.site_lat && job.site_lng)) {
-      // Validate address
-      var hasNum = /^\d/.test((job.site_address || '').trim());
-      navUrl = getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng);
-    }
-    if (navUrl) {
-      if (!hasNum && !job.site_lat) {
-        h += '    <span class="action-btn" style="opacity:0.5;cursor:default;font-size:11px">Address incomplete — check with Shaun</span>';
-      } else {
-        h += '    <button class="action-btn" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
-        h += '      <svg viewBox="0 0 24 24"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
-        h += '      Navigate';
-        h += '    </button>';
-      }
+    if (job.site_address || job.site_suburb || (job.site_lat && job.site_lng)) {
+      h += '    <button class="action-btn" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
+      h += '      <svg viewBox="0 0 24 24"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
+      h += '      Navigate';
+      h += '    </button>';
+    } else {
+      h += '    <span class="action-btn" style="opacity:0.5;cursor:default;font-size:11px">No address — check with Shaun</span>';
     }
     h += '  </div>';
     h += '</div>';
@@ -5480,11 +5471,9 @@
       _checkCommsUnread(job.ghl_contact_id);
     }
 
-    // ── On-site tools: hide bottom nav, show toolbar ──
+    // ── On-site tools: keep bottom nav visible but show toolbar too ──
     var bottomNav = document.getElementById('bottomNav');
-    if (phase === 'on_site' && bottomNav) {
-      bottomNav.style.display = 'none';
-    } else if (bottomNav) {
+    if (bottomNav) {
       bottomNav.style.display = '';
     }
 
@@ -5517,19 +5506,23 @@
       buttons += ' Call</a>';
     }
 
-    // Text button — only if GHL contact linked
-    if (canMessage() && job.ghl_contact_id) {
-      buttons += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
-      buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-      buttons += ' Text</button>';
+    // Text button — GHL messaging if available, native SMS fallback
+    if (canMessage()) {
+      if (job.ghl_contact_id) {
+        buttons += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
+        buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+        buttons += ' Text</button>';
+      } else if (job.client_phone) {
+        buttons += '<a href="sms:' + esc(job.client_phone) + '" class="jd-action-btn act-text">';
+        buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+        buttons += ' SMS</a>';
+      }
     }
 
-    // Navigate button — only if valid address
-    var navUrl = (job.site_address || (job.site_lat && job.site_lng))
-      ? getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng)
-      : null;
-    var hasStreetNum = /^\d/.test((job.site_address || '').trim());
-    if (navUrl && (hasStreetNum || job.site_lat)) {
+    // Navigate button — show if we have any address info or coordinates
+    var hasAddress = !!(job.site_address || job.site_suburb || (job.site_lat && job.site_lng));
+    var navUrl = hasAddress ? getMapsUrl(job.site_address, job.site_suburb, job.site_lat, job.site_lng) : null;
+    if (navUrl) {
       buttons += '<button class="jd-action-btn act-nav" onclick="navigateToJob(\'' + esc(job.site_address || '') + '\', \'' + esc(job.site_suburb || '') + '\', ' + (job.site_lat || 'null') + ', ' + (job.site_lng || 'null') + ')">';
       buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21.71 11.29l-9-9a.996.996 0 0 0-1.41 0l-9 9a.996.996 0 0 0 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 0 0 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>';
       buttons += ' Navigate</button>';
@@ -5921,7 +5914,17 @@
     var h = '';
 
     if (!job.ghl_contact_id) {
-      h = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px">No GHL contact linked to this job</div>';
+      h = '<div style="padding:24px 16px;text-align:center">';
+      h += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:12px">Messaging not available for this job</div>';
+      if (job.client_phone) {
+        h += '<a href="tel:' + esc(job.client_phone) + '" class="btn btn-primary" style="max-width:240px;margin:0 auto;display:flex">';
+        h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" style="margin-right:6px"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+        h += 'Call ' + esc((job.client_name || '').split(' ')[0] || 'Client') + '</a>';
+        h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:8px">' + esc(job.client_phone) + '</div>';
+      } else {
+        h += '<div style="font-size:13px;color:var(--sw-text-sec)">No phone number on file — check with Shaun</div>';
+      }
+      h += '</div>';
       container.innerHTML = h;
       return;
     }
