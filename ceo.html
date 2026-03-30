@@ -586,6 +586,13 @@
     @media print {
       .jarvis-bar, .chat-panel, .chat-backdrop { display: none !important; }
     }
+    .toast-container { position: fixed; bottom: 60px; right: 24px; z-index: 970; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); font-size: 13px; display: flex; align-items: center; gap: 10px; max-width: 380px; animation: slideIn 0.2s ease; }
+    .toast .toast-btns { display: flex; gap: 6px; margin-left: auto; }
+    .toast .toast-btn { border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600; }
+    .toast .toast-btn-yes { background: var(--sw-green, #27AE60); color: #fff; }
+    .toast .toast-btn-no { background: #eee; color: var(--sw-dark); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   </style>
 </head>
 <body>
@@ -1016,6 +1023,9 @@ async function loadCeoAlerts() {
     panel.style.display = 'block';
   } catch (e) {
     console.error('CEO alerts error:', e);
+    showToast('Failed to load alerts', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadCeoAlerts()' }
+    ]);
   }
 }
 function toggleCeoAmber() {
@@ -1060,6 +1070,9 @@ async function loadReport() {
   } catch (err) {
     document.getElementById('loadingState').innerHTML =
       '<div style="color:var(--sw-red);">Failed to load report: ' + err.message + '</div>';
+    showToast('Failed to load CEO report', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadReport()' }
+    ]);
   }
 }
 
@@ -2225,6 +2238,31 @@ function saveChatHistory() {
   } catch(e) {}
 }
 
+function showToast(message, type, actions) {
+  var container = document.getElementById('toastContainer');
+  var toast = document.createElement('div');
+  toast.className = 'toast';
+  if (type === 'success') toast.style.borderLeft = '3px solid var(--sw-green, #27AE60)';
+  if (type === 'warning') toast.style.borderLeft = '3px solid #F39C12';
+
+  var html = '<span>' + message + '</span>';
+  if (actions) {
+    html += '<div class="toast-btns">';
+    actions.forEach(function(a) {
+      html += '<button class="toast-btn ' + (a.primary ? 'toast-btn-yes' : 'toast-btn-no') + '" onclick="' + a.onclick + '; this.closest(\'.toast\').remove();">' + a.label + '</button>';
+    });
+    html += '</div>';
+  }
+  toast.innerHTML = html;
+  container.appendChild(toast);
+  if (!actions) {
+    setTimeout(function() { if (toast.parentElement) toast.remove(); }, 8000);
+  }
+}
+
+// Auto-refresh CEO report every 5 minutes (keeps dashboard live all day)
+setInterval(function() { loadReport(); }, 300000);
+
 </script>
 
 <!-- Jarvis Ambient Bar -->
@@ -2274,5 +2312,6 @@ function saveChatHistory() {
   </div>
 </div>
 
+<div class="toast-container" id="toastContainer"></div>
 </body>
 </html>
