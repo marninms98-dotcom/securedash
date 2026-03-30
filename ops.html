@@ -9587,6 +9587,18 @@ function updateJarvisSummary() {
 // Refresh bar status timestamp every 30s
 setInterval(function() { updateJarvisSummary(); }, 30000);
 
+// Auto-refresh active tab data every 5 minutes (keeps dashboard live all day)
+setInterval(function() {
+  var view = localStorage.getItem('sw_ops_tab') || 'today';
+  if (view === 'today') loadToday();
+  else if (view === 'calendar') loadCalendar();
+  else if (view === 'jobs') loadJobs();
+  else if (view === 'financials') loadFinancials();
+  else if (view === 'materials') loadMaterials();
+  else if (view === 'inbox') loadInbox();
+  _jarvisLastUpdate = Date.now();
+}, 300000); // 5 minutes
+
 function clearChat() {
   _chatMessages = [];
   localStorage.removeItem('sw_ops_chat');
