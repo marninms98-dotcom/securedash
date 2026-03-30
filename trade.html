@@ -2711,6 +2711,10 @@
           var clockedHours = (Date.now() - new Date(asg.clocked_on_at).getTime()) / 3600000;
           if (clockedHours > 14) {
             showStaleClockPrompt(asg, clockedHours);
+          } else if (asg.jobs) {
+            // Auto-navigate to the active job so tradie sees their running timer
+            toast('Resuming active timer...');
+            openJob(asg.jobs.id, asg.id);
           }
           return;
         }
@@ -4065,7 +4069,8 @@
 
     // Determine current step
     var currentIdx = 0;
-    if (_clockState === 'off' && phase === 'complete') currentIdx = 3;
+    var allDone = false;
+    if (_clockState === 'off' && phase === 'complete') { currentIdx = 4; allDone = true; }
     else if (_clockState === 'off') currentIdx = 0;
     else if (_clockState === 'on' && !_arrivedAt && _travelStartTime) currentIdx = 0; // travelling
     else if (_clockState === 'on') currentIdx = 1; // working
@@ -4145,7 +4150,27 @@
       h += '</div>';
 
     } else if (phase === 'complete') {
-      h += '<div style="font-size:16px;font-weight:700;color:var(--sw-green)">\u2705 Job Complete</div>';
+      // ── Completed summary card ──
+      var hoursVal = myAssignment.hours_worked ? (Math.round(myAssignment.hours_worked * 100) / 100) : null;
+      var clockOnTime = myAssignment.clocked_on_at ? new Date(myAssignment.clocked_on_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Perth' }) : null;
+      var clockOffTime = myAssignment.clocked_off_at ? new Date(myAssignment.clocked_off_at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Perth' }) : null;
+
+      h += '<div style="text-align:center">';
+      h += '<div style="font-size:18px;font-weight:800;color:var(--sw-green);margin-bottom:8px">\u2705 Completed</div>';
+      if (hoursVal !== null) {
+        h += '<div style="font-size:32px;font-weight:800;color:var(--sw-dark);font-variant-numeric:tabular-nums">' + hoursVal + 'h</div>';
+        h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px">Hours logged</div>';
+      }
+      if (clockOnTime && clockOffTime) {
+        h += '<div style="display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:13px;color:var(--sw-text-sec)">';
+        h += '<span>On: <strong style="color:var(--sw-dark)">' + clockOnTime + '</strong></span>';
+        h += '<span>Off: <strong style="color:var(--sw-dark)">' + clockOffTime + '</strong></span>';
+        if (myAssignment.break_minutes > 0) h += '<span>Break: <strong style="color:var(--sw-dark)">' + myAssignment.break_minutes + 'm</strong></span>';
+        h += '</div>';
+      }
+      h += '<button onclick="showView(\'hours\')" style="margin-top:14px;padding:10px 20px;background:var(--sw-light);color:var(--sw-dark);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;min-height:44px">View Hours</button>';
+      h += '</div>';
+
       // Next job preview
       if (typeof _lastJobData !== 'undefined' && _lastJobData) {
         var allAssignments = [].concat(_lastJobData.today || [], _lastJobData.thisWeek || [], _lastJobData.upcoming || []);
@@ -9590,6 +9615,18 @@
           toast('Clocked off' + (hours ? ' \u2014 ' + hours + ' logged' : ''));
           clearTimerState();
           window._quickProgress = null;
+          // Update cached crew data so renderJobDetail shows "complete" not "clock on"
+          if (_currentJob && _currentJob.crew) {
+            for (var ci = 0; ci < _currentJob.crew.length; ci++) {
+              if (_currentJob.crew[ci].id === assignmentId) {
+                _currentJob.crew[ci].status = 'complete';
+                _currentJob.crew[ci].clocked_off_at = new Date().toISOString();
+                _currentJob.crew[ci].hours_worked = result.net_hours || null;
+                _currentJob.crew[ci].job_phase = 'complete';
+                break;
+              }
+            }
+          }
           if (_currentJob) renderJobDetail(_currentJob);
         }).catch(function() {
           // Clock-off failed — DON'T clear timer state
