@@ -2601,6 +2601,9 @@
         _manualOverride = s.manualOverride || false;
         _stoppedTravelMins = s.travelMins || 0;
         _stoppedOnsiteMins = s.onsiteMins || 0;
+        _isPaused = s.isPaused || false;
+        _pauseStartTime = s.pauseStartTime || null;
+        _totalBreakMins = s.totalBreakMins || 0;
         return;
       }
       // Migration: try old key
@@ -2626,7 +2629,10 @@
         arrivedAt: _arrivedAt,
         manualOverride: _manualOverride,
         travelMins: _stoppedTravelMins,
-        onsiteMins: _stoppedOnsiteMins
+        onsiteMins: _stoppedOnsiteMins,
+        isPaused: _isPaused,
+        pauseStartTime: _pauseStartTime,
+        totalBreakMins: _totalBreakMins
       }));
     } catch (e) { /* ignore */ }
   }
