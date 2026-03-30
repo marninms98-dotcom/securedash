@@ -977,7 +977,7 @@ var _ceoAmberOpen = false;
 async function loadCeoAlerts() {
   try {
     var digestUrl = window.SUPABASE_URL + '/functions/v1/daily-digest';
-    var resp = await fetch(digestUrl, { headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } });
+    var resp = await fetch(digestUrl, { headers: { 'x-api-key': window.SW_API_KEY } });
     if (!resp.ok) return;
     var digest = await resp.json();
     var alerts = digest.alerts || [];
@@ -992,8 +992,8 @@ async function loadCeoAlerts() {
     }
 
     // Red alerts
-    var reds = alerts.filter(function(a) { return a.severity === 'critical'; });
-    var ambers = alerts.filter(function(a) { return a.severity === 'warning'; });
+    var reds = alerts.filter(function(a) { return a.severity === 'red'; });
+    var ambers = alerts.filter(function(a) { return a.severity === 'amber'; });
 
     var redHtml = '';
     reds.forEach(function(a) {
