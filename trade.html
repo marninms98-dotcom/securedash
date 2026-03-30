@@ -4869,15 +4869,7 @@
       h += '</div>';
     }
 
-    // Embedded scope viewer + 3D button (not during on_site — rendered standalone there)
-    // Scope viewer: render natively instead of iframe (iframe caused kickout bug — loaded full patio tool with competing Supabase session)
-    // The "View 3D Model" button below opens the full tool in a NEW TAB (safe)
-    if ((config.length || config.totalLength) && phase !== 'on_site') {
-      h += '<div style="margin-top:4px">';
-      h += '<button class="btn btn-secondary" style="width:100%;font-weight:700" onclick="open3DViewer()">';
-      h += '🔲 View 3D Model (Full Screen)</button>';
-      h += '</div>';
-    }
+    // 3D button removed here — single instance lives in renderJobTab_scope (line ~5606)
 
     h += '</div>';
     return h;
