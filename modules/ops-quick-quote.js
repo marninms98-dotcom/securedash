@@ -261,12 +261,58 @@ async function sendQuickQuote() {
       } catch (e) { console.log('[QuickQuote] GHL contact creation failed (non-blocking):', e.message); }
     }
 
-    // Generate PDF automatically
+    // Generate PDF and offer to send to client
+    _lastQuickQuoteJob = res.job;
+    _lastQuickQuoteData = data;
     await generateQuickQuotePDF(res.job);
+    // Show "Send to Client" option if we have an email
+    if (data.client_email) {
+      var sendBtn = document.getElementById('qqSendToClient');
+      if (sendBtn) { sendBtn.style.display = 'inline-block'; sendBtn.dataset.jobId = res.job.id; }
+    }
     closeQuickQuote();
     loadJobs();
   } catch (e) {
     showToast('Error: ' + e.message, 'warning');
+  }
+}
+
+var _lastQuickQuoteJob = null;
+var _lastQuickQuoteData = null;
+var _lastQuickQuotePdfBlob = null;
+
+async function sendQuickQuoteToClient(jobId) {
+  if (!jobId && _lastQuickQuoteJob) jobId = _lastQuickQuoteJob.id;
+  if (!jobId) { showToast('No job to send', 'warning'); return; }
+
+  showToast('Uploading quote PDF...', 'info');
+
+  // Generate PDF as blob for upload
+  var pdfUrl = null;
+  if (_lastQuickQuotePdfBlob) {
+    try {
+      var cloud = window.SECUREWORKS_CLOUD;
+      if (cloud && cloud.supabase) {
+        var jobNum = _lastQuickQuoteJob ? _lastQuickQuoteJob.job_number : 'quote';
+        var path = 'po-documents/' + jobId + '/' + jobNum + '-quote.pdf';
+        var { data: upData, error: upErr } = await cloud.supabase.storage
+          .from('po-documents')
+          .upload(path, _lastQuickQuotePdfBlob, { contentType: 'application/pdf', upsert: true });
+        if (!upErr) {
+          var { data: urlData } = cloud.supabase.storage.from('po-documents').getPublicUrl(path);
+          pdfUrl = urlData ? urlData.publicUrl : null;
+        }
+      }
+    } catch (e) { console.log('[QuickQuote] PDF upload failed:', e.message); }
+  }
+
+  try {
+    var res = await opsPost('send_quick_quote_email', { job_id: jobId, pdf_url: pdfUrl });
+    showToast('Quote sent to ' + (res.sent_to || 'client'), 'success');
+    _lastQuickQuotePdfBlob = null;
+    loadJobs();
+  } catch (e) {
+    showToast('Send failed: ' + e.message, 'warning');
   }
 }
 
@@ -481,8 +527,9 @@ async function generateQuickQuotePDF(savedJob) {
   // Page numbers
   P.addPageNumbers(doc);
 
-  // Save
+  // Save locally + store blob for email sending
   var filename = jobNum + '-quote-' + clientName.replace(/\s+/g, '-').toLowerCase() + '.pdf';
+  _lastQuickQuotePdfBlob = doc.output('blob');
   doc.save(filename);
   showToast('PDF downloaded: ' + filename, 'success');
 }

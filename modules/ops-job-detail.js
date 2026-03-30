@@ -2340,7 +2340,17 @@ function renderBuildView(data) {
   // Miscellaneous jobs: show description + line items instead of scope tool
   if (j.type === 'miscellaneous' && j.pricing_json && j.pricing_json.source === 'quick_quote') {
     var pj = j.pricing_json;
-    html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Job Details</div>';
+    // Quote lifecycle status pill
+    var qs = j.status === 'invoiced' ? 'invoiced' : j.status === 'accepted' ? 'accepted' : j.quoted_at ? 'sent' : 'draft';
+    var qsColors = { draft: '#95A5A6', sent: '#3498DB', accepted: '#E67E22', invoiced: '#27AE60' };
+    var qsLabels = { draft: 'Quote Draft', sent: 'Quote Sent', accepted: 'Accepted', invoiced: 'Invoiced' };
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
+    html += '<span style="font-size:14px;font-weight:700;">Job Details</span>';
+    html += '<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:' + (qsColors[qs] || '#999') + '20;color:' + (qsColors[qs] || '#999') + ';font-weight:600;text-transform:uppercase;">' + (qsLabels[qs] || qs) + '</span>';
+    if (qs === 'draft' || qs === 'sent') {
+      html += '<button class="btn btn-sm" style="font-size:10px;background:var(--sw-green);color:#fff;margin-left:auto;" onclick="sendQuickQuoteToClient(\'' + j.id + '\')">&#9993; Send to Client</button>';
+    }
+    html += '</div>';
     if (pj.job_type_label) html += '<div style="margin-bottom:4px;"><strong>Type:</strong> ' + escapeHtml(pj.job_type_label) + '</div>';
     if (pj.job_description) html += '<div style="margin-bottom:8px;white-space:pre-wrap;font-size:13px;">' + escapeHtml(pj.job_description) + '</div>';
     if (pj.reference) html += '<div style="margin-bottom:8px;font-size:12px;color:var(--sw-text-sec);">Ref: ' + escapeHtml(pj.reference) + '</div>';

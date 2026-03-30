@@ -86,6 +86,17 @@ function renderKanban(container, columns) {
       if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
       if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
       if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
+      // Quick quote status badge
+      if (j.type === 'miscellaneous' && j.pricing_json) {
+        try {
+          var pjm = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
+          if (pjm.source === 'quick_quote') {
+            var qqs = j.status === 'invoiced' ? 'invoiced' : j.status === 'accepted' ? 'accepted' : j.quoted_at ? 'sent' : 'draft';
+            var qqc = { draft: '#95A5A6', sent: '#3498DB', accepted: '#E67E22', invoiced: '#27AE60' };
+            html += '<span class="kanban-meta-badge" style="background:' + (qqc[qqs] || '#999') + '20;color:' + (qqc[qqs] || '#999') + ';">Q:' + qqs + '</span>';
+          }
+        } catch(e) {}
+      }
       // Multi-run fencing badge (static count from pricing_json, no extra query)
       if (j.type === 'fencing' && j.pricing_json) {
         try {

@@ -3214,7 +3214,8 @@
       <button class="qq-btn qq-btn-cancel" onclick="closeQuickQuote()">Cancel</button>
       <button class="qq-btn qq-btn-draft" onclick="saveQuickQuoteDraft()">Save Draft</button>
       <button class="qq-btn qq-btn-pdf" onclick="generateQuickQuotePDF()">Generate PDF</button>
-      <button class="qq-btn qq-btn-send" onclick="sendQuickQuote()">Send Quote</button>
+      <button class="qq-btn qq-btn-send" onclick="sendQuickQuote()">Save &amp; PDF</button>
+      <button class="qq-btn qq-btn-send" id="qqSendToClient" style="display:none;background:var(--sw-green);" onclick="sendQuickQuoteToClient(this.dataset.jobId)">&#9993; Send to Client</button>
     </div>
   </div>
 </div>
