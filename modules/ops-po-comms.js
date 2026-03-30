@@ -1893,68 +1893,138 @@ async function loadPOEmails(poId) {
   }
 }
 
+// Relative timestamp helper
+function relativeTime(dateStr) {
+  if (!dateStr) return '';
+  var now = Date.now();
+  var then = new Date(dateStr).getTime();
+  var diffMs = now - then;
+  var mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return mins + 'm';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h';
+  var days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'd';
+  var weeks = Math.floor(days / 7);
+  if (weeks < 5) return weeks + 'w';
+  return new Date(dateStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+}
+
+// Extract short name from email (user part or first word)
+function shortName(email) {
+  if (!email) return '';
+  var local = email.split('@')[0] || '';
+  if (local.length > 15) return local.substring(0, 15) + '...';
+  return local;
+}
+
 function renderPOEmailThread(emails, poId) {
   if (!emails || emails.length === 0) return '<div style="font-size:11px;color:var(--sw-text-sec);padding:6px 0;">No emails yet.</div>';
   var html = '';
   emails.sort(function(a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
+
+  // Thread header — subject shown ONCE
+  var threadSubj = emails[0].subject || '';
+  html += '<div class="po-thread-header">';
+  html += '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">&#128233; ' + escapeHtml(threadSubj.length > 45 ? threadSubj.substring(0, 45) + '...' : threadSubj) + '</span>';
+  html += '<span class="po-thread-count">' + emails.length + '</span>';
+  html += '</div>';
+
+  // "Show older" — default shows last 2, older are hidden
+  var visibleCount = 2;
+  var hiddenCount = Math.max(0, emails.length - visibleCount);
+  var threadId = 'poThread_' + poId;
+
+  if (hiddenCount > 0) {
+    html += '<div class="po-thread-show-older" onclick="document.getElementById(\'' + threadId + '_older\').style.display=\'block\';this.style.display=\'none\';">&#9654; Show ' + hiddenCount + ' older message' + (hiddenCount > 1 ? 's' : '') + '</div>';
+    html += '<div id="' + threadId + '_older" style="display:none;">';
+  }
+
   emails.forEach(function(em, idx) {
     var isInbound = em.direction === 'inbound' || em.direction === 'received';
-    var dir = isInbound ? 'received' : 'sent';
-    var date = (em.created_at || em.sent_at || em.received_at) ? new Date(em.created_at || em.sent_at || em.received_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-    var subj = em.subject || em.summary || '';
-    var bodyText = em.body_text || em.body || em.summary || '';
-    var firstLine = bodyText.split('\n')[0] || '';
-    if (firstLine.length > 100) firstLine = firstLine.substring(0, 100) + '...';
+    var ts = em.created_at || em.sent_at || em.received_at || '';
+    var bodyText = em.body_text || em.body || '';
+    var preview = bodyText.replace(/\n/g, ' ').substring(0, 40);
+    if (bodyText.length > 40) preview += '...';
+    var who = isInbound ? shortName(em.from_email) : shortName(em.to_email);
+    var arrow = isInbound ? '<span style="color:var(--sw-blue,#3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
+    var atts = em.attachments_json || em.attachments || [];
+    var hasAtts = Array.isArray(atts) && atts.length > 0;
+    var isUnread = isInbound && !em.read_at;
+    var rowId = 'emRow_' + poId + '_' + idx;
 
-    // Direction arrow + delivery status
-    var arrow = isInbound ? '<span style="color:var(--sw-blue, #3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
-    var statusBadge = '';
+    // Auto-mark as read
+    if (isUnread && em.id) {
+      opsPost('mark_email_read', { email_id: em.id }).catch(function() {});
+      em.read_at = new Date().toISOString();
+    }
+
+    // Close the "older" wrapper before the visible messages start
+    if (hiddenCount > 0 && idx === hiddenCount) {
+      html += '</div>'; // close #older
+    }
+
+    // Compact row
+    html += '<div class="po-email-row' + (isInbound ? ' inbound' : '') + '" onclick="toggleEmailExpand(\'' + rowId + '\')">';
+    if (isUnread) html += '<span class="em-dot"></span>';
+    html += '<span class="em-icon">' + arrow + '</span>';
+    html += '<span class="em-who">' + escapeHtml(who) + '</span>';
+    html += '<span class="em-time">' + relativeTime(ts) + '</span>';
+    html += '<span class="em-preview">' + escapeHtml(preview) + '</span>';
+    if (hasAtts) html += '<span class="em-clip">&#128206;</span>';
+    // Delivery status dot for sent emails
     var ds = em.delivery_status || '';
     if (!isInbound && ds) {
-      var badgeColor = ds === 'opened' ? 'var(--sw-green)' : ds === 'delivered' ? 'var(--sw-blue, #3498DB)' : ds === 'bounced' ? 'var(--sw-red)' : '#999';
-      statusBadge = '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + badgeColor + '20;color:' + badgeColor + ';font-weight:600;margin-left:6px">' + escapeHtml(ds) + '</span>';
+      var dc = ds === 'opened' ? 'var(--sw-green)' : ds === 'delivered' ? 'var(--sw-blue,#3498DB)' : ds === 'bounced' ? 'var(--sw-red)' : '#999';
+      html += '<span style="width:6px;height:6px;border-radius:50%;background:' + dc + ';flex-shrink:0;" title="' + escapeHtml(ds) + '"></span>';
     }
-
-    // Unread indicator
-    var unreadDot = (isInbound && !em.read_at) ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sw-blue, #3498DB);margin-right:4px" title="Unread"></span>' : '';
-
-    // Auto-mark as read when rendered
-    if (isInbound && !em.read_at && em.id) {
-      opsPost('mark_email_read', { email_id: em.id }).catch(function() {});
-      em.read_at = new Date().toISOString(); // prevent re-marking
-    }
-
-    var bgColor = isInbound ? 'rgba(52,152,219,0.04)' : 'rgba(241,90,41,0.04)';
-    var borderLeft = isInbound ? '3px solid var(--sw-blue, #3498DB)' : '3px solid var(--sw-orange)';
-
-    html += '<div class="po-email-item ' + dir + '" style="padding:10px 12px;margin-bottom:6px;border-left:' + borderLeft + ';background:' + bgColor + ';border-radius:0 6px 6px 0;cursor:pointer" onclick="this.classList.toggle(\'expanded\')" data-idx="' + idx + '">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sw-text-sec)">';
-    html += '<span>' + unreadDot + arrow + ' ' + (isInbound ? 'From: ' + escapeHtml(em.from_email || '') : 'To: ' + escapeHtml(em.to_email || '')) + '</span>';
-    html += '<span>' + date + statusBadge + '</span>';
     html += '</div>';
-    if (subj) html += '<div style="font-weight:600;font-size:12px;margin-top:3px">' + escapeHtml(subj.length > 70 ? subj.substring(0, 70) + '...' : subj) + '</div>';
-    html += '<div class="po-email-preview" style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">' + escapeHtml(firstLine) + '</div>';
-    html += '<div class="po-email-body" style="display:none;font-size:12px;margin-top:8px;white-space:pre-wrap;line-height:1.5">' + escapeHtml(bodyText) + '</div>';
 
+    // Expanded detail (hidden by default)
+    html += '<div id="' + rowId + '" class="po-email-expanded ' + (isInbound ? 'inbound' : 'outbound') + '" style="display:none;">';
+    html += '<div class="em-meta">';
+    html += arrow + ' ' + (isInbound ? escapeHtml(em.from_email || '') : escapeHtml(em.to_email || ''));
+    html += ' &middot; ' + (ts ? new Date(ts).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+    if (ds) html += ' &middot; ' + escapeHtml(ds);
+    html += '</div>';
+    html += '<div class="em-body">' + escapeHtml(bodyText) + '</div>';
     // Attachments
-    var atts = em.attachments_json || em.attachments || [];
-    if (Array.isArray(atts) && atts.length > 0) {
-      html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">';
+    if (hasAtts) {
+      html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
       atts.forEach(function(att) {
         var name = att.filename || att.name || 'Document';
         var url = att.storage_url || att.url || '';
-        html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--sw-light);border-radius:4px;font-size:10px;color:var(--sw-mid);text-decoration:none;font-weight:600">';
-        html += '&#128206; ' + escapeHtml(name) + '</a>';
+        html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:var(--sw-card);border:1px solid var(--sw-border);border-radius:3px;font-size:10px;color:var(--sw-mid);text-decoration:none;font-weight:600;">&#128206; ' + escapeHtml(name) + '</a>';
       });
       html += '</div>';
     }
-
     if (isInbound) {
-      html += '<button class="po-email-reply-btn" style="display:none;margin-top:6px;padding:4px 10px;background:var(--sw-dark);color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer" onclick="event.stopPropagation();openPOEmailComposeReply(\'' + poId + '\',\'' + escapeHtml(subj).replace(/'/g, "\\'") + '\')">Reply</button>';
+      var subj = em.subject || '';
+      html += '<button class="po-email-reply-btn" onclick="event.stopPropagation();openPOEmailComposeReply(\'' + poId + '\',\'' + escapeHtml(subj).replace(/'/g, "\\'") + '\')">Reply</button>';
     }
     html += '</div>';
   });
+
   return html;
+}
+
+// Toggle email expand — only one open at a time per thread
+var _expandedEmailRowId = null;
+function toggleEmailExpand(rowId) {
+  if (_expandedEmailRowId && _expandedEmailRowId !== rowId) {
+    var prev = document.getElementById(_expandedEmailRowId);
+    if (prev) prev.style.display = 'none';
+  }
+  var el = document.getElementById(rowId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    _expandedEmailRowId = rowId;
+  } else {
+    el.style.display = 'none';
+    _expandedEmailRowId = null;
+  }
 }
 
 function openPOEmailComposeReply(poId, originalSubject) {
