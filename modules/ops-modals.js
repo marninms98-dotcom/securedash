@@ -686,7 +686,10 @@ function switchPOModalTab(tab) {
       var threadEl = document.getElementById('poCommsThread');
       var replyEl = document.getElementById('poCommsReplyBar');
       if (threadEl) threadEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;padding:16px;">Loading emails...</div>';
-      loadPOEmails(_editingPOId).then(function(emails) {
+      // Pass job_id from PO data for fallback matching
+      var editPo = _allPOs ? _allPOs.find(function(p) { return p.id === _editingPOId; }) : null;
+      var editJobId = editPo ? editPo.job_id : null;
+      loadPOEmails(_editingPOId, editJobId).then(function(emails) {
         if (threadEl) threadEl.innerHTML = renderPOEmailThread(emails, _editingPOId);
         if (replyEl && typeof renderInlineReplyBar === 'function') {
           var lastEmail = emails.length > 0 ? emails[emails.length - 1] : null;

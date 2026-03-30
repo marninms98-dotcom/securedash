@@ -1870,11 +1870,13 @@ async function sendPOEmail() {
 
 // ── PO Email Thread Loading & Rendering ──
 
-async function loadPOEmails(poId) {
+async function loadPOEmails(poId, jobId) {
   if (_poEmailCache[poId]) return _poEmailCache[poId];
   try {
-    // Use list_po_communications (new action) with fallback to read_po_emails (legacy)
-    var data = await opsFetch('list_po_communications', { po_id: poId });
+    // Use list_po_communications with both po_id and job_id for robust matching
+    var params = { po_id: poId };
+    if (jobId) params.job_id = jobId;
+    var data = await opsFetch('list_po_communications', params);
     var emails = data.emails || data || [];
     if (!Array.isArray(emails)) emails = [];
     _poEmailCache[poId] = emails;
