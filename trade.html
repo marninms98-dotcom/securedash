@@ -3672,15 +3672,9 @@
           html += '      Call</a>';
         }
         if (canMessage()) {
-          if (job.ghl_contact_id) {
-            html += '    <button onclick="event.stopPropagation();openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
-            html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-            html += '      Text</button>';
-          } else if (job.client_phone) {
-            html += '    <button onclick="event.stopPropagation();openJobToTab(\'' + esc(job.id) + '\', \'' + esc(a.id) + '\', \'comms\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
-            html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-            html += '      SMS</button>';
-          }
+          html += '    <button onclick="event.stopPropagation();openJobToTab(\'' + esc(job.id) + '\', \'' + esc(a.id) + '\', \'comms\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
+          html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+          html += '      Text</button>';
         }
         if (job.site_address || job.site_suburb) {
           var navUrl = getMapsUrl(job.site_address, job.site_suburb);
@@ -4723,8 +4717,8 @@
       h += '      Call';
       h += '    </a>';
     }
-    if (canMessage() && job.ghl_contact_id) {
-      h += '    <button class="action-btn" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
+    if (canMessage()) {
+      h += '    <button class="action-btn" onclick="switchJobTab(\'comms\')">';
       h += '      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
       h += '      Message';
       h += '    </button>';
@@ -5479,7 +5473,9 @@
     html += 'Photos';
     if (mediaCount > 0) html += '<span class="tab-badge">' + mediaCount + '</span>';
     html += '</button>';
-    html += '<button class="jd-tab" data-tab="comms" onclick="switchJobTab(\'comms\')">Comms</button>';
+    if (canMessage()) {
+      html += '<button class="jd-tab" data-tab="comms" onclick="switchJobTab(\'comms\')">Comms</button>';
+    }
     html += '<button class="jd-tab" data-tab="log" onclick="switchJobTab(\'log\')">';
     html += 'Log';
     if (noteCount > 0) html += '<span class="tab-badge">' + noteCount + '</span>';
@@ -5544,17 +5540,11 @@
       buttons += ' Call</a>';
     }
 
-    // Text button — GHL messaging if available, native SMS fallback
+    // Text button — switches to Comms tab (Tier 2+ only)
     if (canMessage()) {
-      if (job.ghl_contact_id) {
-        buttons += '<button class="jd-action-btn act-text" onclick="openMessageOverlay(\'' + esc(job.id) + '\', \'' + esc(job.ghl_contact_id || '') + '\', \'' + esc(job.client_name || '') + '\')">';
-        buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-        buttons += ' Text</button>';
-      } else if (job.client_phone) {
-        buttons += '<button class="jd-action-btn act-text" onclick="switchJobTab(\'comms\')">';
-        buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-        buttons += ' Comms</button>';
-      }
+      buttons += '<button class="jd-action-btn act-text" onclick="switchJobTab(\'comms\')">';
+      buttons += '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      buttons += ' Text</button>';
     }
 
     // Navigate button — show if we have any address info or coordinates
@@ -5950,6 +5940,7 @@
   function renderJobTab_comms(data, phase, container) {
     var job = data.job;
     var h = '';
+    var firstName = (job.client_name || '').split(' ')[0] || 'Client';
 
     if (!job.ghl_contact_id) {
       h = '<div style="padding:24px 16px;text-align:center">';
@@ -5957,7 +5948,7 @@
       if (job.client_phone) {
         h += '<a href="tel:' + esc(job.client_phone) + '" class="btn btn-primary" style="max-width:240px;margin:0 auto;display:flex">';
         h += '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" style="margin-right:6px"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
-        h += 'Call ' + esc((job.client_name || '').split(' ')[0] || 'Client') + '</a>';
+        h += 'Call ' + esc(firstName) + '</a>';
         h += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:8px">' + esc(job.client_phone) + '</div>';
       } else {
         h += '<div style="font-size:13px;color:var(--sw-text-sec)">No phone number on file — check with Shaun</div>';
@@ -5972,28 +5963,27 @@
     h += '  <div style="padding:20px;text-align:center;color:var(--sw-text-sec);font-size:13px"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading messages...</div>';
     h += '</div>';
 
-    // Quick-reply templates (Tier 2+)
+    // Quick-reply templates (Tier 2+ can send these)
     if (canMessage()) {
-      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
       var templates = [
-        { label: 'On my way', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', on my way to you now.' },
-        { label: 'Running late', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', running about 15 minutes late. Apologies for the delay.' },
-        { label: 'Job complete', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', we\'ve finished up at your property. Everything looks great \u2014 you\'ll receive your invoice shortly.' },
-        { label: 'Gate code?', msg: 'Hi ' + (job.client_name || '').split(' ')[0] + ', could you please let me know the gate code? Thanks!' }
+        { label: 'On my way', msg: 'Hi ' + firstName + ', on my way to you now.' },
+        { label: 'Running late', msg: 'Hi ' + firstName + ', running about 15 minutes late. Apologies for the delay.' },
+        { label: 'Job complete', msg: 'Hi ' + firstName + ', we\'ve finished up at your property. Everything looks great \u2014 you\'ll receive your invoice shortly.' },
+        { label: 'Gate code?', msg: 'Hi ' + firstName + ', could you please let me know the gate code? Thanks!' }
       ];
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
       templates.forEach(function(t) {
-        h += '<button style="padding:6px 12px;border:1px solid var(--sw-border);border-radius:100px;font-size:12px;font-weight:600;background:#fff;color:var(--sw-text);cursor:pointer;font-family:var(--sw-font)" onclick="document.getElementById(\'tabCommsInput\').value=\'' + t.msg.replace(/'/g, "\\'") + '\';document.getElementById(\'tabCommsInput\').focus();">' + t.label + '</button>';
+        h += '<button style="padding:6px 12px;border:1px solid var(--sw-border);border-radius:100px;font-size:12px;font-weight:600;background:#fff;color:var(--sw-text);cursor:pointer;font-family:var(--sw-font)" onclick="sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\', \'' + t.msg.replace(/'/g, "\\'") + '\')">' + t.label + '</button>';
       });
       h += '</div>';
+    }
 
-      // Send input
+    // Custom message input (Tier 3 only)
+    if (canSeeConversation()) {
       h += '<div style="display:flex;gap:6px">';
-      h += '  <input type="text" id="tabCommsInput" placeholder="Type a message..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font)" onkeydown="if(event.key===\'Enter\')sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\')">';
+      h += '  <input type="text" id="tabCommsInput" placeholder="Type a message to ' + esc(firstName) + '..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font)" onkeydown="if(event.key===\'Enter\')sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\')">';
       h += '  <button class="btn btn-primary btn-small" onclick="sendTabCommsMessage(\'' + esc(job.ghl_contact_id) + '\')">Send</button>';
       h += '</div>';
-    } else {
-      // Tier 1 — read-only
-      h += '<div style="padding:10px;text-align:center;font-size:12px;color:var(--sw-text-sec);background:var(--sw-light);border-radius:8px">Messaging available for lead installers</div>';
     }
 
     container.innerHTML = h;
@@ -6063,19 +6053,18 @@
     }).catch(function() {}); // Fail silently
   }
 
-  window.sendTabCommsMessage = function(contactId) {
+  window.sendTabCommsMessage = function(contactId, prefilledMsg) {
     var input = document.getElementById('tabCommsInput');
-    var text = (input || {}).value;
+    var text = prefilledMsg || (input ? input.value : '');
     if (!text || !text.trim() || !_currentJobId) return;
-    input.value = '';
-    input.disabled = true;
+    if (input) { input.value = ''; input.disabled = true; }
+    toast('Sending...');
     ghlApi('send_sms', null, { contactId: contactId, message: text.trim(), jobId: _currentJobId }).then(function() {
-      input.disabled = false;
+      if (input) input.disabled = false;
       toast('Sent');
-      // Refresh comms tab
       refreshJobTab('comms');
     }).catch(function(err) {
-      input.disabled = false;
+      if (input) input.disabled = false;
       toast('Could not send \u2014 ' + friendlyError(err), true);
     });
   };
@@ -10015,102 +10004,7 @@
     });
   };
 
-  window.openMessageOverlay = function(jobId, contactId, clientName) {
-    _msgJobId = jobId;
-    _msgContactId = contactId;
-    _msgClientName = clientName;
-    var firstName = (clientName || '').split(' ')[0] || 'Client';
-
-    document.getElementById('msgOverlayTitle').textContent = 'Message ' + firstName;
-
-    var templates = [
-      'On my way — arriving in about 20 minutes',
-      "We've arrived at your property",
-      'Quick update — ',
-      'All done for today',
-      'Job complete — thanks for choosing SecureWorks!'
-    ];
-
-    var html = '<div style="padding:16px 0">';
-    html += '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:8px">Quick Messages</div>';
-    templates.forEach(function(t, i) {
-      var isCustom = t.indexOf('Quick update') === 0;
-      if (isCustom) return; // handled by compose
-      var msg = t.replace('{firstName}', firstName);
-      html += '<button class="msg-template" onclick="sendTemplateMessage(\'' + esc(msg.replace(/'/g, "\\'")) + '\')">';
-      html += '  <span style="margin-right:6px">&#9993;</span> ' + esc(msg);
-      html += '</button>';
-    });
-    html += '</div>';
-
-    // Custom compose
-    html += '<div class="msg-compose">';
-    html += '  <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:6px">Custom Message</div>';
-    html += '  <textarea id="msgCustomText" placeholder="Type a message to ' + esc(firstName) + '..."></textarea>';
-    html += '  <button class="btn btn-primary" style="width:100%" onclick="sendCustomMessage()">Send Message</button>';
-    html += '</div>';
-
-    // My sent messages
-    html += '<div style="margin-top:16px">';
-    html += '  <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:8px">My Messages</div>';
-    html += '  <div id="mySentMessages"><div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>Loading...</div></div>';
-    html += '</div>';
-
-    document.getElementById('msgOverlayContent').innerHTML = html;
-    document.getElementById('messageOverlay').style.display = 'block';
-
-    // Load sent messages
-    loadMyMessages();
-  };
-
-  window.closeMessageOverlay = function() {
-    document.getElementById('messageOverlay').style.display = 'none';
-    _msgJobId = null;
-    _msgContactId = null;
-  };
-
-  window.sendTemplateMessage = function(message) {
-    if (!_msgContactId || !_msgJobId) return;
-    toast('Sending...');
-    // TODO: ops-api?action=send_sms — should log job_event with user_id
-    ghlApi('send_sms', null, { contactId: _msgContactId, message: message, jobId: _msgJobId }).then(function() {
-      toast('Message sent');
-      if (navigator.vibrate) navigator.vibrate(50);
-      loadMyMessages();
-    }).catch(function(err) {
-      toast('Could not send — ' + friendlyError(err), true);
-    });
-  };
-
-  window.sendCustomMessage = function() {
-    var text = (document.getElementById('msgCustomText') || {}).value;
-    if (!text || !text.trim()) { toast('Enter a message', true); return; }
-    sendTemplateMessage(text.trim());
-    document.getElementById('msgCustomText').value = '';
-  };
-
-  function loadMyMessages() {
-    var container = document.getElementById('mySentMessages');
-    if (!container || !_msgJobId) return;
-    // TODO: ops-api?action=get_my_messages endpoint
-    ghlApi('get_my_messages', { jobId: _msgJobId }).then(function(data) {
-      var msgs = data.messages || [];
-      if (msgs.length === 0) {
-        container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No messages sent yet</div>';
-        return;
-      }
-      var html = '';
-      msgs.forEach(function(m) {
-        html += '<div class="msg-sent-item">';
-        html += '  <div class="msg-sent-text">' + esc(m.message || m.text || '') + '</div>';
-        html += '  <div class="msg-sent-meta">' + timeAgo(m.created_at) + '</div>';
-        html += '</div>';
-      });
-      container.innerHTML = html;
-    }).catch(function() {
-      container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Coming soon</div>';
-    });
-  }
+  // Message overlay removed — all messaging now lives in the Comms tab
 
   // ══════════════════════════════════════════════════
   // CLIENT CALLING — Post-call notes (Tier 2+)
