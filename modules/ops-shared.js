@@ -22,14 +22,13 @@ async function _getAuthToken() {
   return null;
 }
 
-// Build auth headers — prefer JWT, fall back to API key
+// Build auth headers — send BOTH JWT and API key for resilience
+// If JWT is expired, ops-api falls through to x-api-key check
 async function _getAuthHeaders(extra) {
   var token = await _getAuthToken();
-  var h = { 'Content-Type': 'application/json' };
+  var h = { 'Content-Type': 'application/json', 'x-api-key': _swApiKey };
   if (token) {
     h['Authorization'] = 'Bearer ' + token;
-  } else {
-    h['x-api-key'] = _swApiKey;
   }
   if (extra) { for (var k in extra) h[k] = extra[k]; }
   return h;
@@ -275,7 +274,10 @@ async function opsFetch(action, params) {
   }
   var headers = await _getAuthHeaders();
   return fetch(url, { headers: headers }).then(function(resp) {
-    if (resp.status === 401) { window.location.reload(); throw new Error('Session expired'); }
+    if (resp.status === 401) {
+      console.error('[ops] 401 on ' + action + ' — auth headers:', Object.keys(headers).join(','));
+      throw new Error('Unauthorized — check API key');
+    }
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
