@@ -5714,6 +5714,7 @@ function filterPOStatus(status) {
 
 var _invSearchQuery = '';
 var _allInvoices = [];
+var _invoiceSummaryCache = null; // Cached for Jarvis bar
 
 function filterInvoiceSearch() {
   _invSearchQuery = (document.getElementById('invSearch').value || '').toLowerCase();
@@ -5729,6 +5730,7 @@ async function loadInvoices() {
     if (dateTo) params.date_to = dateTo;
     var data = await opsFetch('list_invoices', params);
     _allInvoices = data.invoices || [];
+    _invoiceSummaryCache = data.summary || null;
     renderInvoiceStats(data.summary);
     renderInvoiceTable(_allInvoices);
   } catch (e) {
@@ -6136,7 +6138,7 @@ function submitRateModal() {
 
 var _matTypeFilter = 'all';
 var _matSearch = '';
-var _allPOs = [];
+// _allPOs already declared at line ~5926 — removed duplicate
 
 async function loadMaterials() {
   try {
@@ -9546,11 +9548,26 @@ function updateJarvisSummary() {
   } else if (view === 'calendar' && _calEvents) {
     text = _calEvents.length + ' events this week';
   } else if (view === 'financials') {
-    text = 'Viewing financials';
+    if (_invoiceSummaryCache) {
+      var s = _invoiceSummaryCache;
+      var parts = [];
+      if (s.outstanding) parts.push(fmt$(s.outstanding) + ' outstanding');
+      if (s.overdue) parts.push(fmt$(s.overdue) + ' overdue');
+      text = parts.length > 0 ? parts.join(' · ') : (_allInvoices.length + ' invoices loaded');
+    } else {
+      text = _allInvoices.length > 0 ? _allInvoices.length + ' invoices' : 'Financials loading...';
+    }
   } else if (view === 'materials') {
-    text = 'Materials & pricing';
+    var poCount = _allPOs ? _allPOs.length : 0;
+    text = poCount > 0 ? poCount + ' purchase orders tracked' : 'Materials loading...';
   } else if (view === 'inbox') {
-    text = 'Inbox';
+    var inboxData = _annotationCache['global'];
+    if (inboxData && inboxData.data) {
+      var highPri = inboxData.data.filter(function(a) { return (a.effective_priority || a.priority) >= 50; }).length;
+      text = inboxData.data.length + ' annotations' + (highPri > 0 ? ' · ' + highPri + ' high priority' : '');
+    } else {
+      text = 'Inbox loading...';
+    }
   } else {
     text = 'Dashboard ready';
   }
