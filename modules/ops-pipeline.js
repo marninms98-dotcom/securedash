@@ -85,6 +85,7 @@ function renderKanban(container, columns) {
       if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
       if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
       if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
+      if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
       // Multi-run fencing badge (static count from pricing_json, no extra query)
       if (j.type === 'fencing' && j.pricing_json) {
         try {

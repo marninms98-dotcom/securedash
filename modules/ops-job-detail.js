@@ -2,6 +2,100 @@
 // JOB DETAIL SLIDE PANEL (legacy peek — used by Today/Calendar)
 // ════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════
+// LIGHTBOX — full-screen photo/video gallery
+// ════════════════════════════════════════════════════════════
+
+var _lbState = { items: [], idx: 0, overlay: null, touchStartX: 0 };
+
+function openLightbox(mediaArray, startIndex) {
+  if (!mediaArray || mediaArray.length === 0) return;
+  _lbState.items = mediaArray;
+  _lbState.idx = startIndex || 0;
+
+  var ov = document.createElement('div');
+  ov.className = 'sw-lb-overlay';
+  ov.innerHTML = '<button class="sw-lb-close" aria-label="Close">&times;</button>' +
+    '<span class="sw-lb-counter"></span>' +
+    (mediaArray.length > 1 ? '<button class="sw-lb-nav sw-lb-prev" aria-label="Previous">&#8249;</button><button class="sw-lb-nav sw-lb-next" aria-label="Next">&#8250;</button>' : '') +
+    '<div class="sw-lb-media"></div>' +
+    '<div class="sw-lb-info"><div class="sw-lb-label"></div><div class="sw-lb-meta"></div></div>';
+
+  ov.querySelector('.sw-lb-close').onclick = closeLightbox;
+  if (mediaArray.length > 1) {
+    ov.querySelector('.sw-lb-prev').onclick = function() { _lbNav(-1); };
+    ov.querySelector('.sw-lb-next').onclick = function() { _lbNav(1); };
+  }
+
+  // Close on background click
+  ov.addEventListener('click', function(e) {
+    if (e.target === ov || e.target.classList.contains('sw-lb-media')) closeLightbox();
+  });
+
+  // Touch swipe
+  ov.addEventListener('touchstart', function(e) {
+    _lbState.touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  ov.addEventListener('touchend', function(e) {
+    var dx = e.changedTouches[0].clientX - _lbState.touchStartX;
+    if (Math.abs(dx) > 50) _lbNav(dx < 0 ? 1 : -1);
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', _lbKeyHandler);
+
+  document.body.appendChild(ov);
+  document.body.style.overflow = 'hidden';
+  _lbState.overlay = ov;
+  _lbRender();
+}
+
+function closeLightbox() {
+  if (_lbState.overlay) {
+    _lbState.overlay.remove();
+    _lbState.overlay = null;
+  }
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', _lbKeyHandler);
+}
+
+function _lbKeyHandler(e) {
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowLeft') _lbNav(-1);
+  else if (e.key === 'ArrowRight') _lbNav(1);
+}
+
+function _lbNav(dir) {
+  if (_lbState.items.length <= 1) return;
+  _lbState.idx = (_lbState.idx + dir + _lbState.items.length) % _lbState.items.length;
+  _lbRender();
+}
+
+function _lbRender() {
+  var ov = _lbState.overlay;
+  if (!ov) return;
+  var item = _lbState.items[_lbState.idx];
+  var src = item.storage_url || item.url || '';
+  var isVideo = (item.type === 'video') || /\.(mp4|mov|webm|avi)$/i.test(src);
+
+  var mediaEl = ov.querySelector('.sw-lb-media');
+  if (isVideo) {
+    mediaEl.innerHTML = '<video src="' + escapeHtml(src) + '" controls autoplay playsinline style="max-width:100%;max-height:100%;border-radius:4px;"></video>';
+  } else {
+    mediaEl.innerHTML = '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(item.label || '') + '">';
+  }
+
+  ov.querySelector('.sw-lb-counter').textContent = (_lbState.idx + 1) + ' / ' + _lbState.items.length;
+
+  var labelEl = ov.querySelector('.sw-lb-label');
+  var metaEl = ov.querySelector('.sw-lb-meta');
+  var labelHtml = '';
+  if (item.phase) labelHtml += '<span class="sw-lb-phase">' + escapeHtml(item.phase) + '</span>';
+  labelHtml += escapeHtml(item.label || item.file_name || '');
+  labelEl.innerHTML = labelHtml;
+  metaEl.textContent = item.created_at ? fmtDate(item.created_at) : '';
+}
+
 function confirmEditScope(url) {
   if (confirm('This will open the scope in the live editor with current pricing.\n\nAuto-save is active \u2014 any changes will overwrite the original scope.\n\nContinue?')) {
     window.open(url, '_blank');
@@ -171,6 +265,22 @@ function openScopeSnapshot(jobOrData) {
       html += '<a href="' + url + '" target="_blank" style="color:var(--sw-mid);font-weight:600;">\uD83D\uDCC4 ' + escapeHtml(name) + '</a>';
       if (doc.quote_number) html += '<span style="color:var(--sw-text-sec);">' + doc.quote_number + '</span>';
       if (sent) html += '<span style="color:var(--sw-green);font-size:11px;">' + sent + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Scope photos ──
+  var snapshotMedia = (jobOrData.media || []).filter(function(m) { return m.phase !== 'receipt'; });
+  if (snapshotMedia.length > 0) {
+    window._snapshotPhotos = snapshotMedia;
+    html += '<div style="font-size:12px;font-weight:700;margin-top:12px;margin-bottom:6px;">Site Photos (' + snapshotMedia.length + ')</div>';
+    html += '<div class="jd-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr));">';
+    snapshotMedia.forEach(function(m, idx) {
+      var src = m.thumbnail_url || m.storage_url;
+      html += '<div class="jd-photo-item">';
+      html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || '') + '" onclick="openLightbox(window._snapshotPhotos,' + idx + ')">';
+      if (m.label || m.phase) html += '<span class="jd-photo-phase">' + escapeHtml(m.label || m.phase) + '</span>';
       html += '</div>';
     });
     html += '</div>';
@@ -353,14 +463,18 @@ function renderJobPeek(data) {
     var jobPhotos = data.media.filter(function(m) { return m.phase !== 'receipt'; });
     var receiptPhotos = data.media.filter(function(m) { return m.phase === 'receipt'; });
 
+    // Store for lightbox in peek panel
+    window._peekJobPhotos = jobPhotos;
+    window._peekReceiptPhotos = receiptPhotos;
+
     if (jobPhotos.length > 0) {
       html += '<div class="panel-title" style="margin-top:16px;">Photos (' + jobPhotos.length + ')</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;">';
-      jobPhotos.forEach(function(m) {
+      jobPhotos.forEach(function(m, idx) {
         var src = m.thumbnail_url || m.storage_url;
         var phase = m.phase || '';
         html += '<div style="position:relative">';
-        html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || phase) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer" onclick="window.open(\'' + escapeHtml(m.storage_url) + '\',\'_blank\')">';
+        html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || phase) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(window._peekJobPhotos,' + idx + ')">';
         if (phase) html += '<span style="position:absolute;bottom:2px;left:2px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">' + phase + '</span>';
         html += '</div>';
       });
@@ -370,14 +484,13 @@ function renderJobPeek(data) {
     if (receiptPhotos.length > 0) {
       html += '<div class="panel-title" style="margin-top:16px;">Receipts (' + receiptPhotos.length + ')</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;">';
-      // Build PO lookup for receipt labels
       var poLookup = {};
       (data.purchase_orders || []).forEach(function(po) { poLookup[po.id] = po.po_number; });
-      receiptPhotos.forEach(function(m) {
+      receiptPhotos.forEach(function(m, idx) {
         var src = m.thumbnail_url || m.storage_url;
         var poLabel = m.po_id && poLookup[m.po_id] ? poLookup[m.po_id] : 'No PO';
         html += '<div style="position:relative">';
-        html += '<img src="' + escapeHtml(src) + '" alt="Receipt" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer" onclick="window.open(\'' + escapeHtml(m.storage_url) + '\',\'_blank\')">';
+        html += '<img src="' + escapeHtml(src) + '" alt="Receipt" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openLightbox(window._peekReceiptPhotos,' + idx + ')">';
         html += '<span style="position:absolute;bottom:2px;left:2px;font-size:9px;background:rgba(0,0,0,0.6);color:#fff;padding:1px 4px;border-radius:3px">' + poLabel + '</span>';
         html += '</div>';
       });
@@ -644,6 +757,8 @@ var _currentJobId = null;
 async function openJobDetail(jobId) {
   _currentJobId = jobId;
   _emailLogLoaded = false; // reset email log when switching jobs
+  _commsCouncilLoaded = false; // reset council comms
+  _allEmailsLoaded = false; // reset all emails timeline
   // Save scroll position for kanban return
   var jobsBody = document.getElementById('jobsBody');
   if (jobsBody) sessionStorage.setItem('sw_kanban_scroll', jobsBody.scrollTop || window.scrollY);
@@ -1436,7 +1551,7 @@ function renderTimelineItem(ev, isFuture) {
     html += '<div class="jd-tl-detail">' + escapeHtml(String(ev.detail)) + '</div>';
   }
   if (ev.photoUrl) {
-    html += '<img class="jd-tl-photo" src="' + escapeHtml(ev.photoUrl) + '" onclick="window.open(\'' + escapeHtml(ev.fullUrl || ev.photoUrl) + '\',\'_blank\')" alt="Photo">';
+    html += '<img class="jd-tl-photo" src="' + escapeHtml(ev.photoUrl) + '" onclick="openLightbox([{storage_url:\'' + escapeHtml(ev.fullUrl || ev.photoUrl) + '\',label:\'Timeline photo\'}],0)" alt="Photo">';
   }
   html += '</div>';
   return html;
@@ -2269,6 +2384,22 @@ function renderBuildView(data) {
     html += renderSitePlanPanel(j.scope_json, true);
   }
 
+  // Scope photos strip
+  var buildPhotos = (data.media || []).filter(function(m) { return m.phase !== 'receipt'; });
+  if (buildPhotos.length > 0) {
+    window._buildPhotos = buildPhotos;
+    html += '<div style="font-size:14px;font-weight:700;margin-top:12px;margin-bottom:6px;">Site Photos (' + buildPhotos.length + ')</div>';
+    html += '<div class="jd-photo-strip">';
+    buildPhotos.forEach(function(m, idx) {
+      var src = m.thumbnail_url || m.storage_url;
+      html += '<div class="jd-photo-strip-item" onclick="openLightbox(window._buildPhotos,' + idx + ')">';
+      html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || m.phase || '') + '">';
+      if (m.label || m.phase) html += '<span class="jd-photo-phase">' + escapeHtml(m.label || m.phase) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   // Work Order documents
   html += renderDocumentLinks(data.documents, ['work_order'], '&#128203; Work Orders');
 
@@ -2554,13 +2685,17 @@ function renderFilesView(data) {
   var jobPhotos = (data.media || []).filter(function(m) { return m.phase !== 'receipt'; });
   var receiptPhotos = (data.media || []).filter(function(m) { return m.phase === 'receipt'; });
 
+  // Store for lightbox access
+  window._jdJobPhotos = jobPhotos;
+  window._jdReceiptPhotos = receiptPhotos;
+
   if (jobPhotos.length > 0) {
     html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Photos (' + jobPhotos.length + ')</div>';
     html += '<div class="jd-photo-grid">';
-    jobPhotos.forEach(function(m) {
+    jobPhotos.forEach(function(m, idx) {
       var src = m.thumbnail_url || m.storage_url;
       html += '<div class="jd-photo-item">';
-      html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || m.phase || '') + '" onclick="window.open(\'' + escapeHtml(m.storage_url) + '\',\'_blank\')">';
+      html += '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(m.label || m.phase || '') + '" onclick="openLightbox(window._jdJobPhotos,' + idx + ')">';
       if (m.phase) html += '<span class="jd-photo-phase">' + m.phase + '</span>';
       html += '</div>';
     });
@@ -2573,11 +2708,11 @@ function renderFilesView(data) {
     (data.purchase_orders || []).forEach(function(po) { poLookup[po.id] = po.po_number; });
     html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Receipts (' + receiptPhotos.length + ')</div>';
     html += '<div class="jd-photo-grid">';
-    receiptPhotos.forEach(function(m) {
+    receiptPhotos.forEach(function(m, idx) {
       var src = m.thumbnail_url || m.storage_url;
       var poLabel = m.po_id && poLookup[m.po_id] ? poLookup[m.po_id] : 'No PO';
       html += '<div class="jd-photo-item">';
-      html += '<img src="' + escapeHtml(src) + '" alt="Receipt" onclick="window.open(\'' + escapeHtml(m.storage_url) + '\',\'_blank\')">';
+      html += '<img src="' + escapeHtml(src) + '" alt="Receipt" onclick="openLightbox(window._jdReceiptPhotos,' + idx + ')">';
       html += '<span class="jd-photo-phase">' + poLabel + '</span>';
       html += '</div>';
     });
@@ -2627,7 +2762,7 @@ function renderFilesView(data) {
 
       // Thumbnail or file icon
       if (url && /\.(jpg|jpeg|png|gif|webp)$/i.test(name)) {
-        html += '<img src="' + escapeHtml(url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:3px;cursor:pointer;flex-shrink:0" onclick="window.open(\'' + escapeHtml(url) + '\',\'_blank\')">';
+        html += '<img src="' + escapeHtml(url) + '" style="width:32px;height:32px;object-fit:cover;border-radius:3px;cursor:pointer;flex-shrink:0" onclick="openLightbox([{storage_url:\'' + escapeHtml(url) + '\',label:\'' + escapeHtml(name).replace(/'/g, "\\'") + '\'}],0)">';
       } else {
         html += '<span style="font-size:20px;flex-shrink:0;width:32px;text-align:center">' + fileIcon + '</span>';
       }

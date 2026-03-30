@@ -447,11 +447,12 @@ function renderCommsView(data) {
 
   var html = '';
 
-  // Channel tabs: Client | Suppliers | Email Log
+  // Channel tabs: Client | Suppliers | Council | All Emails
   html += '<div class="comms-channel-tabs">';
   html += '<button class="comms-channel-tab active" id="commsTabClient" onclick="setCommsChannel(\'client\')">Client</button>';
   html += '<button class="comms-channel-tab" id="commsTabSuppliers" onclick="setCommsChannel(\'suppliers\')">Suppliers' + (pos.length ? ' (' + pos.length + ')' : '') + '</button>';
-  html += '<button class="comms-channel-tab" id="commsTabEmail" onclick="setCommsChannel(\'email\')">Email Log</button>';
+  html += '<button class="comms-channel-tab" id="commsTabCouncil" onclick="setCommsChannel(\'council\')">Council</button>';
+  html += '<button class="comms-channel-tab" id="commsTabEmail" onclick="setCommsChannel(\'email\')">All Emails</button>';
   html += '</div>';
 
   // ── Client View ──
@@ -610,9 +611,14 @@ function renderCommsView(data) {
   }
   html += '</div>'; // end commsSupplierView
 
-  // ── Email Log View ──
+  // ── Council View ──
+  html += '<div id="commsCouncilView" style="display:none;">';
+  html += '<div id="commsCouncilContent"><div class="loading" style="text-align:center;padding:20px;">Loading council submissions...</div></div>';
+  html += '</div>';
+
+  // ── All Emails View (unified timeline) ──
   html += '<div id="commsEmailView" style="display:none;">';
-  html += '<div id="emailLogContent"><div class="loading" style="text-align:center;padding:20px;">Loading email log...</div></div>';
+  html += '<div id="emailLogContent"><div class="loading" style="text-align:center;padding:20px;">Loading all emails...</div></div>';
   html += '</div>';
 
   container.innerHTML = html;
@@ -645,27 +651,35 @@ function renderCommsView(data) {
 function setCommsChannel(channel) {
   var clientView = document.getElementById('commsClientView');
   var supplierView = document.getElementById('commsSupplierView');
+  var councilView = document.getElementById('commsCouncilView');
   var emailView = document.getElementById('commsEmailView');
   var clientTab = document.getElementById('commsTabClient');
   var supplierTab = document.getElementById('commsTabSuppliers');
+  var councilTab = document.getElementById('commsTabCouncil');
   var emailTab = document.getElementById('commsTabEmail');
   if (!clientView || !supplierView) return;
 
   // Hide all
   clientView.style.display = 'none';
   supplierView.style.display = 'none';
+  if (councilView) councilView.style.display = 'none';
   if (emailView) emailView.style.display = 'none';
   clientTab.classList.remove('active');
   supplierTab.classList.remove('active');
+  if (councilTab) councilTab.classList.remove('active');
   if (emailTab) emailTab.classList.remove('active');
 
   if (channel === 'suppliers') {
     supplierView.style.display = 'block';
     supplierTab.classList.add('active');
+  } else if (channel === 'council') {
+    if (councilView) councilView.style.display = 'block';
+    if (councilTab) councilTab.classList.add('active');
+    loadCommsCouncil();
   } else if (channel === 'email') {
     if (emailView) emailView.style.display = 'block';
     if (emailTab) emailTab.classList.add('active');
-    loadEmailLog();
+    loadAllEmails();
   } else {
     clientView.style.display = 'block';
     clientTab.classList.add('active');
@@ -691,6 +705,101 @@ async function loadEmailLog() {
     container.innerHTML = renderEmailLog(events);
   } catch (e) {
     container.innerHTML = '<div class="comms-empty">Failed to load email log.</div>';
+  }
+}
+
+// ── Council Comms: fetch council submissions + render step threads ──
+var _commsCouncilLoaded = false;
+async function loadCommsCouncil() {
+  if (_commsCouncilLoaded) return;
+  var container = document.getElementById('commsCouncilContent');
+  if (!container || !_currentJobId) return;
+
+  try {
+    var data = await opsFetch('list_council_submissions', { job_id: _currentJobId });
+    var subs = data.submissions || [];
+    if (subs.length === 0) {
+      container.innerHTML = '<div class="comms-empty">No council submissions for this job.</div>';
+      return;
+    }
+    _commsCouncilLoaded = true;
+    var html = '';
+    subs.forEach(function(sub) {
+      var steps = sub.steps || [];
+      var emails = sub.email_threads || [];
+      var statusLabel = (sub.overall_status || 'not_started').replace(/_/g, ' ');
+      var statusColor = sub.overall_status === 'complete' ? 'var(--sw-green)' : sub.overall_status === 'blocked' ? 'var(--sw-red)' : sub.overall_status === 'in_progress' ? 'var(--sw-blue,#3498DB)' : 'var(--sw-text-sec)';
+
+      html += '<div style="border:1px solid var(--sw-border);margin-bottom:10px;border-radius:6px;overflow:hidden;">';
+      html += '<div style="padding:10px 12px;background:var(--sw-light);display:flex;justify-content:space-between;align-items:center;">';
+      html += '<div><strong>' + escapeHtml(sub.job_number || '') + '</strong> <span style="font-size:11px;color:var(--sw-text-sec);">Council Submission</span></div>';
+      html += '<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:' + statusColor + '20;color:' + statusColor + ';font-weight:600;text-transform:capitalize;">' + statusLabel + '</span>';
+      html += '</div>';
+      html += '<div style="padding:8px 12px;">';
+      // Render using the same pattern as council card detail
+      if (typeof renderCouncilCardDetail === 'function') {
+        html += renderCouncilCardDetail(sub);
+      } else {
+        // Fallback: simple step list
+        steps.forEach(function(step, idx) {
+          var icon = step.status === 'complete' ? '<span style="color:var(--sw-green);">&#10003;</span>' : step.status === 'in_progress' ? '<span style="color:var(--sw-blue,#3498DB);">&#9679;</span>' : step.status === 'blocked' ? '<span style="color:var(--sw-red);">&#10007;</span>' : '<span style="color:var(--sw-text-sec);">&#9675;</span>';
+          html += '<div style="padding:3px 0;font-size:11px;">' + icon + ' ' + escapeHtml(step.name) + '</div>';
+        });
+      }
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="comms-empty">Failed to load council data: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+// ── All Emails: unified chronological timeline (PO + council) ──
+var _allEmailsLoaded = false;
+async function loadAllEmails() {
+  if (_allEmailsLoaded) return;
+  var container = document.getElementById('emailLogContent');
+  if (!container || !_currentJobId) return;
+
+  try {
+    var data = await opsFetch('list_po_communications', { job_id: _currentJobId, limit: '100' });
+    var emails = data.emails || [];
+    if (emails.length === 0) {
+      container.innerHTML = '<div class="comms-empty">No emails for this job yet.</div>';
+      return;
+    }
+    _allEmailsLoaded = true;
+    // Sort by date (newest first)
+    emails.sort(function(a, b) { return (b.created_at || '') > (a.created_at || '') ? 1 : -1; });
+    var html = '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:8px;">' + emails.length + ' emails across all POs and council submissions</div>';
+    emails.forEach(function(em) {
+      var isInbound = em.direction === 'inbound' || em.direction === 'received';
+      var dir = isInbound ? '<span style="color:var(--sw-blue,#3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
+      var date = em.created_at ? new Date(em.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      var bgColor = isInbound ? 'rgba(52,152,219,0.04)' : 'rgba(241,90,41,0.04)';
+      var borderColor = isInbound ? 'var(--sw-blue,#3498DB)' : 'var(--sw-orange)';
+      var typeBadge = em.communication_type === 'council' ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);font-weight:600;margin-left:4px;">Council</span>' : '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(241,90,41,0.1);color:var(--sw-orange);font-weight:600;margin-left:4px;">PO</span>';
+      var statusBadge = '';
+      if (!isInbound && em.delivery_status) {
+        var bc = em.delivery_status === 'opened' ? 'var(--sw-green)' : em.delivery_status === 'delivered' ? 'var(--sw-blue,#3498DB)' : em.delivery_status === 'bounced' ? 'var(--sw-red)' : '#999';
+        statusBadge = ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:' + bc + '20;color:' + bc + ';font-weight:600;">' + escapeHtml(em.delivery_status) + '</span>';
+      }
+      var bodyText = em.body_text || '';
+      var firstLine = bodyText.split('\n')[0] || '';
+      if (firstLine.length > 80) firstLine = firstLine.substring(0, 80) + '...';
+
+      html += '<div class="po-email-item" style="padding:8px 12px;margin-bottom:4px;border-left:3px solid ' + borderColor + ';background:' + bgColor + ';border-radius:0 6px 6px 0;cursor:pointer;" onclick="this.classList.toggle(\'expanded\')">';
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);display:flex;justify-content:space-between;align-items:center;">';
+      html += '<span>' + dir + ' ' + escapeHtml(isInbound ? (em.from_email || '') : (em.to_email || '')) + typeBadge + '</span>';
+      html += '<span>' + date + statusBadge + '</span></div>';
+      if (em.subject) html += '<div style="font-size:11px;font-weight:600;margin-top:2px;">' + escapeHtml(em.subject.length > 70 ? em.subject.substring(0, 70) + '...' : em.subject) + '</div>';
+      html += '<div class="po-email-preview" style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(firstLine) + '</div>';
+      html += '<div class="po-email-body" style="display:none;font-size:11px;color:var(--sw-text);margin-top:4px;white-space:pre-wrap;line-height:1.5;">' + escapeHtml(bodyText) + '</div>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="comms-empty">Failed to load emails: ' + escapeHtml(e.message) + '</div>';
   }
 }
 
