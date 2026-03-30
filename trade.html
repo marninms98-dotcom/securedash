@@ -3843,13 +3843,7 @@
 
   function deriveJobPhase(data) {
     var job = data.job;
-    var crew = data.crew || [];
-    var myAssignment = null;
-    if (_user) {
-      for (var i = 0; i < crew.length; i++) {
-        if (crew[i].user_id === _user.id) { myAssignment = crew[i]; break; }
-      }
-    }
+    var myAssignment = getMyAssignment(data);
     if (!myAssignment) return 'pre_confirm';
 
     // Check if job is complete
@@ -3871,9 +3865,18 @@
   function getMyAssignment(data) {
     var crew = data.crew || [];
     if (!_user) return null;
+    // Primary match: user_id
     for (var i = 0; i < crew.length; i++) {
       if (crew[i].user_id === _user.id) return crew[i];
     }
+    // Fallback: match by assignment ID passed from job card tap
+    if (_currentAssignment) {
+      for (var i = 0; i < crew.length; i++) {
+        if (crew[i].id === _currentAssignment) return crew[i];
+      }
+    }
+    // Last resort: if only one crew member, assume it's them
+    if (crew.length === 1) return crew[0];
     return null;
   }
 
