@@ -5467,6 +5467,9 @@
     var mediaCount = (data.media || []).length;
     var noteCount = (data.notes || []).length;
     html += '<div class="jd-tabs">';
+    if (canMessage()) {
+      html += '<button class="jd-tab" data-tab="workorder" onclick="switchJobTab(\'workorder\')">&#128203; Work Order</button>';
+    }
     html += '<button class="jd-tab" data-tab="scope" onclick="switchJobTab(\'scope\')">Scope</button>';
     html += '<button class="jd-tab" data-tab="files" onclick="switchJobTab(\'files\')">Files</button>';
     html += '<button class="jd-tab" data-tab="photos" onclick="switchJobTab(\'photos\')">';
@@ -5483,6 +5486,7 @@
     html += '</div>';
 
     // ── Tab Content Containers (lazy-loaded) ──
+    html += '<div class="jd-tab-content" id="jdTab_workorder"></div>';
     html += '<div class="jd-tab-content" id="jdTab_scope"></div>';
     html += '<div class="jd-tab-content" id="jdTab_files"></div>';
     html += '<div class="jd-tab-content" id="jdTab_photos"></div>';
@@ -5491,9 +5495,12 @@
 
     container.innerHTML = html;
 
-    // ── Activate last-used tab (or default to scope) ──
-    var lastTab = 'scope';
-    try { lastTab = localStorage.getItem('sw_last_tab_' + _currentJobId) || 'scope'; } catch(e) {}
+    // ── Activate last-used tab (or default to workorder for Tier 2+, scope for Tier 1) ──
+    var defaultTab = canMessage() ? 'workorder' : 'scope';
+    var lastTab = defaultTab;
+    try { lastTab = localStorage.getItem('sw_last_tab_' + _currentJobId) || defaultTab; } catch(e) {}
+    // If saved tab is workorder but user is Tier 1, fall back to scope
+    if (lastTab === 'workorder' && !canMessage()) lastTab = 'scope';
     switchJobTab(lastTab);
 
     // ── Timer system (unchanged) ──
@@ -5566,6 +5573,7 @@
   // ══════════════════════════════════════════════════
 
   var _jobTabLoaders = {
+    workorder: renderJobTab_workorder,
     scope: renderJobTab_scope,
     files: renderJobTab_files,
     photos: renderJobTab_photos,
@@ -5612,8 +5620,242 @@
   };
 
   // ══════════════════════════════════════════════════
-  // TAB RENDERERS — Scope, Files, Photos, Comms, Log
+  // TAB RENDERERS — Work Order, Scope, Files, Photos, Comms, Log
   // ══════════════════════════════════════════════════
+
+  function renderJobTab_workorder(data, phase, container) {
+    var job = data.job;
+    var scope = job.scope_json || {};
+    var config = scope.config || scope || {};
+    var pricing = job.pricing_json || {};
+    var lineItems = pricing.line_items || [];
+    var wo = data.workOrder;
+    var type = (job.type || 'patio').toLowerCase();
+    var h = '';
+
+    // ── SECTION 1: Build Spec Header ──
+    var typeLabel = type === 'fencing' ? 'Fencing' : type === 'decking' ? 'Decking' : 'Patio';
+    h += '<div style="background:var(--sw-dark);color:#fff;border-radius:var(--sw-radius);padding:16px;margin-bottom:12px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+    h += '<div>';
+    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;opacity:0.6;margin-bottom:4px">Work Order</div>';
+    h += '<div style="font-size:20px;font-weight:800">' + typeLabel + ' Install</div>';
+    h += '</div>';
+    if (job.job_number) h += '<div style="font-size:14px;font-weight:700;background:rgba(255,255,255,0.15);padding:4px 10px;border-radius:6px">' + esc(job.job_number) + '</div>';
+    h += '</div>';
+    var addr = [job.site_address, job.site_suburb].filter(Boolean).join(', ');
+    if (addr) h += '<div style="font-size:13px;opacity:0.7;margin-top:6px">' + esc(addr) + '</div>';
+    h += '</div>';
+
+    // ── SECTION 2: What You're Building ──
+    h += '<div class="detail-section">';
+    h += '<h3>What You\'re Building</h3>';
+
+    if (type === 'fencing') {
+      // Fencing build spec
+      var specRows = [];
+      if (config.material) specRows.push(['Panel Type', humanise('material', config.material)]);
+      if (config.height) specRows.push(['Height', config.height + 'mm']);
+      if (config.totalLength || config.length) specRows.push(['Total Length', (config.totalLength || config.length) + 'm']);
+      if (config.colour || config.color) specRows.push(['Colour', config.colour || config.color]);
+      // Gate details
+      var gates = config.gates || config.gateCount || 0;
+      if (typeof gates === 'object' && Array.isArray(gates)) {
+        specRows.push(['Gates', gates.length + ' gate' + (gates.length > 1 ? 's' : '')]);
+        gates.forEach(function(g, i) {
+          specRows.push(['Gate ' + (i + 1), (g.width || '?') + 'mm ' + (g.type || 'swing')]);
+        });
+      } else if (gates > 0) {
+        specRows.push(['Gates', gates + ' gate' + (gates > 1 ? 's' : '')]);
+      }
+      // Per-boundary runs
+      if (scope.job && scope.job.runs && scope.job.runs.length > 0) {
+        scope.job.runs.forEach(function(run) {
+          var label = run.label || run.boundary || ('Run ' + (run.runNumber || ''));
+          var len = run.totalLength || run.lengthM || run.length || 0;
+          specRows.push([label, Math.round(len) + 'm']);
+        });
+      }
+      if (config.plinths) specRows.push(['Plinths', 'Yes']);
+      if (config.retaining) specRows.push(['Retaining', config.retaining]);
+
+    } else {
+      // Patio / Decking build spec
+      var specRows = [];
+      if (config.roofStyle) specRows.push(['Roof Style', humanise('roofStyle', config.roofStyle)]);
+      if (config.length && config.projection) specRows.push(['Dimensions', config.length + 'm \u00d7 ' + config.projection + 'm']);
+      if (config.connection) specRows.push(['Connection', humanise('connection', config.connection)]);
+      if (config.fasciaHeight) specRows.push(['Fascia Height', config.fasciaHeight + 'mm']);
+      if (config.posts) specRows.push(['Posts', config.posts + ' \u00d7 ' + (config.postSize || '90\u00d790') + (config.postFix ? ' (' + config.postFix + ')' : '')]);
+      if (config.roofing) specRows.push(['Roofing', humanise('roofing', config.roofing)]);
+      if (config.sheetColor) specRows.push(['Sheet Colour', config.sheetColor]);
+      if (config.steelColor) specRows.push(['Steel Colour', config.steelColor]);
+      if (config.pitch) specRows.push(['Pitch', config.pitch + '\u00b0']);
+      if (config.ceilingFinish) specRows.push(['Ceiling', humanise('ceilingFinish', config.ceilingFinish)]);
+      if (config.trusses) specRows.push(['Trusses', config.trusses + ' \u00d7 ' + (config.trussSteel || '') + ' ' + (config.trussBase || '')]);
+      if (config.rafters) specRows.push(['Rafters', config.rafters + ' \u00d7 ' + (config.rafterSize || '')]);
+      if (config.purlinSize) specRows.push(['Purlins', config.purlinSize]);
+      if (config.infill) specRows.push(['Infill', humanise('infill', config.infill)]);
+      if (config.lShape && config.lShape !== 'none') specRows.push(['L-Shape', config.lShape + (config.returnLength ? ' \u2014 ' + config.returnLength + 'mm return' : '')]);
+      if (config.wraparound && config.wraparound !== 'none') specRows.push(['Wraparound', config.wraparound]);
+    }
+
+    if (specRows.length > 0) {
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--sw-border);border-radius:8px;overflow:hidden">';
+      specRows.forEach(function(row) {
+        h += '<div style="padding:10px 12px;background:var(--sw-card)">';
+        h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-text-sec);margin-bottom:2px">' + esc(row[0]) + '</div>';
+        h += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + esc(String(row[1])) + '</div>';
+        h += '</div>';
+      });
+      if (specRows.length % 2 !== 0) h += '<div style="background:var(--sw-card)"></div>';
+      h += '</div>';
+    } else {
+      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No scope data available for this job</div>';
+    }
+
+    // Installer notes
+    var installerNotes = (scope.notes && scope.notes.noteWorkOrder) ? scope.notes.noteWorkOrder.trim() : '';
+    if (installerNotes) {
+      h += '<div style="margin-top:12px;padding:12px 14px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#F57F17;margin-bottom:4px">Installer Notes</div>';
+      h += '<div style="font-size:13px;color:#5D4037;line-height:1.5;white-space:pre-wrap">' + esc(installerNotes) + '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+
+    // ── SECTION 3: Materials List ──
+    if (lineItems.length > 0) {
+      h += '<div class="detail-section">';
+      h += '<h3>Materials</h3>';
+
+      // Group by category
+      var groups = {};
+      var groupOrder = ['steel', 'roofing', 'gutters', 'flashings', 'accessories', 'fixings', 'labour', 'other'];
+      lineItems.forEach(function(li) {
+        var cat = (li.category || 'other').toLowerCase();
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(li);
+      });
+
+      var catLabels = {
+        steel: 'Steel', roofing: 'Roofing', gutters: 'Gutters & Downpipes',
+        flashings: 'Flashings', accessories: 'Accessories', fixings: 'Fixings',
+        labour: 'Labour', other: 'Other'
+      };
+
+      var totalSell = 0;
+      var labourCost = 0;
+
+      groupOrder.forEach(function(cat) {
+        var items = groups[cat];
+        if (!items || items.length === 0) return;
+
+        h += '<div style="margin-bottom:12px">';
+        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-mid);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--sw-border)">' + (catLabels[cat] || cat) + '</div>';
+
+        items.forEach(function(li) {
+          var qty = li.quantity || 0;
+          var sell = li.total_sell || li.sell_price || 0;
+          totalSell += Number(sell) || 0;
+          if (cat === 'labour') labourCost += Number(sell) || 0;
+
+          h += '<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04)">';
+          h += '<span style="flex:1;font-size:13px;color:var(--sw-text)">' + esc(li.description || '?') + '</span>';
+          h += '<span style="font-size:13px;font-weight:600;color:var(--sw-mid);min-width:40px;text-align:right">';
+          if (qty > 0) h += '\u00d7' + qty;
+          h += '</span>';
+          if (canSeeFullPricing()) {
+            h += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);min-width:70px;text-align:right">$' + Number(sell).toFixed(0) + '</span>';
+          }
+          h += '</div>';
+        });
+        h += '</div>';
+      });
+
+      // Ungrouped categories
+      Object.keys(groups).forEach(function(cat) {
+        if (groupOrder.indexOf(cat) === -1) {
+          var items = groups[cat];
+          h += '<div style="margin-bottom:12px">';
+          h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-mid);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--sw-border)">' + esc(cat) + '</div>';
+          items.forEach(function(li) {
+            var qty = li.quantity || 0;
+            var sell = li.total_sell || li.sell_price || 0;
+            totalSell += Number(sell) || 0;
+            h += '<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04)">';
+            h += '<span style="flex:1;font-size:13px;color:var(--sw-text)">' + esc(li.description || '?') + '</span>';
+            h += '<span style="font-size:13px;font-weight:600;color:var(--sw-mid);min-width:40px;text-align:right">';
+            if (qty > 0) h += '\u00d7' + qty;
+            h += '</span>';
+            if (canSeeFullPricing()) {
+              h += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);min-width:70px;text-align:right">$' + Number(sell).toFixed(0) + '</span>';
+            }
+            h += '</div>';
+          });
+          h += '</div>';
+        }
+      });
+
+      h += '</div>';
+
+      // ── SECTION 4: Pricing Summary (Tier 3 only) ──
+      if (canSeeFullPricing()) {
+        var gst = Math.round(totalSell * 0.1);
+        var totalInc = totalSell + gst;
+        h += '<div class="detail-section" style="background:var(--sw-dark);color:#fff">';
+        h += '<h3 style="color:rgba(255,255,255,0.5)">Pricing Summary</h3>';
+        h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2">';
+        h += '<span>Materials + Labour (ex GST)</span><span style="font-weight:600">$' + Number(totalSell).toLocaleString() + '</span></div>';
+        if (labourCost > 0) {
+          h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2;opacity:0.7">';
+          h += '<span>Labour portion</span><span>$' + Number(labourCost).toLocaleString() + '</span></div>';
+        }
+        h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2;opacity:0.7">';
+        h += '<span>GST</span><span>$' + gst.toLocaleString() + '</span></div>';
+        h += '<div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;line-height:2;border-top:1px solid rgba(255,255,255,0.15);margin-top:4px;padding-top:4px">';
+        h += '<span>Invoice Amount</span><span>$' + totalInc.toLocaleString() + '</span></div>';
+        if (pricing.deposit) {
+          h += '<div style="display:flex;justify-content:space-between;font-size:12px;line-height:2;opacity:0.5">';
+          h += '<span>Deposit (' + (pricing.deposit.percent || 20) + '%)</span><span>$' + Number(pricing.deposit.total_deposit_inc_gst || 0).toLocaleString() + '</span></div>';
+        }
+        h += '</div>';
+      }
+    } else {
+      h += '<div class="detail-section">';
+      h += '<h3>Materials</h3>';
+      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No materials list available yet</div>';
+      h += '</div>';
+    }
+
+    // ── SECTION 5: Special Instructions (from work_orders table) ──
+    if (wo) {
+      h += '<div class="detail-section">';
+      h += '<h3>Special Instructions</h3>';
+      if (wo.special_instructions) {
+        h += '<div style="font-size:14px;line-height:1.6;color:var(--sw-text);white-space:pre-wrap">' + esc(wo.special_instructions) + '</div>';
+      }
+      if (wo.estimated_hours) {
+        h += '<div style="margin-top:10px;padding:10px 12px;background:var(--sw-light);border-radius:8px;display:flex;justify-content:space-between;align-items:center">';
+        h += '<span style="font-size:13px;color:var(--sw-text-sec)">Estimated Hours</span>';
+        h += '<span style="font-size:16px;font-weight:700;color:var(--sw-dark)">' + wo.estimated_hours + 'h</span>';
+        h += '</div>';
+      }
+      if (wo.scope_items && Array.isArray(wo.scope_items) && wo.scope_items.length > 0) {
+        h += '<div style="margin-top:10px">';
+        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:6px">Scope Items</div>';
+        wo.scope_items.forEach(function(item) {
+          h += '<div style="padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:13px;color:var(--sw-text)">';
+          h += typeof item === 'string' ? esc(item) : esc(item.description || item.name || JSON.stringify(item));
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    container.innerHTML = h;
+  }
 
   function renderJobTab_scope(data, phase, container) {
     var job = data.job;
