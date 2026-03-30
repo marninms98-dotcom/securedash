@@ -11,6 +11,7 @@
   <script>
     window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
     window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
+    window.SW_API_KEY = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
   </script>
   <!-- jsPDF (for Quick Quote PDF) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1885,7 +1886,6 @@
         <button onclick="showView('financials')" data-view="financials">Financials</button>
         <button onclick="showView('materials')" data-view="materials">Materials</button>
         <button onclick="showView('inbox')" data-view="inbox">Inbox <span id="inboxBadge" class="nav-badge" style="display:none;"></span></button>
-        <button onclick="showView('council')" data-view="council">Council</button>
       </div>
       <!-- Persistent search bar -->
       <div style="margin-left:16px;position:relative;flex-shrink:0">
@@ -2259,57 +2259,6 @@
       <div id="inboxList"></div>
     </div>
 
-    <!-- ═══════════ COUNCIL TAB ═══════════ -->
-    <div id="viewCouncil" class="view">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0;">Council &amp; Engineering Approvals</h3>
-        <button class="btn btn-primary btn-sm" onclick="openCouncilStartModalFromApprovals()">+ New Council Process</button>
-      </div>
-      <div id="approvalsKanban" class="kanban-grid"><div style="text-align:center;padding:40px;color:var(--sw-text-sec);">Loading council submissions...</div></div>
-    </div>
-
-    <!-- Council Start Modal -->
-    <div class="modal-overlay" id="councilStartModal">
-      <div class="modal" style="max-width:560px;">
-        <div class="modal-title">Start Council Process</div>
-        <div class="form-group"><label class="form-label">Job</label><div id="councilJobInfo" style="font-size:13px;color:var(--sw-text-sec);"></div></div>
-        <div class="form-group"><label class="form-label">Process Type</label>
-          <select class="form-select" id="councilTemplateType" onchange="updateCouncilDefaultSteps()" style="padding:8px 10px;">
-            <option value="full_building_permit">Full Building Permit (6 steps)</option>
-            <option value="engineering_only">Engineering Only (3 steps)</option>
-            <option value="cdc_only">CDC Only (3 steps)</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Steps</label><div id="councilStepsList"></div>
-          <div style="margin-top:6px;display:flex;gap:6px;">
-            <input type="text" class="form-input" id="councilNewStepInput" placeholder="Add custom step..." style="flex:1;">
-            <button class="btn btn-secondary btn-sm" onclick="addCouncilStep()">+ Add</button>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-secondary" onclick="closeModal('councilStartModal')">Cancel</button>
-          <button class="btn btn-primary" onclick="submitCouncilStart()">Start Process</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Council Advance Modal -->
-    <div class="modal-overlay" id="councilAdvanceModal">
-      <div class="modal" style="max-width:480px;">
-        <div class="modal-title">Advance Council Step</div>
-        <div id="councilAdvanceContent"></div>
-        <div class="form-group"><label class="form-label">Notes (optional)</label><textarea class="form-textarea" id="councilAdvanceNotes" rows="2"></textarea></div>
-        <div class="form-group"><label style="font-size:12px;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="councilAdvanceSMS" checked> Send SMS update to client</label>
-          <div id="councilAdvanceSMSPreview" style="font-size:11px;color:var(--sw-text-sec);padding:4px 0;"></div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-secondary" onclick="closeModal('councilAdvanceModal')">Cancel</button>
-          <button class="btn btn-primary" onclick="confirmCouncilAdvance()">Complete &amp; Advance</button>
-        </div>
-      </div>
-    </div>
-
   </div><!-- /container -->
 
   <!-- Mobile Nav -->
@@ -2320,7 +2269,6 @@
     <button onclick="showView('financials')" data-view="financials"><span class="nav-icon">&#128176;</span>Money</button>
     <button onclick="showView('materials')" data-view="materials"><span class="nav-icon">&#128230;</span>Materials</button>
     <button onclick="showView('inbox')" data-view="inbox"><span class="nav-icon">&#128172;</span>Inbox<span id="inboxBadgeMobile" class="nav-badge" style="display:none;"></span></button>
-    <button onclick="showView('council')" data-view="council"><span class="nav-icon">&#127970;</span>Council</button>
   </div>
 
   <!-- ══════════ FULL JOB DETAIL VIEW ══════════ -->
@@ -3269,12 +3217,6 @@ function renderWeatherBanner() {
   }
 }
 
-// Auth: API key for all requests
-var _swApiKey = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
-function _getOpsHeaders() {
-  return { 'Content-Type': 'application/json', 'x-api-key': _swApiKey };
-}
-
 function opsFetch(action, params) {
   var url = _opsApiBase + '?action=' + action;
   if (params) {
@@ -3282,7 +3224,7 @@ function opsFetch(action, params) {
       if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
     });
   }
-  return fetch(url, { headers: _getOpsHeaders() }).then(function(resp) {
+  return fetch(url, { headers: { 'x-api-key': window.SW_API_KEY } }).then(function(resp) {
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
@@ -3292,7 +3234,7 @@ function opsPost(action, body) {
   body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
-    headers: _getOpsHeaders(),
+    headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
     body: JSON.stringify(body),
   }).then(function(resp) {
     if (!resp.ok) {
@@ -3731,7 +3673,6 @@ function showView(view) {
   if (view === 'financials') loadFinancials();
   if (view === 'materials') loadMaterials();
   if (view === 'inbox') loadInbox();
-  if (view === 'council' && typeof loadApprovals === 'function') loadApprovals();
   // Update Jarvis bar context
   setTimeout(updateJarvisSummary, 500);
 }
@@ -3829,7 +3770,7 @@ async function loadAiAlerts() {
     }
 
     var resp = await fetch(_digestBase, {
-      headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY, 'x-api-key': _swApiKey }
+      headers: { 'x-api-key': window.SW_API_KEY }
     });
     if (!resp.ok) throw new Error('Digest API error: ' + resp.status);
     var digest = await resp.json();
@@ -5664,26 +5605,6 @@ function renderKanban(container, columns) {
       if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
       if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
       if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
-      // Council status indicator
-      if (j.council_count > 0) {
-        var cs = j.council_status || 'in_progress';
-        var csColor = cs === 'complete' ? 'var(--sw-green)' : cs === 'blocked' ? 'var(--sw-red)' : 'var(--sw-blue,#3498DB)';
-        var csIcon = cs === 'complete' ? '&#10003;' : cs === 'blocked' ? '&#9888;' : '&#9679;';
-        var csStep = j.council_step ? 'Step ' + j.council_step : '';
-        html += '<span class="kanban-meta-badge" style="background:' + csColor + '18;color:' + csColor + ';">' + csIcon + ' ' + (csStep || 'Council') + '</span>';
-      }
-      // PO email activity indicator
-      if (j.last_po_email_at) {
-        var emailAge = Math.floor((Date.now() - new Date(j.last_po_email_at).getTime()) / 86400000);
-        var emailDir = j.last_po_email_dir || 'outbound';
-        if (emailDir === 'inbound' || emailDir === 'received') {
-          html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">&#128233; Reply ' + (emailAge === 0 ? 'today' : emailAge + 'd ago') + '</span>';
-        } else if (emailAge > 7) {
-          html += '<span class="kanban-meta-badge" style="background:rgba(239,68,68,0.1);color:var(--sw-red);">&#9888; No reply ' + emailAge + 'd</span>';
-        } else if (emailAge > 3) {
-          html += '<span class="kanban-meta-badge" style="background:rgba(217,119,6,0.1);color:#D97706;">&#128233; Sent ' + emailAge + 'd ago</span>';
-        }
-      }
       if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
       html += '</div>';
       var stale = j.days_in_stage > 14;
@@ -10871,7 +10792,7 @@ async function loadConversation(contactId) {
   }
 
   try {
-    var resp = await fetch(_commsGHLBase + '?action=get_conversation&contactId=' + contactId, { headers: _getOpsHeaders() });
+    var resp = await fetch(_commsGHLBase + '?action=get_conversation&contactId=' + contactId, { headers: { 'x-api-key': window.SW_API_KEY } });
     var data = await resp.json();
 
     if (data.error) throw new Error(data.error);
@@ -10995,7 +10916,7 @@ async function sendCommsMessage() {
     try {
       await fetch(_commsGHLBase + '?action=send_sms', {
         method: 'POST',
-        headers: _getOpsHeaders(),
+        headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
         body: JSON.stringify({
           contactId: j.ghl_contact_id,
           message: text,
@@ -11021,7 +10942,7 @@ async function sendCommsMessage() {
     try {
       await fetch(_commsGHLBase + '?action=send_email', {
         method: 'POST',
-        headers: _getOpsHeaders(),
+        headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
         body: JSON.stringify({
           contactId: j.ghl_contact_id,
           subject: subject,
@@ -11124,7 +11045,7 @@ async function startBridgeCall() {
   try {
     var resp = await fetch(_commsGHLBase + '?action=initiate_call', {
       method: 'POST',
-      headers: _getOpsHeaders(),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
       body: JSON.stringify({
         contactId: j.ghl_contact_id,
         toNumber: j.client_phone,
@@ -11330,7 +11251,7 @@ async function sendPOEmail() {
   try {
     var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
       method: 'POST',
-      headers: _getOpsHeaders(),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
       body: JSON.stringify({
         po_id: poId,
         to: to,
@@ -11513,10 +11434,6 @@ if (document.readyState === 'loading') {
   initApp();
 }
 </script>
-
-<!-- External modules (loaded after inline script so globals are available) -->
-<script src="modules/ops-council.js"></script>
-<script src="modules/ops-modals.js"></script>
 
 </body>
 </html>
