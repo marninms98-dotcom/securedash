@@ -1456,18 +1456,37 @@ function togglePOCardExpand(poId) {
 function renderInlineReplyBar(entityId, type, lastEmail) {
   var replyTo = '';
   var replySubject = '';
+  var replyContext = '';
   if (lastEmail) {
     var isInbound = lastEmail.direction === 'inbound' || lastEmail.direction === 'received';
     replyTo = isInbound ? (lastEmail.from_email || '') : (lastEmail.to_email || '');
     replySubject = 'Re: ' + (lastEmail.subject || '');
+    replyContext = lastEmail.subject || '';
+  }
+  // Try to get supplier email from PO data if no reply-to from emails
+  if (!replyTo && type === 'po' && _allPOs) {
+    var rPo = _allPOs.find(function(p) { return p.id === entityId; });
+    if (rPo && rPo.supplier_name && _suppliers) {
+      var rSup = _suppliers.find(function(s) { return s.name === rPo.supplier_name; });
+      if (rSup && rSup.email) replyTo = rSup.email;
+    }
+    if (rPo && !replySubject) {
+      replySubject = (rPo.po_number || '') + ' — ' + (rPo.supplier_name || '') + ' — SecureWorks Group';
+    }
   }
   var placeholder = replyTo ? 'Reply to ' + replyTo + '...' : 'Type a message...';
   var barId = 'replyBar_' + type + '_' + entityId;
 
-  var html = '<div id="' + barId + '" style="margin-top:8px;display:flex;gap:6px;align-items:flex-end;">';
+  var html = '<div id="' + barId + '" style="margin-top:8px;">';
+  // Reply context
+  if (replyContext) {
+    html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:4px;">Replying to: ' + escapeHtml(replyContext.length > 60 ? replyContext.substring(0, 60) + '...' : replyContext) + '</div>';
+  }
+  html += '<div style="display:flex;gap:6px;align-items:flex-end;">';
   html += '<textarea id="replyText_' + type + '_' + entityId + '" placeholder="' + escapeHtml(placeholder) + '" rows="1" style="flex:1;padding:8px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;resize:none;min-height:36px;" onfocus="this.rows=3" onblur="if(!this.value)this.rows=1"></textarea>';
   html += '<button class="btn btn-sm btn-primary" style="font-size:11px;white-space:nowrap;height:36px;" onclick="sendInlineReply(\'' + entityId + '\',\'' + type + '\',\'' + escapeHtml(replyTo).replace(/'/g, "\\'") + '\',\'' + escapeHtml(replySubject).replace(/'/g, "\\'") + '\')">Send &#8599;</button>';
-  html += '</div>';
+  html += '<button class="btn btn-sm btn-secondary" style="font-size:11px;white-space:nowrap;height:36px;" onclick="openPOEmailCompose(\'' + entityId + '\')">Full</button>';
+  html += '</div></div>';
   return html;
 }
 
@@ -1990,6 +2009,18 @@ function renderPOEmailThread(emails, poId) {
     html += ' &middot; ' + (ts ? new Date(ts).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
     if (ds) html += ' &middot; ' + escapeHtml(ds);
     html += '</div>';
+    // AI classification + extracted metadata
+    if (em.ai_classification || em.quote_version) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;">';
+      if (em.ai_classification) {
+        var clsColors = { confirmation: 'var(--sw-green)', quote: '#8B5CF6', invoice: '#D97706', question: 'var(--sw-blue,#3498DB)', issue: 'var(--sw-red)', delivery_update: '#06B6D4' };
+        var clsC = clsColors[em.ai_classification] || '#999';
+        html += '<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:' + clsC + '18;color:' + clsC + ';font-weight:600;text-transform:uppercase;">' + escapeHtml(em.ai_classification) + '</span>';
+        if (em.ai_confidence) html += '<span style="font-size:9px;color:var(--sw-text-sec);">' + Math.round(em.ai_confidence * 100) + '% conf</span>';
+      }
+      if (em.quote_version) html += '<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(139,92,246,0.1);color:#8B5CF6;font-weight:600;">Quote v' + em.quote_version + '</span>';
+      html += '</div>';
+    }
     html += '<div class="em-body">' + escapeHtml(bodyText) + '</div>';
     // Attachments
     if (hasAtts) {
