@@ -666,6 +666,42 @@ async function savePOPrices() {
 }
 
 // Open an existing PO for editing (pricing mode)
+// PO Modal tab switching (Details / Communications)
+var _poCommsLoaded = false;
+function switchPOModalTab(tab) {
+  var detailsView = document.getElementById('poDetailsView');
+  var commsView = document.getElementById('poCommsView');
+  var detailsTab = document.getElementById('poTabDetails');
+  var commsTab = document.getElementById('poTabComms');
+  if (!detailsView || !commsView) return;
+
+  if (tab === 'comms') {
+    detailsView.style.display = 'none';
+    commsView.style.display = 'block';
+    detailsTab.classList.remove('active');
+    commsTab.classList.add('active');
+    // Load emails on first switch
+    if (!_poCommsLoaded && _editingPOId && typeof loadPOEmails === 'function') {
+      _poCommsLoaded = true;
+      var threadEl = document.getElementById('poCommsThread');
+      var replyEl = document.getElementById('poCommsReplyBar');
+      if (threadEl) threadEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;padding:16px;">Loading emails...</div>';
+      loadPOEmails(_editingPOId).then(function(emails) {
+        if (threadEl) threadEl.innerHTML = renderPOEmailThread(emails, _editingPOId);
+        if (replyEl && typeof renderInlineReplyBar === 'function') {
+          var lastEmail = emails.length > 0 ? emails[emails.length - 1] : null;
+          replyEl.innerHTML = renderInlineReplyBar(_editingPOId, 'po', lastEmail);
+        }
+      });
+    }
+  } else {
+    detailsView.style.display = 'block';
+    commsView.style.display = 'none';
+    detailsTab.classList.add('active');
+    commsTab.classList.remove('active');
+  }
+}
+
 async function openPOEdit(poId) {
   resetPOModal();
   _editingPOId = poId;
@@ -726,6 +762,12 @@ async function openPOEdit(poId) {
       addPOLine(li.description, li.quantity, li.unit, li.unit_price || null);
     });
 
+    // Show tabs and set email count badge (editing existing PO)
+    var emailCount = (po.communications || []).length;
+    document.getElementById('poModalTabs').style.display = 'flex';
+    var badge = document.getElementById('poTabCommsBadge');
+    if (badge) badge.textContent = emailCount > 0 ? emailCount : '';
+
     await loadSupplierList();
     document.getElementById('poModal').classList.add('active');
   } catch (e) {
@@ -735,7 +777,21 @@ async function openPOEdit(poId) {
 
 function resetPOModal() {
   _editingPOId = null;
+  _poCommsLoaded = false;
   document.getElementById('poModalTitle').textContent = 'New Purchase Order';
+  // Reset to Details tab
+  document.getElementById('poModalTabs').style.display = 'none';
+  document.getElementById('poDetailsView').style.display = 'block';
+  document.getElementById('poCommsView').style.display = 'none';
+  document.getElementById('poTabDetails').classList.add('active');
+  document.getElementById('poTabComms').classList.remove('active');
+  var badge = document.getElementById('poTabCommsBadge');
+  if (badge) badge.textContent = '';
+  var threadEl = document.getElementById('poCommsThread');
+  if (threadEl) threadEl.innerHTML = '';
+  var replyEl = document.getElementById('poCommsReplyBar');
+  if (replyEl) replyEl.innerHTML = '';
+  // Reset form fields
   document.getElementById('poJobSelect').value = '';
   document.getElementById('poJobSearch').value = '';
   document.getElementById('poJobDropdown').style.display = 'none';

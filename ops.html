@@ -1248,6 +1248,11 @@
     .po-email-item.expanded .po-email-preview { display:none; }
     .po-email-reply-btn { font-size:10px; padding:2px 8px; border:1px solid var(--sw-border); border-radius:3px; background:var(--sw-card); cursor:pointer; color:var(--sw-text-sec); margin-top:4px; }
     .po-email-reply-btn:hover { border-color:var(--sw-orange); color:var(--sw-orange); }
+    .po-modal-tabs { display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid var(--sw-border); }
+    .po-modal-tab { padding:6px 16px; font-size:12px; font-weight:600; cursor:pointer; border:none; background:none; color:var(--sw-text-sec); border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .po-modal-tab.active { color:var(--sw-orange); border-bottom-color:var(--sw-orange); }
+    #poTabCommsBadge { background:var(--sw-orange); color:#fff; border-radius:8px; padding:0 6px; font-size:10px; margin-left:4px; }
+    #poTabCommsBadge:empty { display:none; }
 
     /* ── Supplier comms in job detail ── */
     .comms-channel-tabs { display:flex; gap:0; margin-bottom:12px; border-bottom:2px solid var(--sw-border); }
@@ -2477,6 +2482,13 @@
 <div class="modal-overlay" id="poModal">
   <div class="modal" style="max-width:720px;">
     <div class="modal-title" id="poModalTitle">New Purchase Order</div>
+    <!-- Tab bar: Details / Communications -->
+    <div class="po-modal-tabs" id="poModalTabs" style="display:none;">
+      <button class="po-modal-tab active" onclick="switchPOModalTab('details')" id="poTabDetails">Details</button>
+      <button class="po-modal-tab" onclick="switchPOModalTab('comms')" id="poTabComms">Communications <span id="poTabCommsBadge"></span></button>
+    </div>
+    <!-- Details view (form fields) -->
+    <div id="poDetailsView">
     <!-- Mode indicator -->
     <div id="poModeBar" style="display:none; margin-bottom:12px; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600;">
     </div>
@@ -2560,6 +2572,15 @@
       <button class="btn btn-secondary" onclick="closeModal('poModal')">Cancel</button>
       <button class="btn btn-secondary" onclick="savePOPrices()">Save Prices</button>
       <button class="btn btn-primary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
+    </div>
+    </div><!-- end poDetailsView -->
+    <!-- Communications view -->
+    <div id="poCommsView" style="display:none;">
+      <div id="poCommsThread" style="max-height:400px;overflow-y:auto;padding:4px 0;"></div>
+      <div id="poCommsReplyBar"></div>
+      <div style="margin-top:12px;text-align:center;">
+        <button class="btn btn-primary" onclick="openPOEmailCompose(_editingPOId)" style="font-size:12px;">&#9993; Compose Email</button>
+      </div>
     </div>
   </div>
 </div>
