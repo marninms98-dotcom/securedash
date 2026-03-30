@@ -138,24 +138,27 @@ function renderCouncilCardDetail(sub) {
                      step.status === 'blocked' ? '<span style="color:var(--sw-red);">&#10007;</span>' :
                      '<span style="color:var(--sw-text-sec);">&#9675;</span>';
 
-    // Count emails for this step (match by step_index in reply-to encoding or by timing)
+    // Count emails for this step — PRIMARY: council_step_index match, FALLBACK: subject text
     var stepEmails = emails.filter(function(em) {
-      // Best effort: match by subject containing step name, or by council_step_index if available
-      return (em.subject && em.subject.indexOf(step.name) >= 0) || em.council_step_index === idx;
+      if (em.council_step_index === idx) return true;
+      if (em.council_step_index == null && em.subject && em.subject.indexOf(step.name) >= 0) return true;
+      return false;
     });
     var stepEmailCount = stepEmails.length;
+    var stepUnread = stepEmails.filter(function(em) { return (em.direction === 'inbound' || em.direction === 'received') && !em.read_at; }).length;
 
     // Days in this step
     var daysInStep = 0;
     if (step.started_at && step.status !== 'complete') {
       daysInStep = Math.floor((Date.now() - new Date(step.started_at).getTime()) / 86400000);
     }
+    var isCurrentStep = idx === sub.current_step_index;
 
     var stepKey = sub.id + '_' + idx;
     var isStepExpanded = _expandedCouncilStepKey === stepKey;
 
-    html += '<div style="border-bottom:1px solid var(--sw-border);">';
-    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;cursor:pointer;" onclick="event.stopPropagation();toggleCouncilStepExpand(\'' + sub.id + '\',' + idx + ')">';
+    html += '<div style="border-bottom:1px solid var(--sw-border);' + (isCurrentStep ? 'background:rgba(241,90,41,0.03);' : '') + '">';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 4px;font-size:11px;cursor:pointer;" onclick="event.stopPropagation();toggleCouncilStepExpand(\'' + sub.id + '\',' + idx + ')">';
     html += statusIcon;
     html += '<div style="flex:1;' + (step.status === 'complete' ? 'text-decoration:line-through;color:var(--sw-text-sec);' : '') + '">';
     html += '<span>' + escapeHtml(step.name) + '</span>';
@@ -163,15 +166,20 @@ function renderCouncilCardDetail(sub) {
       html += '<div style="font-size:10px;color:var(--sw-text-sec);font-weight:400;">' + escapeHtml(step.vendor || '') + (step.vendor_email ? ' &lt;' + escapeHtml(step.vendor_email) + '&gt;' : '') + '</div>';
     }
     html += '</div>';
-    if (stepEmailCount > 0) html += '<span style="font-size:10px;color:var(--sw-text-sec);">&#128233; ' + stepEmailCount + '</span>';
-    if (daysInStep > 0) html += '<span style="font-size:10px;color:' + (daysInStep > 7 ? 'var(--sw-red)' : 'var(--sw-text-sec)') + ';">' + daysInStep + 'd</span>';
+    // Unread badge
+    if (stepUnread > 0) html += '<span style="background:var(--sw-blue,#3498DB);color:#fff;border-radius:8px;padding:0 5px;font-size:9px;font-weight:600;">' + stepUnread + ' new</span>';
+    else if (stepEmailCount > 0) html += '<span style="font-size:10px;color:var(--sw-text-sec);">&#128233; ' + stepEmailCount + '</span>';
+    // Time in step (prominent if >7d)
+    if (daysInStep > 0) html += '<span style="font-size:10px;font-weight:' + (daysInStep > 7 ? '700' : '400') + ';color:' + (daysInStep > 7 ? 'var(--sw-red)' : 'var(--sw-text-sec)') + ';">' + daysInStep + 'd</span>';
+    // Action buttons — visible on step row (not buried)
     if (step.status !== 'complete') {
-      html += '<select style="font-size:10px;padding:1px 4px;border:1px solid var(--sw-border);border-radius:3px;" onclick="event.stopPropagation()" onchange="event.stopPropagation();updateCouncilStep(\'' + sub.id + '\',' + idx + ',this.value)">';
-      html += '<option value="">...</option>';
-      html += '<option value="in_progress">In Progress</option>';
-      html += '<option value="complete">Complete</option>';
-      html += '<option value="blocked">Blocked</option>';
-      html += '</select>';
+      if (stepEmails.length > 0) {
+        html += '<button style="font-size:9px;padding:1px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card,#f5f5f5);cursor:pointer;color:var(--sw-text-sec);" onclick="event.stopPropagation();toggleCouncilStepExpand(\'' + sub.id + '\',' + idx + ')">Reply</button>';
+      }
+      if (isCurrentStep) {
+        html += '<button style="font-size:9px;padding:1px 6px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);color:#fff;cursor:pointer;font-weight:600;" onclick="event.stopPropagation();updateCouncilStep(\'' + sub.id + '\',' + idx + ',\'complete\')">&#10003;</button>';
+      }
+      html += '<button style="font-size:9px;padding:1px 6px;border:1px solid var(--sw-red);border-radius:3px;background:none;color:var(--sw-red);cursor:pointer;" onclick="event.stopPropagation();updateCouncilStep(\'' + sub.id + '\',' + idx + ',\'blocked\')">&#9888;</button>';
     }
     html += '<span style="font-size:10px;color:var(--sw-text-sec);">' + (isStepExpanded ? '&#9650;' : '&#9660;') + '</span>';
     html += '</div>';
