@@ -2580,7 +2580,7 @@
   var _arrivedAt = null; // ISO string — when arrived on site
   var _manualOverride = false; // flag if time was manually adjusted
   var _timerTickInterval = null;
-  var _autoNotifyClient = true;
+  var _autoNotifyClient = false; // default OFF during rollout — tradies opt-in when ready
 
   // Backward-compat: keep these for EOD timesheet calculation
   var _stoppedTravelMins = 0;
@@ -4102,8 +4102,8 @@
       h += '</div>';
       if (canMessage()) {
         h += '<div style="font-size:12px;color:var(--sw-text-sec);text-align:center;">';
-        h += _autoNotifyClient ? '\u2705 Client will be notified' : '\uD83D\uDD15 Client notifications off';
-        h += ' <a href="#" onclick="event.preventDefault();_autoNotifyClient=!_autoNotifyClient;if(_currentJob)renderJobDetail(_currentJob);" style="color:var(--sw-mid);font-size:11px;">[change]</a>';
+        h += '<span id="notifyToggleLabel">' + (_autoNotifyClient ? '\u2705 Client will be notified' : '\uD83D\uDD15 Client notifications off') + '</span>';
+        h += ' <a href="#" onclick="event.preventDefault();_autoNotifyClient=!_autoNotifyClient;var el=document.getElementById(\'notifyToggleLabel\');if(el)el.textContent=_autoNotifyClient?\'\u2705 Client will be notified\':\'\uD83D\uDD15 Client notifications off\';" style="color:var(--sw-mid);font-size:11px;">[change]</a>';
         h += '</div>';
       }
 
