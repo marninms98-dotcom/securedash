@@ -3677,9 +3677,9 @@
             html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
             html += '      Text</button>';
           } else if (job.client_phone) {
-            html += '    <a href="sms:' + esc(job.client_phone) + '" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">';
+            html += '    <button onclick="event.stopPropagation();openJobToTab(\'' + esc(job.id) + '\', \'' + esc(a.id) + '\', \'comms\')" style="display:flex;align-items:center;justify-content:center;gap:4px;height:40px;padding:0 12px;background:var(--sw-blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">';
             html += '      <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
-            html += '      SMS</a>';
+            html += '      SMS</button>';
           }
         }
         if (job.site_address || job.site_suburb) {
@@ -3747,12 +3747,18 @@
     });
   };
 
+  var _pendingJobTab = null;
   window.openJob = function(jobId, assignmentId) {
     _currentJobId = jobId;
     _currentJobLoaded = null; // force reload
     _reportLoadedForJob = null; // force report reload for new job
     _currentAssignment = assignmentId || null;
     showView('job');
+  };
+  // Open a job and auto-switch to a specific tab (e.g. 'comms') after it loads
+  window.openJobToTab = function(jobId, assignmentId, tabName) {
+    _pendingJobTab = tabName || null;
+    openJob(jobId, assignmentId);
   };
 
   // ══════════════════════════════════════════════════
@@ -3773,6 +3779,12 @@
       _currentJob = data;
       _currentJobLoaded = jobId;
       renderJobDetail(data);
+      // Auto-switch to pending tab if set (e.g. opened from SMS button → comms)
+      if (_pendingJobTab) {
+        var tab = _pendingJobTab;
+        _pendingJobTab = null;
+        setTimeout(function() { switchJobTab(tab); }, 100);
+      }
       // Check for stale clock-on from previous day — debounced to avoid blocking render
       setTimeout(function() { if (_currentJobId === jobId) checkStaleClock(); }, 1500);
     }).catch(function(err) {
