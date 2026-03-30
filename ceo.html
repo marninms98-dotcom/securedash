@@ -912,7 +912,10 @@ var CEO_EMAILS = ['marnin@secureworkswa.com.au'];
 var _supaAuth = null;
 
 (function() {
-  _supaAuth = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  // AUDIT FIX: reuse cloud.js Supabase client instead of creating a second one
+  // (duplicate clients cause GoTrueClient auth lock contention warnings)
+  var cloud = window.SECUREWORKS_CLOUD;
+  _supaAuth = (cloud && cloud.sb) || window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
   _supaAuth.auth.getSession().then(function(result) {
     var session = result.data.session;
