@@ -3269,6 +3269,12 @@ function renderWeatherBanner() {
   }
 }
 
+// Auth: API key for all requests
+var _swApiKey = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
+function _getOpsHeaders() {
+  return { 'Content-Type': 'application/json', 'x-api-key': _swApiKey };
+}
+
 function opsFetch(action, params) {
   var url = _opsApiBase + '?action=' + action;
   if (params) {
@@ -3276,7 +3282,7 @@ function opsFetch(action, params) {
       if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
     });
   }
-  return fetch(url).then(function(resp) {
+  return fetch(url, { headers: _getOpsHeaders() }).then(function(resp) {
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
@@ -3286,7 +3292,7 @@ function opsPost(action, body) {
   body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: _getOpsHeaders(),
     body: JSON.stringify(body),
   }).then(function(resp) {
     if (!resp.ok) {
@@ -3823,7 +3829,7 @@ async function loadAiAlerts() {
     }
 
     var resp = await fetch(_digestBase, {
-      headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY }
+      headers: { 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY, 'x-api-key': _swApiKey }
     });
     if (!resp.ok) throw new Error('Digest API error: ' + resp.status);
     var digest = await resp.json();
@@ -10865,7 +10871,7 @@ async function loadConversation(contactId) {
   }
 
   try {
-    var resp = await fetch(_commsGHLBase + '?action=get_conversation&contactId=' + contactId);
+    var resp = await fetch(_commsGHLBase + '?action=get_conversation&contactId=' + contactId, { headers: _getOpsHeaders() });
     var data = await resp.json();
 
     if (data.error) throw new Error(data.error);
@@ -10989,7 +10995,7 @@ async function sendCommsMessage() {
     try {
       await fetch(_commsGHLBase + '?action=send_sms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _getOpsHeaders(),
         body: JSON.stringify({
           contactId: j.ghl_contact_id,
           message: text,
@@ -11015,7 +11021,7 @@ async function sendCommsMessage() {
     try {
       await fetch(_commsGHLBase + '?action=send_email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _getOpsHeaders(),
         body: JSON.stringify({
           contactId: j.ghl_contact_id,
           subject: subject,
@@ -11118,7 +11124,7 @@ async function startBridgeCall() {
   try {
     var resp = await fetch(_commsGHLBase + '?action=initiate_call', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _getOpsHeaders(),
       body: JSON.stringify({
         contactId: j.ghl_contact_id,
         toNumber: j.client_phone,
@@ -11324,7 +11330,7 @@ async function sendPOEmail() {
   try {
     var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _getOpsHeaders(),
       body: JSON.stringify({
         po_id: poId,
         to: to,
