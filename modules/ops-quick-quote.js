@@ -275,7 +275,7 @@ async function generateQuickQuotePDF(savedJob) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
-    doc.text('SecureWorks WA', M, 22);
+    doc.text('SecureWorks Group', M, 22);
   }
 
   // Quote number & date (right side of header)
@@ -429,7 +429,7 @@ async function generateQuickQuotePDF(savedJob) {
     '2. Payment terms: ' + data.payment_terms + '.',
     '3. All prices include GST unless otherwise stated.',
     '4. Additional work not specified in this quote will be charged at agreed rates.',
-    '5. SecureWorks WA reserves the right to adjust pricing if site conditions differ from those assessed.',
+    '5. SecureWorks Group reserves the right to adjust pricing if site conditions differ from those assessed.',
   ];
   terms.forEach(function(t) {
     y = P.checkPage(doc, y, 5);

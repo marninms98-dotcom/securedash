@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Quote — SecureWorks WA</title>
+  <title>Your Quote — SecureWorks Group</title>
   <style>
     body { margin: 0; padding: 0; background: #f5f5f7; font-family: -apple-system, sans-serif; }
     .loading { display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; gap: 16px; }
@@ -22,7 +22,7 @@
       var params = new URLSearchParams(window.location.search);
       var src = params.get('src');
       if (!src) {
-        document.getElementById('loadingState').innerHTML = '<div class="error"><h2>Invalid link</h2><p>Please contact SecureWorks WA for assistance.</p></div>';
+        document.getElementById('loadingState').innerHTML = '<div class="error"><h2>Invalid link</h2><p>Please contact SecureWorks Group for assistance.</p></div>';
         return;
       }
       try {
@@ -33,7 +33,7 @@
         document.write(html);
         document.close();
       } catch(e) {
-        document.getElementById('loadingState').innerHTML = '<div class="error"><h2>Unable to load quote</h2><p>Please try again or contact SecureWorks WA.</p></div>';
+        document.getElementById('loadingState').innerHTML = '<div class="error"><h2>Unable to load quote</h2><p>Please try again or contact SecureWorks Group.</p></div>';
       }
     })();
   </script>

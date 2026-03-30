@@ -433,11 +433,11 @@ function getCommsNumberForJob(job) {
 }
 
 var COMMS_TEMPLATES = {
-  scheduled:   'Hi {firstName}, your {jobType} project at {address} is scheduled for {date}. Our team will arrive between 7–8am. Please ensure clear access to the work area. Thanks, SecureWorks WA',
-  materials:   'Hi {firstName}, materials are arriving for your {jobType} project at {address}. Build is on track. Thanks, SecureWorks WA',
-  complete:    'Hi {firstName}, great news — your {jobType} project at {address} is complete! Your completion report is attached. Thanks for choosing SecureWorks WA.',
-  payment:     'Hi {firstName}, just a friendly reminder that invoice {invoiceNumber} is now overdue. Please let us know if you have any questions. Thanks, SecureWorks WA',
-  follow_up:   'Hi {firstName}, just checking in on the quote we sent for your {jobType} project. Happy to answer any questions. Thanks, SecureWorks WA',
+  scheduled:   'Hi {firstName}, your {jobType} project at {address} is scheduled for {date}. Our team will arrive between 7–8am. Please ensure clear access to the work area. Thanks, SecureWorks Group',
+  materials:   'Hi {firstName}, materials are arriving for your {jobType} project at {address}. Build is on track. Thanks, SecureWorks Group',
+  complete:    'Hi {firstName}, great news — your {jobType} project at {address} is complete! Your completion report is attached. Thanks for choosing SecureWorks Group.',
+  payment:     'Hi {firstName}, just a friendly reminder that invoice {invoiceNumber} is now overdue. Please let us know if you have any questions. Thanks, SecureWorks Group',
+  follow_up:   'Hi {firstName}, just checking in on the quote we sent for your {jobType} project. Happy to answer any questions. Thanks, SecureWorks Group',
 };
 
 function renderCommsView(data) {
@@ -989,7 +989,7 @@ function applyCommsTemplate(key) {
     updateCommsCharCount();
   } else {
     document.getElementById('commsEmailBody').value = text;
-    document.getElementById('commsEmailSubject').value = key === 'payment' ? 'Payment Reminder' : key === 'complete' ? 'Project Complete' : 'Update from SecureWorks WA';
+    document.getElementById('commsEmailSubject').value = key === 'payment' ? 'Payment Reminder' : key === 'complete' ? 'Project Complete' : 'Update from SecureWorks Group';
   }
 }
 
@@ -1500,7 +1500,7 @@ async function sendInlineReply(entityId, type, toEmail, subject) {
       await opsPost('send_council_email', {
         submission_id: entityId,
         to_email: toEmail,
-        subject: subject || 'Council Application — SecureWorks WA',
+        subject: subject || 'Council Application — SecureWorks Group',
         body_text: body,
       });
     } else {
@@ -1511,7 +1511,7 @@ async function sendInlineReply(entityId, type, toEmail, subject) {
         body: JSON.stringify({
           po_id: entityId,
           to_email: toEmail,
-          subject: subject || 'SecureWorks WA',
+          subject: subject || 'SecureWorks Group',
           body_text: body,
           body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>',
         })
@@ -1545,10 +1545,10 @@ var _poEmailCache = {};
 var _poComposeData = null; // temp PO data for template replacements
 
 var _poEmailTemplates = {
-  new_order: 'Hi {supplier_name},\n\nPlease find attached PO {po_number} for job {job_number} at {site_address}.\n\nDelivery required by: {delivery_date}\n\n{line_items_summary}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks WA',
-  delivery_change: 'Hi {supplier_name},\n\nRegarding PO {po_number} for job {job_number} — we need to change the delivery details.\n\nNew delivery date: {delivery_date}\nDelivery address: {site_address}\n\nPlease confirm this change.\n\nThanks,\nSecureWorks WA',
-  order_query: 'Hi {supplier_name},\n\nJust following up on PO {po_number} for job {job_number}.\n\nCould you please provide an update on the order status and expected delivery?\n\nThanks,\nSecureWorks WA',
-  cancellation: 'Hi {supplier_name},\n\nPlease cancel PO {po_number} for job {job_number}.\n\nPlease confirm cancellation at your earliest convenience.\n\nThanks,\nSecureWorks WA',
+  new_order: 'Hi {supplier_name},\n\nPlease find attached PO {po_number} for job {job_number} at {site_address}.\n\nDelivery required by: {delivery_date}\n\n{line_items_summary}\n\nPlease confirm receipt and expected delivery date.\n\nThanks,\nSecureWorks Group',
+  delivery_change: 'Hi {supplier_name},\n\nRegarding PO {po_number} for job {job_number} — we need to change the delivery details.\n\nNew delivery date: {delivery_date}\nDelivery address: {site_address}\n\nPlease confirm this change.\n\nThanks,\nSecureWorks Group',
+  order_query: 'Hi {supplier_name},\n\nJust following up on PO {po_number} for job {job_number}.\n\nCould you please provide an update on the order status and expected delivery?\n\nThanks,\nSecureWorks Group',
+  cancellation: 'Hi {supplier_name},\n\nPlease cancel PO {po_number} for job {job_number}.\n\nPlease confirm cancellation at your earliest convenience.\n\nThanks,\nSecureWorks Group',
   custom: ''
 };
 
@@ -1625,7 +1625,7 @@ function openPOEmailCompose(poId) {
   var subjectPO = (po.po_number || '');
   if (subjectPO && !subjectPO.toUpperCase().startsWith('PO')) subjectPO = 'PO ' + subjectPO;
   var subjectDesc = [po.description || lineItems.map(function(li) { return li.description || ''; }).filter(Boolean).join(', ').slice(0, 40), po.job_number || ''].filter(Boolean).join(' \u2014 ');
-  document.getElementById('poComposeSubject').value = subjectPO + (subjectDesc ? ' \u2014 ' + subjectDesc : '') + ' \u2014 SecureWorks WA';
+  document.getElementById('poComposeSubject').value = subjectPO + (subjectDesc ? ' \u2014 ' + subjectDesc : '') + ' \u2014 SecureWorks Group';
   document.getElementById('poComposePoId').value = po.id;
   document.getElementById('poComposeJobId').value = po.job_id || '';
   document.getElementById('poComposeTemplate').value = 'new_order';

@@ -6890,7 +6890,7 @@
 
     // Header
     printHtml += '<div class="header">';
-    printHtml += '  <div><h1>Service Report</h1><div class="brand">SecureWorks WA</div></div>';
+    printHtml += '  <div><h1>Service Report</h1><div class="brand">SecureWorks Group</div></div>';
     printHtml += '  <div style="text-align:right;font-size:12px;color:#4C6A7C">';
     // Get report from service report view data
     var report = _currentJob.serviceReport;
@@ -6928,7 +6928,7 @@
     }
 
     // Footer
-    printHtml += '<div class="footer">SecureWorks WA Pty Ltd &mdash; ABN 64689223416 &mdash; Perth, Western Australia</div>';
+    printHtml += '<div class="footer">SecureWorks Group Pty Ltd &mdash; ABN 64689223416 &mdash; Perth, Western Australia</div>';
     printHtml += '</body></html>';
 
     // Open in new window and trigger print
@@ -6949,7 +6949,7 @@
     // Use Web Share API on mobile if available
     if (navigator.share) {
       navigator.share({
-        title: 'Service Report — SecureWorks WA',
+        title: 'Service Report — SecureWorks Group',
         text: 'Your service report is ready to view',
         url: shareUrl,
       }).catch(function() {

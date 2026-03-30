@@ -1826,7 +1826,7 @@ function openCouncilAdvanceModal(submissionId, stepIndex) {
   var clientName = sub.client_name || sub.jobs?.client_name || 'there';
   var jobNum = sub.job_number || sub.jobs?.job_number || '';
   var nextStepName = nextStep ? nextStep.name : 'Complete';
-  var smsText = 'Hi ' + clientName + ', your council application for ' + jobNum + ' has progressed. Current status: ' + nextStepName + '. — SecureWorks WA';
+  var smsText = 'Hi ' + clientName + ', your council application for ' + jobNum + ' has progressed. Current status: ' + nextStepName + '. — SecureWorks Group';
   document.getElementById('councilAdvanceSMSPreview').textContent = smsText;
 
   document.getElementById('councilAdvanceModal').classList.add('active');

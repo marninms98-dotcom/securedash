@@ -1,7 +1,7 @@
 {
   "name": "SecureWorks Trade",
   "short_name": "SW Trade",
-  "description": "SecureWorks WA — Trade job management",
+  "description": "SecureWorks Group — Trade job management",
   "start_url": "/securedash/trade.html",
   "display": "standalone",
   "background_color": "#293C46",

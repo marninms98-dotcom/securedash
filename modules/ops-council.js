@@ -331,7 +331,7 @@ async function sendCouncilStepReply(submissionId, stepIndex, toEmail, inReplyTo)
 
   var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
   var step = sub ? (sub.steps || [])[stepIndex] : null;
-  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks WA';
+  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
 
   textEl.value = '';
   textEl.rows = 1;
@@ -366,7 +366,7 @@ async function sendCouncilStepFirstEmail(submissionId, stepIndex, stepKey) {
 
   var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
   var step = sub ? (sub.steps || [])[stepIndex] : null;
-  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks WA';
+  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
 
   textEl.value = '';
 
@@ -401,8 +401,8 @@ function openCouncilEmailCompose(submissionId, stepIndex) {
   var idx = (stepIndex !== undefined) ? stepIndex : sub.current_step_index;
   var step = (sub.steps || [])[idx] || {};
   var toEmail = step.vendor_email || '';
-  var subject = (sub.job_number || '') + ' — ' + (step.name || 'Council Application') + ' — SecureWorks WA';
-  var body = 'Hi,\n\nRegarding the ' + (step.name || 'application') + ' for ' + (sub.job_number || '') + ' — ' + (sub.client_name || '') + '.\n\n\n\nThanks,\nSecureWorks WA';
+  var subject = (sub.job_number || '') + ' — ' + (step.name || 'Council Application') + ' — SecureWorks Group';
+  var body = 'Hi,\n\nRegarding the ' + (step.name || 'application') + ' for ' + (sub.job_number || '') + ' — ' + (sub.client_name || '') + '.\n\n\n\nThanks,\nSecureWorks Group';
 
   // Use the PO email compose modal (repurposed for council)
   document.getElementById('poComposeTitle').textContent = 'Email — ' + (step.name || 'Council Step');

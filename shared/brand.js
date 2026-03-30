@@ -112,7 +112,7 @@
       doc.setFontSize(7.5);
       doc.setTextColor.apply(doc, SW_MID);
       doc.text(
-        'SecureWorks WA Pty Ltd  |  ABN 64 689 223 416  |  admin@secureworkswa.com.au',
+        'SecureWorks Group Pty Ltd  |  ABN 64 689 223 416  |  admin@secureworkswa.com.au',
         PDF_W / 2, y, { align: 'center' }
       );
 
@@ -214,7 +214,7 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor.apply(doc, SW_MUTED);
-      doc.text('SecureWorks WA Pty Ltd', PDF_M, y);
+      doc.text('SecureWorks Group Pty Ltd', PDF_M, y);
       doc.text('Page ' + pageNum + ' of ' + totalPages, PDF_W - PDF_M, y, { align: 'right' });
       // Orange bottom line
       doc.setDrawColor.apply(doc, SW_ORANGE);

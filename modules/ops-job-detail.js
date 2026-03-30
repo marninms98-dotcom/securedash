@@ -3062,9 +3062,9 @@ function openActionSheet(type) {
     var name = _currentJobData?.job?.client_name || 'there';
     bodyEl.innerHTML = '<div style="margin-bottom:12px;">' +
       '<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Quick Templates</div>' +
-      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', just confirming your appointment tomorrow. Please let us know if anything changes. Thanks, SecureWorks WA\')">Confirm Appointment</button>' +
-      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', your materials have arrived and we are on track for the scheduled date. Thanks, SecureWorks WA\')">Materials Arrived</button>' +
-      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', just following up on the quote we sent. Happy to answer any questions. Thanks, SecureWorks WA\')">Quote Follow Up</button>' +
+      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', just confirming your appointment tomorrow. Please let us know if anything changes. Thanks, SecureWorks Group\')">Confirm Appointment</button>' +
+      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', your materials have arrived and we are on track for the scheduled date. Thanks, SecureWorks Group\')">Materials Arrived</button>' +
+      '<button class="btn btn-secondary btn-sm" style="margin:2px;" onclick="setSMSTemplate(\'Hi ' + escapeHtml(name) + ', just following up on the quote we sent. Happy to answer any questions. Thanks, SecureWorks Group\')">Quote Follow Up</button>' +
       '</div>' +
       '<textarea id="jdSheetSMSText" class="form-textarea" style="width:100%;min-height:60px;" placeholder="Type your message..."></textarea>' +
       '<div style="margin-top:12px;"><a href="sms:' + phone + '" id="jdSMSLink" class="btn btn-primary" style="text-decoration:none;display:inline-block;">Send via SMS App</a></div>';
