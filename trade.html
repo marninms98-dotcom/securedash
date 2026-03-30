@@ -2652,8 +2652,8 @@
       return;
     }
     // Different day — prompt to clock off for that day
-    var clockDate = new Date(_clockedOnAt).toISOString().slice(0, 10);
-    var today = new Date().toISOString().slice(0, 10);
+    var clockDate = awstDateStr(new Date(_clockedOnAt));
+    var today = awstDateStr();
     if (clockDate < today) {
       var dayStr = new Date(_clockedOnAt).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' });
       showConfirm('Still Clocked On', 'You\'re still clocked on from ' + dayStr + '. Clock off for that day?', 'Clock Off for ' + dayStr).then(function(ok) {
@@ -4140,7 +4140,7 @@
       // Next job preview
       if (typeof _lastJobData !== 'undefined' && _lastJobData) {
         var allAssignments = [].concat(_lastJobData.today || [], _lastJobData.thisWeek || [], _lastJobData.upcoming || []);
-        var nextJob = allAssignments.find(function(a) { return a.jobs && a.jobs.id !== job.id && a.scheduled_date >= new Date().toISOString().slice(0, 10); });
+        var nextJob = allAssignments.find(function(a) { return a.jobs && a.jobs.id !== job.id && a.scheduled_date >= awstDateStr(); });
         if (nextJob && nextJob.jobs) {
           var nj = nextJob.jobs;
           h += '<div style="margin-top:12px;padding:12px;background:var(--sw-light);border-radius:8px;text-align:left;">';
@@ -7326,6 +7326,20 @@
 
   function renderActivityView() {
     var container = document.getElementById('activityContent');
+
+    // FIX: Race condition — if job data hasn't loaded yet, fetch then re-render.
+    // Tapping Activity before My Jobs API returns means _cachedMyJobs is empty.
+    if (!_lastJobData && _user) {
+      container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading activity...</div>';
+      api('my_jobs', _isAdmin ? { mode: _adminViewAll ? 'all' : 'mine' } : {}).then(function(data) {
+        renderMyJobs(data);
+        renderActivityView();
+      }).catch(function(err) {
+        container.innerHTML = '<div class="empty-state">Error loading activity: ' + friendlyError(err) + '<br><button class="btn btn-secondary btn-small" style="margin-top:12px;width:auto" onclick="renderActivityView()">Retry</button></div>';
+      });
+      return;
+    }
+
     var jobs = _cachedMyJobs || [];
     var html = '';
 
@@ -7355,7 +7369,7 @@
 
     // ── Build daily timeline from cached job data ──
     var timeline = [];
-    var todayStr = now.toISOString().slice(0, 10);
+    var todayStr = awstDateStr(now);
 
     // Clock state entries from localStorage
     if (_clockState === 'on' && _clockedOnAt) {
@@ -7368,23 +7382,22 @@
       timeline.push({ time: _arrivedAt, icon: '&#128205;', text: 'Arrived on site', type: 'clock' });
     }
 
-    // Today's jobs — show as schedule entries
-    jobs.forEach(function(a) {
+    // Today's jobs — use server-grouped 'today' bucket (AWST-aware)
+    // Server myJobs() already groups using getAWSTDate(), no need to re-filter
+    var todayJobs = (_lastJobData && _lastJobData.today) ? _lastJobData.today : [];
+    todayJobs.forEach(function(a) {
       var job = a.jobs || {};
-      if (a.scheduled_date && a.scheduled_date.slice(0, 10) === todayStr) {
-        var timeStr = a.start_time ? a.start_time.slice(0, 5) : '';
-        var statusIcons = { scheduled: '&#128197;', confirmed: '&#9989;', in_progress: '&#128296;', complete: '&#127937;' };
-        var icon = statusIcons[a.status] || '&#128197;';
-        timeline.push({
-          time: a.scheduled_date + 'T' + (a.start_time || '00:00') + ':00',
-          icon: icon,
-          text: esc(job.client_name || 'Unknown') + ' \u2014 ' + esc(job.site_suburb || ''),
-          sub: (a.status || 'scheduled').replace(/_/g, ' '),
-          jobId: job.id,
-          assignmentId: a.id,
-          type: 'job'
-        });
-      }
+      var statusIcons = { scheduled: '&#128197;', confirmed: '&#9989;', in_progress: '&#128296;', complete: '&#127937;' };
+      var icon = statusIcons[a.status] || '&#128197;';
+      timeline.push({
+        time: (a.scheduled_date || todayStr) + 'T' + (a.start_time || '00:00') + ':00',
+        icon: icon,
+        text: esc(job.client_name || 'Unknown') + ' \u2014 ' + esc(job.site_suburb || ''),
+        sub: (a.status || 'scheduled').replace(/_/g, ' '),
+        jobId: job.id,
+        assignmentId: a.id,
+        type: 'job'
+      });
     });
 
     // Sort by time
@@ -7515,7 +7528,7 @@
       }
     }
     // Otherwise, first today's job
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
     for (var j = 0; j < jobs.length; j++) {
       if (jobs[j].scheduled_date && jobs[j].scheduled_date.slice(0, 10) === todayStr) {
         return jobs[j].jobs || {};
@@ -7549,9 +7562,9 @@
     } catch (e) {}
     // Then sync from backend (overrides localStorage with server truth)
     if (_user && _user.id) {
-      var today = new Date().toISOString().slice(0, 10);
+      var today = awstDateStr();
       var end = new Date(); end.setDate(end.getDate() + 90);
-      var endStr = end.toISOString().slice(0, 10);
+      var endStr = awstDateStr(end);
       api('get_crew_availability', { start_date: today, end_date: endStr }).then(function(data) {
         if (data && data.availability) {
           var myRows = data.availability.filter(function(r) { return r.user_id === _user.id; });
@@ -7581,7 +7594,7 @@
       var today = new Date();
       for (var i = 0; i < 60; i++) {
         var d = new Date(today); d.setDate(today.getDate() + i);
-        var ds = d.toISOString().slice(0, 10);
+        var ds = awstDateStr(d);
         if (_exceptions[ds]) continue; // explicit exception takes priority
         var patIdx = (d.getDay() + 6) % 7; // Mon=0..Sun=6
         if (_weeklyPattern[patIdx] === 0) {
@@ -7692,9 +7705,9 @@
     var body = document.getElementById('calendarBody');
     if (body) body.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading...</div>';
 
-    var from = _calWeekStart.toISOString().slice(0, 10);
+    var from = awstDateStr(_calWeekStart);
     var toDate = new Date(_calWeekStart.getTime() + (_calRange === 'month' ? 35 : 7) * 86400000);
-    var to = toDate.toISOString().slice(0, 10);
+    var to = awstDateStr(toDate);
 
     try {
       var data = await api('calendar', { from: from, to: to });
@@ -7725,7 +7738,7 @@
 
     var monday = _calWeekStart || getMonday(new Date());
     var days = _calRange === 'month' ? 28 : 7;
-    var today = new Date().toISOString().slice(0, 10);
+    var today = awstDateStr();
     var myName = (_user?.name || '').toLowerCase();
 
     // Week label
@@ -7758,7 +7771,7 @@
 
     for (var i = 0; i < days; i++) {
       var date = new Date(monday.getTime() + i * 86400000);
-      var dateStr = date.toISOString().slice(0, 10);
+      var dateStr = awstDateStr(date);
       var isToday = dateStr === today;
       var isPast = dateStr < today;
       var dayName = dayNames[date.getDay()];
@@ -7861,7 +7874,7 @@
       var dt = new Date(monday.getTime() + d * 86400000);
       dates.push({
         date: dt,
-        str: dt.toISOString().slice(0, 10),
+        str: awstDateStr(dt),
         label: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d],
         dayNum: dt.getDate()
       });
@@ -7877,7 +7890,7 @@
     // Group events by crew
     var crewEvents = {}; // { crewName: { dateStr: [events] } }
     var unassigned = {}; // { dateStr: [events] }
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
 
     _calEvents.forEach(function(ev) {
       var crew = ev.crew_name || ev.assigned_to || '';
@@ -7992,7 +8005,7 @@
 
   // Load availability data for team view (non-blocking)
   function _loadTeamAvailability(weekStart, weekEnd) {
-    api('get_crew_availability', { start_date: weekStart.toISOString().slice(0, 10), end_date: weekEnd }).then(function(data) {
+    api('get_crew_availability', { start_date: awstDateStr(weekStart), end_date: weekEnd }).then(function(data) {
       var rows = data.availability || [];
       _teamAvailability = {};
       // Map user_id → crew name via _calCrewList
@@ -8124,7 +8137,7 @@
     // Show list of own upcoming jobs to pick which one needs help
     var myName = (_user?.name || '').toLowerCase();
     var myJobs = _calEvents.filter(function(ev) {
-      return (ev.crew_name || '').toLowerCase() === myName && ev.scheduled_date >= new Date().toISOString().slice(0, 10);
+      return (ev.crew_name || '').toLowerCase() === myName && ev.scheduled_date >= awstDateStr();
     });
 
     // Deduplicate by job_id
@@ -8160,7 +8173,7 @@
 
   async function openRequestHelpForm(jobId) {
     // Get job's scheduled dates
-    var jobEvents = _calEvents.filter(function(ev) { return ev.job_id === jobId && ev.scheduled_date >= new Date().toISOString().slice(0, 10); });
+    var jobEvents = _calEvents.filter(function(ev) { return ev.job_id === jobId && ev.scheduled_date >= awstDateStr(); });
     var jobDates = [];
     var seenDates = {};
     jobEvents.forEach(function(ev) { if (!seenDates[ev.scheduled_date]) { seenDates[ev.scheduled_date] = true; jobDates.push(ev.scheduled_date); }});
@@ -8310,7 +8323,7 @@
     var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     var y = _calendarMonth.getFullYear();
     var m = _calendarMonth.getMonth();
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
 
     var html = '<div class="avail-cal-nav">';
     html += '  <button onclick="shiftCalMonth(-1)">&larr;</button>';
@@ -8432,7 +8445,7 @@
     var endDate = new Date(end + 'T00:00:00');
     var count = 0;
     while (d <= endDate) {
-      var ds = d.toISOString().slice(0, 10);
+      var ds = awstDateStr(d);
       _exceptions[ds] = { available: false, note: 'Leave' };
       d.setDate(d.getDate() + 1);
       count++;
@@ -8446,7 +8459,7 @@
     var jobs = _cachedMyJobs || [];
     if (jobs.length === 0) return '<div style="font-size:13px;color:var(--sw-text-sec)">No upcoming jobs</div>';
 
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
     // Filter to today and future, sort by date
     var upcoming = jobs.filter(function(a) { return (a.scheduled_date || '') >= todayStr; });
     upcoming.sort(function(a, b) { return (a.scheduled_date || '').localeCompare(b.scheduled_date || ''); });
@@ -8545,12 +8558,12 @@
     var badge = document.getElementById('scheduleBadge');
     if (!badge) return;
     var jobs = _cachedMyJobs || [];
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
 
     // Count confirmed jobs this week (next 7 days)
     var weekEnd = new Date();
     weekEnd.setDate(weekEnd.getDate() + 7);
-    var weekEndStr = weekEnd.toISOString().slice(0, 10);
+    var weekEndStr = awstDateStr(weekEnd);
 
     var count = 0;
     jobs.forEach(function(a) {
@@ -8581,7 +8594,7 @@
     var day = now.getDay(); // 0=Sun
     var daysUntilSun = day === 0 ? 0 : 7 - day;
     now.setDate(now.getDate() + daysUntilSun + (offset || 0) * 7);
-    return now.toISOString().slice(0, 10);
+    return awstDateStr(now);
   }
 
   function formatWeekRange(weekEnd) {
@@ -8596,7 +8609,7 @@
     if (!_hoursWeekEnd) return;
     var d = new Date(_hoursWeekEnd + 'T00:00:00');
     d.setDate(d.getDate() + dir * 7);
-    _hoursWeekEnd = d.toISOString().slice(0, 10);
+    _hoursWeekEnd = awstDateStr(d);
     loadHoursView();
   }
 
@@ -8606,7 +8619,7 @@
     var sunDate = new Date(_hoursWeekEnd + 'T00:00:00');
     var monDate = new Date(sunDate);
     monDate.setDate(monDate.getDate() - 6);
-    _hoursWeekStart = monDate.toISOString().slice(0, 10);
+    _hoursWeekStart = awstDateStr(monDate);
 
     var container = document.getElementById('hoursContent');
     container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading hours...</div>';
@@ -9761,7 +9774,7 @@
     var hasPOs = pos.some(function(po) { return po.status === 'confirmed' || po.status === 'delivered' || po.status === 'authorised'; });
     if (!hasPOs) return;
     // Already checked today?
-    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + awstDateStr();
     if (localStorage.getItem(checkKey)) return;
     // Show materials check overlay
     var overlay = document.getElementById('materialsCheckOverlay');
@@ -9816,7 +9829,7 @@
     });
     if (unchecked.length === 0) { toast('All items are checked'); return; }
     var detail = 'Missing: ' + unchecked.join(', ');
-    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + awstDateStr();
     localStorage.setItem(checkKey, 'issue');
     localStorage.setItem('sw_matissue_' + _currentJobId, '1');
     var jobNum = _currentJob ? (_currentJob.job.job_number || '') : '';
@@ -9835,7 +9848,7 @@
   };
 
   window.matCheckAllGood = function() {
-    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + awstDateStr();
     localStorage.setItem(checkKey, 'good');
     localStorage.setItem('sw_matcheck_' + _currentJobId, 'good');
     var overlay = document.getElementById('materialsCheckOverlay');
@@ -9851,7 +9864,7 @@
     var detail = unchecked.length > 0
       ? 'Missing: ' + unchecked.join(', ')
       : category + ' — issue reported';
-    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + new Date().toISOString().slice(0, 10);
+    var checkKey = 'sw_matcheck_' + _currentJobId + '_' + awstDateStr();
     localStorage.setItem(checkKey, 'issue');
     localStorage.setItem('sw_matissue_' + _currentJobId, '1');
     var jobNum = _currentJob ? (_currentJob.job.job_number || '') : '';
@@ -12000,7 +12013,7 @@
     // Show today's photos
     var todayPhotos = [];
     if (_currentJob && _currentJob.media) {
-      var today = new Date().toISOString().slice(0, 10);
+      var today = awstDateStr();
       for (var i = 0; i < _currentJob.media.length; i++) {
         var m = _currentJob.media[i];
         if (m.phase === 'in_progress' && m.created_at && m.created_at.slice(0, 10) === today) {
@@ -12499,7 +12512,7 @@
   function renderWeatherBar() {
     var el = document.getElementById('weatherBar');
     if (!el) return;
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = awstDateStr();
     var w = getWeatherForDate(todayStr);
     if (!w) return;
 
@@ -12560,6 +12573,13 @@
   // ══════════════════════════════════════════════════
   // UTILITIES
   // ══════════════════════════════════════════════════
+
+  // AWST (UTC+8) date helper — Perth has no daylight saving
+  // Returns YYYY-MM-DD string in AWST timezone for any Date object (or now)
+  function awstDateStr(d) {
+    var now = d || new Date();
+    return new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
 
   function esc(str) {
     if (!str) return '';
