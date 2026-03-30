@@ -2684,29 +2684,29 @@
   function checkServerClockRecovery(data) {
     if (_clockState === 'on') return; // already clocked on locally
     try {
-      var allJobs = [].concat(data.today || [], data.thisWeek || [], data.upcoming || [], data.recent || []);
-      for (var i = 0; i < allJobs.length; i++) {
-        var assignments = allJobs[i].assignments || [];
-        for (var a = 0; a < assignments.length; a++) {
-          var asg = assignments[a];
-          if (asg.clocked_on_at && !asg.clocked_off_at) {
-            // Active clock found on server — restore timer state
-            console.log('[trade] Restoring active clock from server:', asg.id);
-            _clockState = 'on';
-            _clockedOnAt = asg.clocked_on_at;
-            _travelStartTime = asg.travel_started_at || null;
-            _arrivedAt = asg.arrived_at || null;
-            _totalBreakMins = asg.break_minutes || 0;
-            _isPaused = asg.job_phase === 'paused';
-            _currentAssignment = asg.id;
-            saveTimerState();
-            // Check if stale (14+ hours)
-            var clockedHours = (Date.now() - new Date(asg.clocked_on_at).getTime()) / 3600000;
-            if (clockedHours > 14) {
-              showStaleClockPrompt(asg, clockedHours);
-            }
-            return;
+      // Each item in these arrays IS an assignment (flat structure from my_jobs)
+      var allAssignments = [].concat(data.today || [], data.thisWeek || [], data.upcoming || [], data.recent || []);
+      for (var i = 0; i < allAssignments.length; i++) {
+        var asg = allAssignments[i];
+        if (asg.clocked_on_at && !asg.clocked_off_at) {
+          // Active clock found on server — restore timer state
+          console.log('[trade] Restoring active clock from server:', asg.id);
+          _clockState = 'on';
+          _clockedOnAt = asg.clocked_on_at;
+          _travelStartTime = asg.travel_started_at || null;
+          _arrivedAt = asg.arrived_at || null;
+          _totalBreakMins = asg.break_minutes || 0;
+          _isPaused = asg.job_phase === 'paused';
+          _currentAssignment = asg.id;
+          // Also set current job so job detail can render
+          if (asg.jobs) _currentJobId = asg.jobs.id;
+          saveTimerState();
+          // Check if stale (14+ hours)
+          var clockedHours = (Date.now() - new Date(asg.clocked_on_at).getTime()) / 3600000;
+          if (clockedHours > 14) {
+            showStaleClockPrompt(asg, clockedHours);
           }
+          return;
         }
       }
     } catch (e) { /* non-blocking */ }
@@ -9035,6 +9035,9 @@
   // Submit hours for verification (instead of direct Xero push)
   window.submitForVerification = function() {
     if (!_hoursData) return;
+    var assignments = _hoursData.assignments || [];
+    if (assignments.length === 0) { toast('No assignments to submit', true); return; }
+
     var rateInput = document.getElementById('hoursRateInput');
     var editedRate = parseFloat(rateInput ? rateInput.value : 0) || 0;
     if (editedRate <= 0) { toast('Enter your hourly rate first', true); return; }
@@ -9044,11 +9047,17 @@
       var btn = document.getElementById('btnSubmitVerify');
       if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
-      api('update_my_assignment', null, {
-        week_ending: _hoursData.week_ending,
-        status: 'submitted',
-        hourly_rate: editedRate
-      }).then(function() {
+      // Submit each assignment individually with its ID
+      var promises = assignments.map(function(a) {
+        return api('update_my_assignment', null, {
+          assignmentId: a.id,
+          status: 'submitted'
+        });
+      });
+      // Also persist the edited rate
+      promises.push(api('set_trade_rate', null, { hourly_rate: editedRate }));
+
+      Promise.all(promises).then(function() {
         toast('Hours submitted for verification');
         loadHoursView();
       }).catch(function(err) {
@@ -9685,14 +9694,26 @@
 
   // Undo travel — available for 5 minutes after starting travel
   window.undoTravel = function() {
+    var asgId = _currentAssignment;
+    // Clear local state immediately
     _clockState = 'off';
     _clockedOnAt = null;
     _travelStartTime = null;
     _arrivedAt = null;
     saveTimerState();
     localStorage.removeItem('sw_travel_started');
-    toast('Travel undone');
     if (_currentJob) renderJobDetail(_currentJob);
+
+    // Sync to server — clear clock state so no desync
+    if (asgId) {
+      clockEvent('undo_travel', asgId).then(function() {
+        toast('Travel undone');
+      }).catch(function() {
+        toast('Travel undone locally — will sync when online');
+      });
+    } else {
+      toast('Travel undone');
+    }
   };
 
   // Manual time override — hours + mins picker overlay
