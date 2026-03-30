@@ -3493,9 +3493,17 @@ async function loadInbox() {
   if (!list) return;
   list.innerHTML = '<div class="loading" style="padding:12px;">Loading annotations...</div>';
 
-  var annotations = await loadAnnotations('global');
-  renderInboxList(annotations);
-  refreshInboxBadge();
+  try {
+    var annotations = await loadAnnotations('global');
+    renderInboxList(annotations);
+    refreshInboxBadge();
+  } catch (e) {
+    console.error('loadInbox error:', e);
+    list.innerHTML = '';
+    showToast('Failed to load inbox', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadInbox()' }
+    ]);
+  }
 }
 
 function filterInbox(category) {
@@ -3881,6 +3889,9 @@ async function loadToday() {
     loadPendingSms();
   } catch (e) {
     console.error('loadToday error:', e);
+    showToast('Failed to load dashboard data', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadToday()' }
+    ]);
   }
 }
 
@@ -4378,6 +4389,9 @@ async function loadCalendar() {
     renderCalendar();
   } catch (e) {
     console.error('loadCalendar error:', e);
+    showToast('Failed to load calendar', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadCalendar()' }
+    ]);
   }
 }
 
@@ -5533,6 +5547,9 @@ async function loadJobs() {
     renderJobs(data);
   } catch (e) {
     console.error('loadJobs error:', e);
+    showToast('Failed to load jobs', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadJobs()' }
+    ]);
   }
 }
 
@@ -5716,6 +5733,9 @@ async function loadInvoices() {
     renderInvoiceTable(_allInvoices);
   } catch (e) {
     console.error('loadInvoices error:', e);
+    showToast('Failed to load invoices', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadInvoices()' }
+    ]);
   }
 }
 
@@ -6126,6 +6146,9 @@ async function loadMaterials() {
     loadPendingPrices();
   } catch (e) {
     console.error('loadMaterials error:', e);
+    showToast('Failed to load materials', 'warning', [
+      { label: 'Retry', primary: true, onclick: 'loadMaterials()' }
+    ]);
   }
 }
 
