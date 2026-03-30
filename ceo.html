@@ -967,6 +967,23 @@ function unlockReport() {
   document.getElementById('authGate').style.display = 'none';
   document.getElementById('mainApp').style.display = '';
   loadReport();
+
+  // Supabase Realtime: subscribe to ai_alerts for proactive notifications
+  try {
+    var _supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    _supabase.channel('ceo-alerts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ai_alerts' }, function(payload) {
+      loadCeoAlerts();
+      if (payload.new && payload.new.severity === 'red') {
+        showToast('Critical alert: ' + (payload.new.title || payload.new.message || 'New alert'), 'warning');
+      } else {
+        showToast('New alert detected', 'success');
+      }
+      var icon = document.getElementById('jarvisIcon');
+      if (icon) { icon.classList.add('pulse'); }
+    }).subscribe();
+  } catch (e) {
+    console.log('[ceo] Realtime subscription failed:', e.message);
+  }
 }
 
 
