@@ -1320,9 +1320,9 @@ function renderOverview() {
     document.getElementById('topAlerts').innerHTML = '<div style="color:var(--sw-text-sec);font-size:13px;">All clear — no actions needed this week.</div>';
   } else {
     document.getElementById('topAlerts').innerHTML = alerts.map((a, i) => {
-      const priorityBadge = a.severity === 'critical'
+      const priorityBadge = a.severity === 'red'
         ? '<span style="background:var(--sw-red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-right:6px;">URGENT</span>'
-        : a.severity === 'warning'
+        : a.severity === 'amber'
         ? '<span style="background:var(--sw-yellow);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-right:6px;">ACTION</span>'
         : '';
       return '<div class="alert-card ' + a.severity + '">' +
