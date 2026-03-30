@@ -115,7 +115,7 @@
     .btn-header:hover { background: rgba(255,255,255,0.15); }
 
     /* ── Layout ── */
-    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; padding-bottom: 72px; }
     .view { display: none; }
     .view.active { display: block; }
 
@@ -1606,36 +1606,89 @@
       .materials-kanban { grid-template-columns: repeat(2, 1fr); }
     }
 
-    /* ═══════ AI Chat Sidebar ═══════ */
-    .chat-fab {
-      position: fixed; bottom: 24px; right: 24px; z-index: 900;
-      width: 56px; height: 56px; border-radius: 50%; border: none;
-      background: var(--sw-dark); color: #fff; font-size: 24px;
-      cursor: pointer; box-shadow: 0 4px 16px rgba(41,60,70,0.3);
-      display: flex; align-items: center; justify-content: center;
-      transition: transform 0.2s, box-shadow 0.2s;
+    /* ═══════ Jarvis Ambient Bar ═══════ */
+    .jarvis-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 48px;
+      background: var(--sw-dark-deep); border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 0; padding: 0;
+      z-index: 950; font-size: 13px; color: rgba(255,255,255,0.85);
+      box-shadow: 0 -2px 16px rgba(0,0,0,0.15);
     }
-    .chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(241,90,41,0.45); }
-    .chat-fab.has-unread::after {
-      content: ''; position: absolute; top: 4px; right: 4px;
-      width: 12px; height: 12px; border-radius: 50%;
-      background: var(--sw-red); border: 2px solid #fff;
+    .jarvis-left {
+      display: flex; align-items: center; gap: 10px; padding: 0 16px;
+      flex: 0 0 auto; border-right: 1px solid rgba(255,255,255,0.08);
+      height: 100%; cursor: pointer;
     }
+    .jarvis-left:hover { background: rgba(255,255,255,0.04); }
+    .jarvis-icon { font-size: 18px; line-height: 1; }
+    .jarvis-icon.pulse { animation: jarvisPulse 2.5s ease-in-out infinite; }
+    .jarvis-icon.alert { animation: jarvisAlertPulse 0.8s ease-in-out infinite; }
+    .jarvis-brand { font-weight: 700; font-size: 13px; letter-spacing: 0.5px; }
+    .jarvis-status { font-size: 11px; color: rgba(255,255,255,0.45); margin-left: 4px; }
+    .jarvis-status.live { color: var(--sw-green); }
+
+    .jarvis-center {
+      flex: 1; min-width: 0; padding: 0 16px; display: flex; align-items: center;
+      gap: 12px; height: 100%;
+    }
+    .jarvis-summary {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 12px; color: rgba(255,255,255,0.55);
+    }
+    .jarvis-badges { display: flex; gap: 6px; flex-shrink: 0; }
+    .jarvis-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: var(--sw-radius-pill);
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; background: rgba(255,255,255,0.08);
+    }
+    .jarvis-badge:hover { background: rgba(255,255,255,0.14); }
+    .jarvis-badge.red { color: var(--sw-red); background: rgba(231,76,60,0.15); }
+    .jarvis-badge.amber { color: var(--sw-yellow); background: rgba(230,126,34,0.15); }
+    .jarvis-badge.green { color: var(--sw-green); background: rgba(39,174,96,0.15); }
+
+    .jarvis-right {
+      display: flex; align-items: center; gap: 8px; padding: 0 12px;
+      border-left: 1px solid rgba(255,255,255,0.08); height: 100%;
+    }
+    .jarvis-expand {
+      background: none; border: none; color: rgba(255,255,255,0.5);
+      cursor: pointer; font-size: 18px; padding: 6px 8px; border-radius: var(--sw-radius-sm);
+      transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+    }
+    .jarvis-expand:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .jarvis-expand span { font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
+    .jarvis-shortcut {
+      font-size: 10px; color: rgba(255,255,255,0.25); padding: 2px 6px;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 3px;
+    }
+
+    @keyframes jarvisPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes jarvisAlertPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Chat panel (slides from right when bar expanded) */
     .chat-panel {
-      position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
-      background: var(--sw-bg); z-index: 950;
+      position: fixed; top: 0; right: -420px; width: 400px; height: calc(100vh - 48px);
+      background: var(--sw-bg); z-index: 960;
       display: flex; flex-direction: column;
       box-shadow: -4px 0 24px rgba(0,0,0,0.12);
       transition: right 0.3s ease;
     }
     .chat-panel.open { right: 0; }
     .chat-header {
-      background: var(--sw-dark); color: #fff; padding: 16px;
+      background: var(--sw-dark); color: #fff; padding: 14px 16px;
       display: flex; align-items: center; justify-content: space-between;
       flex-shrink: 0;
     }
-    .chat-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
-    .chat-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 4px 8px; }
+    .chat-header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+    .chat-close { background: none; border: none; color: rgba(255,255,255,0.7); font-size: 18px; cursor: pointer; padding: 4px 8px; transition: color 0.15s; }
+    .chat-close:hover { color: #fff; }
     .chat-messages {
       flex: 1; overflow-y: auto; padding: 16px; display: flex;
       flex-direction: column; gap: 12px;
@@ -1790,7 +1843,7 @@
     .crew-bar-label { width: 40px; font-size: 11px; color: var(--sw-text-sec); }
 
     /* ═══════ Toast Notifications ═══════ */
-    .toast-container { position: fixed; bottom: 90px; right: 24px; z-index: 800; display: flex; flex-direction: column; gap: 8px; }
+    .toast-container { position: fixed; bottom: 60px; right: 24px; z-index: 970; display: flex; flex-direction: column; gap: 8px; }
     .toast {
       background: var(--sw-card); border: 1px solid var(--sw-border);
       border-radius: 10px; padding: 12px 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
@@ -1808,7 +1861,10 @@
 
     @media (max-width: 768px) {
       .chat-panel { width: 100%; right: -100%; }
-      .chat-fab { bottom: 80px; }
+      .jarvis-bar { height: 40px; }
+      .jarvis-bar .jarvis-center { display: none; }
+      .jarvis-bar .jarvis-shortcut { display: none; }
+      .jarvis-brand { font-size: 12px; }
       .crew-util-wrap { grid-template-columns: 1fr; }
     }
   </style>
@@ -2499,35 +2555,53 @@
 </div>
 
 
-<!-- ══════════ AI Chat Sidebar ══════════ -->
-<div class="chat-backdrop" id="chatBackdrop" onclick="toggleChat()"></div>
+<!-- ══════════ Jarvis Ambient Bar ══════════ -->
+<div class="jarvis-bar" id="jarvisBar">
+  <div class="jarvis-left" onclick="toggleJarvis()">
+    <span class="jarvis-icon pulse" id="jarvisIcon">&#9889;</span>
+    <span class="jarvis-brand">Jarvis</span>
+    <span class="jarvis-status live" id="jarvisStatus">Monitoring</span>
+  </div>
+  <div class="jarvis-center">
+    <span class="jarvis-summary" id="jarvisSummary">Loading dashboard...</span>
+    <div class="jarvis-badges" id="jarvisBadges"></div>
+  </div>
+  <div class="jarvis-right">
+    <span class="jarvis-shortcut">Shift+J</span>
+    <button class="jarvis-expand" onclick="toggleJarvis()" title="Open Jarvis">
+      <span>Chat</span> &#9650;
+    </button>
+  </div>
+</div>
+
+<!-- Jarvis Chat Panel (slides from right) -->
+<div class="chat-backdrop" id="chatBackdrop" onclick="toggleJarvis()"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-header">
-    <h3>&#9889; SecureWorks AI</h3>
+    <h3>&#9889; Jarvis</h3>
     <div>
       <button class="chat-close" onclick="clearChat()" title="Clear chat" style="font-size:14px;">&#128465;</button>
-      <button class="chat-close" onclick="toggleChat()">&times;</button>
+      <button class="chat-close" onclick="toggleJarvis()">&times;</button>
     </div>
   </div>
   <div class="chat-messages" id="chatMessages">
     <div style="text-align:center; padding: 20px 0;">
       <div style="font-size:28px; margin-bottom:8px;">&#9889;</div>
-      <div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask me anything about today's operations</div>
+      <div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask me anything about operations</div>
       <div class="chat-quick-prompts" id="chatQuickPrompts">
         <button class="chat-quick-prompt" onclick="sendQuickPrompt('What should I focus on today?')">Morning brief</button>
         <button class="chat-quick-prompt" onclick="sendQuickPrompt('What needs my attention?')">Attention items</button>
         <button class="chat-quick-prompt" onclick="sendQuickPrompt('Which jobs are complete but not invoiced?')">Stale invoicing</button>
-        <button class="chat-quick-prompt" onclick="sendQuickPrompt('Show me this week\'s schedule')">This week</button>
+        <button class="chat-quick-prompt" onclick="sendQuickPrompt('Show me this week's schedule')">This week</button>
       </div>
     </div>
   </div>
   <div class="chat-input-area">
-    <textarea class="chat-input" id="chatInput" placeholder="Ask about jobs, schedule, invoices..." rows="1"
+    <textarea class="chat-input" id="chatInput" placeholder="Ask Jarvis anything..." rows="1"
       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
     <button class="chat-send" id="chatSendBtn" onclick="sendChat()">&#10148;</button>
   </div>
 </div>
-<button class="chat-fab" id="chatFab" onclick="toggleChat()" title="AI Assistant">&#9889;</button>
 
 <!-- Toast container for assignment cascade notifications -->
 <div class="toast-container" id="toastContainer"></div>
@@ -3598,6 +3672,8 @@ function showView(view) {
   if (view === 'financials') loadFinancials();
   if (view === 'materials') loadMaterials();
   if (view === 'inbox') loadInbox();
+  // Update Jarvis bar context
+  setTimeout(updateJarvisSummary, 500);
 }
 
 function restoreTab() {
@@ -3699,7 +3775,9 @@ async function loadAiAlerts() {
     var digest = await resp.json();
     _digestCache = digest;
     _digestCacheTime = Date.now();
+    _jarvisLastUpdate = Date.now();
     renderAiAlerts(digest);
+    updateJarvisSummary();
   } catch (e) {
     console.error('loadAiAlerts error:', e);
     // Don't show panel if digest fails — non-critical
@@ -9400,13 +9478,90 @@ var _opsAiBase = 'https://secureworks-agent-production.up.railway.app/api/chat';
   } catch(e) {}
 })();
 
-function toggleChat() {
+function toggleJarvis() {
   _chatOpen = !_chatOpen;
   document.getElementById('chatPanel').classList.toggle('open', _chatOpen);
   document.getElementById('chatBackdrop').classList.toggle('open', _chatOpen);
   if (_chatOpen && _chatMessages.length > 0) renderChatHistory();
   if (_chatOpen) document.getElementById('chatInput').focus();
 }
+// Legacy alias
+function toggleChat() { toggleJarvis(); }
+
+// Keyboard shortcut: Shift+J
+document.addEventListener('keydown', function(e) {
+  if (e.shiftKey && e.key === 'J' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    e.preventDefault();
+    toggleJarvis();
+  }
+});
+
+// ═══════ Jarvis Bar: Context-Aware Summaries ═══════
+var _jarvisLastUpdate = Date.now();
+var _jarvisAlertCount = { red: 0, amber: 0 };
+
+function updateJarvisSummary() {
+  var summary = document.getElementById('jarvisSummary');
+  var badges = document.getElementById('jarvisBadges');
+  if (!summary) return;
+
+  var view = localStorage.getItem('sw_ops_tab') || 'today';
+  var text = '';
+
+  if (view === 'today' && _digestCache) {
+    var alerts = (_digestCache.alerts || []);
+    var red = alerts.filter(function(a) { return a.severity === 'critical'; }).length;
+    var amber = alerts.filter(function(a) { return a.severity === 'warning'; }).length;
+    _jarvisAlertCount = { red: red, amber: amber };
+    text = (red + amber) > 0 ? (red + ' critical, ' + amber + ' warnings') : 'All clear — no issues';
+  } else if (view === 'jobs' && _jobsCache && _jobsCache.length > 0) {
+    var active = _jobsCache.filter(function(j) { return j.status !== 'cancelled' && j.status !== 'complete'; }).length;
+    text = active + ' active jobs in pipeline';
+  } else if (view === 'calendar' && _calEvents) {
+    text = _calEvents.length + ' events this week';
+  } else if (view === 'financials') {
+    text = 'Viewing financials';
+  } else if (view === 'materials') {
+    text = 'Materials & pricing';
+  } else if (view === 'inbox') {
+    text = 'Inbox';
+  } else {
+    text = 'Dashboard ready';
+  }
+
+  summary.textContent = text;
+
+  // Update badges
+  var badgeHtml = '';
+  if (_jarvisAlertCount.red > 0) {
+    badgeHtml += '<span class="jarvis-badge red" onclick="toggleJarvis()">' + _jarvisAlertCount.red + ' urgent</span>';
+  }
+  if (_jarvisAlertCount.amber > 0) {
+    badgeHtml += '<span class="jarvis-badge amber" onclick="toggleJarvis()">' + _jarvisAlertCount.amber + ' warnings</span>';
+  }
+  if (_jarvisAlertCount.red === 0 && _jarvisAlertCount.amber === 0 && _digestCache) {
+    badgeHtml = '<span class="jarvis-badge green">All clear</span>';
+  }
+  badges.innerHTML = badgeHtml;
+
+  // Update status timestamp
+  var status = document.getElementById('jarvisStatus');
+  if (status) {
+    var mins = Math.floor((Date.now() - _jarvisLastUpdate) / 60000);
+    if (mins < 1) {
+      status.textContent = 'Live';
+      status.className = 'jarvis-status live';
+    } else {
+      status.textContent = mins + 'm ago';
+      status.className = 'jarvis-status';
+    }
+  }
+}
+
+// Refresh bar status timestamp every 30s
+setInterval(function() { updateJarvisSummary(); }, 30000);
 
 function clearChat() {
   _chatMessages = [];
@@ -9414,7 +9569,7 @@ function clearChat() {
   document.getElementById('chatMessages').innerHTML =
     '<div style="text-align:center; padding: 20px 0;">' +
       '<div style="font-size:28px; margin-bottom:8px;">&#9889;</div>' +
-      '<div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask me anything about today\'s operations</div>' +
+      '<div style="font-size:13px; color:var(--sw-text-sec); margin-bottom:12px;">Ask me anything about operations</div>' +
       '<div class="chat-quick-prompts">' +
         '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'What should I focus on today?\')">Morning brief</button>' +
         '<button class="chat-quick-prompt" onclick="sendQuickPrompt(\'What needs my attention?\')">Attention items</button>' +
@@ -11241,6 +11396,8 @@ function initApp() {
   loadCrewList(); // Pre-cache crew list for dropdowns
   loadWeather(); // Non-blocking weather fetch
   restoreTab();
+  // Initialize Jarvis bar summary after data loads
+  setTimeout(updateJarvisSummary, 2000);
   // Handle browser back/forward for job detail
   window.addEventListener('popstate', function() {
     var hash = window.location.hash.slice(1);
