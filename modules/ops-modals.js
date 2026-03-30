@@ -686,8 +686,10 @@ function switchPOModalTab(tab) {
       var threadEl = document.getElementById('poCommsThread');
       var replyEl = document.getElementById('poCommsReplyBar');
       if (threadEl) threadEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);text-align:center;padding:16px;">Loading emails...</div>';
-      // Pass job_id from PO data for fallback matching
-      var editPo = _allPOs ? _allPOs.find(function(p) { return p.id === _editingPOId; }) : null;
+      // Clear stale cache for this PO to force fresh fetch
+      if (typeof _poEmailCache !== 'undefined') delete _poEmailCache[_editingPOId];
+      // Use stored PO data for job_id (reliable, not dependent on _allPOs)
+      var editPo = window._editingPO || (_allPOs ? _allPOs.find(function(p) { return p.id === _editingPOId; }) : null);
       var editJobId = editPo ? editPo.job_id : null;
       loadPOEmails(_editingPOId, editJobId).then(function(emails) {
         if (threadEl) threadEl.innerHTML = renderPOEmailThread(emails, _editingPOId);
@@ -770,6 +772,8 @@ async function openPOEdit(poId) {
     document.getElementById('poModalTabs').style.display = 'flex';
     var badge = document.getElementById('poTabCommsBadge');
     if (badge) badge.textContent = emailCount > 0 ? emailCount : '';
+    // Store PO data for comms tab to use (avoids relying on stale _allPOs)
+    window._editingPO = po;
 
     await loadSupplierList();
     document.getElementById('poModal').classList.add('active');
@@ -794,6 +798,7 @@ function resetPOModal() {
   if (threadEl) threadEl.innerHTML = '';
   var replyEl = document.getElementById('poCommsReplyBar');
   if (replyEl) replyEl.innerHTML = '';
+  window._editingPO = null;
   // Reset form fields
   document.getElementById('poJobSelect').value = '';
   document.getElementById('poJobSearch').value = '';
