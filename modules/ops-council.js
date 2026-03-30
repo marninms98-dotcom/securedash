@@ -157,7 +157,12 @@ function renderCouncilCardDetail(sub) {
     html += '<div style="border-bottom:1px solid var(--sw-border);">';
     html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;cursor:pointer;" onclick="event.stopPropagation();toggleCouncilStepExpand(\'' + sub.id + '\',' + idx + ')">';
     html += statusIcon;
-    html += '<span style="flex:1;' + (step.status === 'complete' ? 'text-decoration:line-through;color:var(--sw-text-sec);' : '') + '">' + escapeHtml(step.name) + '</span>';
+    html += '<div style="flex:1;' + (step.status === 'complete' ? 'text-decoration:line-through;color:var(--sw-text-sec);' : '') + '">';
+    html += '<span>' + escapeHtml(step.name) + '</span>';
+    if (step.vendor || step.vendor_email) {
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);font-weight:400;">' + escapeHtml(step.vendor || '') + (step.vendor_email ? ' &lt;' + escapeHtml(step.vendor_email) + '&gt;' : '') + '</div>';
+    }
+    html += '</div>';
     if (stepEmailCount > 0) html += '<span style="font-size:10px;color:var(--sw-text-sec);">&#128233; ' + stepEmailCount + '</span>';
     if (daysInStep > 0) html += '<span style="font-size:10px;color:' + (daysInStep > 7 ? 'var(--sw-red)' : 'var(--sw-text-sec)') + ';">' + daysInStep + 'd</span>';
     if (step.status !== 'complete') {
@@ -175,30 +180,61 @@ function renderCouncilCardDetail(sub) {
     html += '<div id="councilStep_' + stepKey + '" style="display:' + (isStepExpanded ? 'block' : 'none') + ';padding:6px 0 8px 20px;">';
 
     if (stepEmails.length > 0) {
-      // Show emails for this step
-      stepEmails.forEach(function(em) {
+      // Show emails for this step — expandable full body
+      stepEmails.forEach(function(em, emIdx) {
         var isInbound = em.direction === 'inbound' || em.direction === 'received';
-        var dir = isInbound ? '&#8601;' : '&#8599;';
+        var dir = isInbound ? '<span style="color:var(--sw-blue,#3498DB)">&#8601;</span>' : '<span style="color:var(--sw-orange)">&#8599;</span>';
         var date = em.created_at ? new Date(em.created_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
         var bgColor = isInbound ? 'rgba(52,152,219,0.04)' : 'rgba(241,90,41,0.04)';
         var borderColor = isInbound ? 'var(--sw-blue,#3498DB)' : 'var(--sw-orange)';
-        html += '<div style="padding:6px 8px;margin-bottom:4px;border-left:2px solid ' + borderColor + ';background:' + bgColor + ';border-radius:0 4px 4px 0;">';
-        html += '<div style="font-size:10px;color:var(--sw-text-sec);display:flex;justify-content:space-between;">';
-        html += '<span>' + dir + ' ' + escapeHtml(isInbound ? (em.from_email || '') : (em.to_email || '')) + '</span>';
-        html += '<span>' + date + '</span></div>';
-        if (em.subject) html += '<div style="font-size:11px;font-weight:600;margin-top:2px;">' + escapeHtml(em.subject) + '</div>';
-        var bodyPreview = (em.body_text || '').slice(0, 200);
-        if (bodyPreview) html += '<div style="font-size:11px;color:var(--sw-text);margin-top:3px;white-space:pre-wrap;line-height:1.4;">' + escapeHtml(bodyPreview) + (em.body_text && em.body_text.length > 200 ? '...' : '') + '</div>';
+        var statusBadge = '';
+        if (!isInbound && em.delivery_status) {
+          var bc = em.delivery_status === 'opened' ? 'var(--sw-green)' : em.delivery_status === 'delivered' ? 'var(--sw-blue,#3498DB)' : em.delivery_status === 'bounced' ? 'var(--sw-red)' : '#999';
+          statusBadge = ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:' + bc + '20;color:' + bc + ';font-weight:600;">' + escapeHtml(em.delivery_status) + '</span>';
+        }
+        var unreadDot = (isInbound && !em.read_at) ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--sw-blue,#3498DB);margin-right:3px;" title="Unread"></span>' : '';
+        var bodyText = em.body_text || '';
+        var firstLine = bodyText.split('\n')[0] || '';
+        if (firstLine.length > 80) firstLine = firstLine.substring(0, 80) + '...';
+        var hasFullBody = bodyText.length > 80;
+
+        html += '<div class="po-email-item" style="padding:8px 10px;margin-bottom:4px;border-left:2px solid ' + borderColor + ';background:' + bgColor + ';border-radius:0 4px 4px 0;cursor:pointer;" onclick="this.classList.toggle(\'expanded\')">';
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);display:flex;justify-content:space-between;align-items:center;">';
+        html += '<span>' + unreadDot + dir + ' ' + escapeHtml(isInbound ? (em.from_email || '') : (em.to_email || '')) + '</span>';
+        html += '<span>' + date + statusBadge + '</span></div>';
+        if (em.subject) html += '<div style="font-size:11px;font-weight:600;margin-top:2px;">' + escapeHtml(em.subject.length > 60 ? em.subject.substring(0, 60) + '...' : em.subject) + '</div>';
+        // Preview (shown when collapsed)
+        html += '<div class="po-email-preview" style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(firstLine) + '</div>';
+        // Full body (shown when expanded)
+        html += '<div class="po-email-body" style="display:none;font-size:11px;color:var(--sw-text);margin-top:4px;white-space:pre-wrap;line-height:1.5;">' + escapeHtml(bodyText) + '</div>';
+        // Attachments (shown when expanded)
+        var atts = em.attachments_json || em.attachments || [];
+        if (Array.isArray(atts) && atts.length > 0) {
+          html += '<div class="po-email-body" style="display:none;margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+          atts.forEach(function(att) {
+            var name = att.filename || att.name || 'Document';
+            var url = att.storage_url || att.url || '';
+            html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:var(--sw-light);border-radius:3px;font-size:10px;color:var(--sw-mid);text-decoration:none;font-weight:600;">&#128206; ' + escapeHtml(name) + '</a>';
+          });
+          html += '</div>';
+        }
+        // Auto-mark inbound as read
+        if (isInbound && !em.read_at && em.id) {
+          opsPost('mark_email_read', { email_id: em.id }).catch(function() {});
+          em.read_at = new Date().toISOString();
+        }
         html += '</div>';
       });
 
-      // Inline reply bar
+      // Inline reply bar + Full Compose button
       var lastStepEmail = stepEmails[stepEmails.length - 1];
       var lastIsInbound = lastStepEmail && (lastStepEmail.direction === 'inbound' || lastStepEmail.direction === 'received');
       var replyTo = lastIsInbound ? (lastStepEmail.from_email || '') : (lastStepEmail.to_email || step.vendor_email || '');
+      var lastMsgId = lastStepEmail ? (lastStepEmail.message_id || '') : '';
       html += '<div style="display:flex;gap:4px;margin-top:4px;align-items:flex-end;">';
       html += '<textarea id="councilReply_' + stepKey + '" placeholder="Reply to ' + escapeHtml(replyTo) + '..." rows="1" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:4px;font-size:11px;font-family:inherit;resize:none;min-height:30px;" onfocus="this.rows=3" onblur="if(!this.value)this.rows=1" onclick="event.stopPropagation()"></textarea>';
-      html += '<button class="btn btn-sm btn-primary" style="font-size:10px;height:30px;" onclick="event.stopPropagation();sendCouncilStepReply(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(replyTo).replace(/'/g, "\\'") + '\')">Send &#8599;</button>';
+      html += '<button class="btn btn-sm btn-primary" style="font-size:10px;height:30px;" onclick="event.stopPropagation();sendCouncilStepReply(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(replyTo).replace(/'/g, "\\'") + '\',\'' + escapeHtml(lastMsgId).replace(/'/g, "\\'") + '\')">Send &#8599;</button>';
+      html += '<button class="btn btn-sm btn-secondary" style="font-size:10px;height:30px;" onclick="event.stopPropagation();openCouncilEmailCompose(\'' + sub.id + '\',' + idx + ')">Full Compose</button>';
       html += '</div>';
     } else {
       // No emails — first contact compose
@@ -286,7 +322,7 @@ function toggleCouncilStepExpand(subId, stepIdx) {
   }
 }
 
-async function sendCouncilStepReply(submissionId, stepIndex, toEmail) {
+async function sendCouncilStepReply(submissionId, stepIndex, toEmail, inReplyTo) {
   var stepKey = submissionId + '_' + stepIndex;
   var textEl = document.getElementById('councilReply_' + stepKey);
   if (!textEl) return;
@@ -301,13 +337,15 @@ async function sendCouncilStepReply(submissionId, stepIndex, toEmail) {
   textEl.rows = 1;
 
   try {
-    await opsPost('send_council_email', {
+    var payload = {
       submission_id: submissionId,
       step_index: stepIndex,
       to_email: toEmail,
       subject: 'Re: ' + subject,
       body_text: body,
-    });
+    };
+    if (inReplyTo) payload.in_reply_to = inReplyTo;
+    await opsPost('send_council_email', payload);
     showToast('Email sent to ' + toEmail, 'success');
     loadApprovals();
   } catch (e) {
@@ -377,6 +415,8 @@ function openCouncilEmailCompose(submissionId, stepIndex) {
   document.getElementById('poComposeTemplate').value = 'custom';
   document.getElementById('poComposeFiles').value = '';
   document.getElementById('poComposeFileList').textContent = '';
+  var ccEl = document.getElementById('poComposeCc');
+  if (ccEl) ccEl.value = '';
 
   // Store council context for send handler
   window._councilComposeContext = { submission_id: submissionId, step_index: idx };

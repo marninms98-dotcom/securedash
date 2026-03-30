@@ -1523,6 +1523,9 @@ function openPOEmailCompose(poId) {
   document.getElementById('poComposeAttachPDF').checked = true;
   document.getElementById('poComposeFiles').value = '';
   document.getElementById('poComposeFileList').textContent = '';
+  var ccEl = document.getElementById('poComposeCc');
+  if (ccEl) ccEl.value = '';
+  window._councilComposeContext = null; // Clear council context for PO sends
 
   applyPOEmailTemplate('new_order');
   document.getElementById('poEmailComposeModal').classList.add('active');
@@ -1617,6 +1620,8 @@ window.backFromPOPreview = function() {
 
 async function sendPOEmail() {
   var to = (document.getElementById('poComposeTo').value || '').trim();
+  var ccRaw = (document.getElementById('poComposeCc') ? document.getElementById('poComposeCc').value : '').trim();
+  var ccList = ccRaw ? ccRaw.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); }) : [];
   var subject = (document.getElementById('poComposeSubject').value || '').trim();
   var body = (document.getElementById('poComposeBody').value || '').trim();
   var attachPDF = document.getElementById('poComposeAttachPDF').checked;
@@ -1667,14 +1672,16 @@ async function sendPOEmail() {
     var resp;
     if (councilCtx && councilCtx.submission_id) {
       // Route through council email endpoint
-      resp = await opsPost('send_council_email', {
+      var councilPayload = {
         submission_id: councilCtx.submission_id,
         step_index: councilCtx.step_index,
         to_email: to,
         subject: subject,
         body_text: body,
         body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
-      });
+      };
+      if (ccList.length > 0) councilPayload.cc = ccList;
+      resp = await opsPost('send_council_email', councilPayload);
       showToast('Council email sent to ' + to, 'success');
       closeModal('poEmailComposeModal');
       if (typeof loadApprovals === 'function') loadApprovals();

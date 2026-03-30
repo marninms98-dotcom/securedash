@@ -1530,6 +1530,66 @@
       font-size: 9px; background: rgba(0,0,0,0.6); color: #fff;
       padding: 1px 5px; border-radius: 3px;
     }
+    /* Lightbox gallery */
+    .sw-lb-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      -webkit-user-select: none; user-select: none;
+    }
+    .sw-lb-close {
+      position: absolute; top: 12px; right: 16px; z-index: 10001;
+      background: none; border: none; color: #fff; font-size: 32px;
+      cursor: pointer; padding: 8px; line-height: 1;
+    }
+    .sw-lb-counter {
+      position: absolute; top: 16px; left: 16px; color: rgba(255,255,255,0.7);
+      font-size: 13px; font-weight: 600;
+    }
+    .sw-lb-media {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      width: 100%; min-height: 0; padding: 48px 8px 8px;
+    }
+    .sw-lb-media img, .sw-lb-media video {
+      max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px;
+    }
+    .sw-lb-info {
+      padding: 8px 16px 16px; text-align: center; color: #fff; width: 100%;
+    }
+    .sw-lb-label { font-size: 14px; font-weight: 600; }
+    .sw-lb-meta { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+    .sw-lb-phase {
+      display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; padding: 2px 8px; border-radius: 3px;
+      background: rgba(255,255,255,0.15); margin-right: 6px;
+    }
+    .sw-lb-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,0.12); border: none; color: #fff;
+      font-size: 28px; padding: 12px 14px; cursor: pointer; border-radius: 50%;
+      line-height: 1; transition: background 0.15s;
+    }
+    .sw-lb-nav:hover { background: rgba(255,255,255,0.25); }
+    .sw-lb-prev { left: 8px; }
+    .sw-lb-next { right: 8px; }
+    @media (max-width: 600px) {
+      .sw-lb-nav { display: none; } /* swipe on mobile instead */
+      .sw-lb-media { padding: 40px 0 0; }
+    }
+
+    /* Build tab photo strip */
+    .jd-photo-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 8px;
+      -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+    }
+    .jd-photo-strip-item {
+      position: relative; flex-shrink: 0; height: 120px; cursor: pointer;
+    }
+    .jd-photo-strip-item img {
+      height: 120px; width: auto; border-radius: 6px; object-fit: cover;
+      display: block;
+    }
+
     .jd-notes-feed { margin-top: 12px; }
     .jd-note-item {
       padding: 8px 0; border-bottom: 1px solid var(--sw-border);
@@ -2890,6 +2950,10 @@
         <div class="po-compose-to">
           <input type="email" class="form-input" id="poComposeTo" placeholder="supplier@example.com">
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CC <span style="font-size:10px;color:var(--sw-text-sec);">(comma-separated)</span></label>
+        <input type="text" class="form-input" id="poComposeCc" placeholder="cc@example.com, another@example.com">
       </div>
       <div class="form-group">
         <label class="form-label">Subject</label>
