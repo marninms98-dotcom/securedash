@@ -2859,13 +2859,20 @@
     if (_sessionExpired) return;
     _sessionExpireAttempts++;
 
+    // After 2 attempts, stop trying — session is dead
+    if (_sessionExpireAttempts > 2) {
+      _forceLogout();
+      return;
+    }
+
     // First attempt: try silent refresh — don't kick out
-    if (_sessionExpireAttempts <= 2 && cloud && cloud.supabase) {
+    if (cloud && cloud.supabase) {
       console.log('[trade] Session may have expired — attempting silent refresh (attempt ' + _sessionExpireAttempts + ')');
       cloud.supabase.auth.refreshSession().then(function(ref) {
-        if (ref.data?.session) {
+        if (ref.data?.session?.access_token) {
+          _cachedAccessToken = ref.data.session.access_token;
           console.log('[trade] Silent refresh succeeded');
-          _sessionExpireAttempts = 0; // Reset counter
+          // Don't reset attempts — if the token is still bad, we'll hit the limit
         } else {
           _forceLogout();
         }
@@ -3001,14 +3008,15 @@
               console.log('[trade] 401 received, refreshing token and retrying...');
               return cloud.supabase.auth.refreshSession().then(function(ref) {
                 var newToken = ref.data?.session?.access_token;
-                if (!newToken) { handleSessionExpiry(); throw new Error('Session expired — please log in again'); }
+                if (!newToken) { _forceLogout(); throw new Error('Session expired — please log in again'); }
+                _cachedAccessToken = newToken; // Update cache with fresh token
                 // Retry with fresh token
                 var retryHeaders = Object.assign({}, headers, { 'Authorization': 'Bearer ' + newToken });
                 var retryOpts = { headers: retryHeaders, signal: opts.signal };
                 if (postBody) { retryOpts.method = 'POST'; retryOpts.body = JSON.stringify(postBody); }
                 retryOpts._retried = true;
                 return fetch(url, retryOpts).then(function(r2) {
-                  if (r2.status === 401 || r2.status === 403) { handleSessionExpiry(); throw new Error('Session expired — please log in again'); }
+                  if (r2.status === 401 || r2.status === 403) { _forceLogout(); throw new Error('Session expired — please log in again'); }
                   if (!r2.ok) return r2.json().catch(function() { throw new Error(r2.statusText); }).then(function(e2) { throw new Error(e2.error || r2.statusText); });
                   return r2.json();
                 });
@@ -3438,7 +3446,7 @@
   };
 
   window.loadMyJobs = function loadMyJobs() {
-    if (!_user) return;
+    if (!_user || _sessionExpired) return;
     var container = document.getElementById('myJobsList');
     container.innerHTML = '<div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>' +
       '<div class="skeleton-card"><div class="skeleton-line long"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div>' +
