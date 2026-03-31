@@ -2109,6 +2109,8 @@ function renderCustomers(d) {
 // ════════════════════════════════════════════════════════════
 
 var _chatMessages = [];
+var _chatSessionId = localStorage.getItem('sw_ceo_chat_session_id') || crypto.randomUUID();
+localStorage.setItem('sw_ceo_chat_session_id', _chatSessionId);
 var _chatOpen = false;
 var _chatSending = false;
 var _opsAiBase = 'https://secureworks-agent-production.up.railway.app/api/chat';
@@ -2221,7 +2223,7 @@ async function sendChat() {
     var resp = await fetch(_opsAiBase, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: msgs, view: 'ceo' }),
+      body: JSON.stringify({ messages: msgs, view: 'ceo', session_id: _chatSessionId }),
     });
     var data = await resp.json();
 

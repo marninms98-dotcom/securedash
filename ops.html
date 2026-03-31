@@ -9491,6 +9491,8 @@ var _depExtraLines = [];
 // ════════════════════════════════════════════════════════════
 
 var _chatMessages = [];
+var _chatSessionId = localStorage.getItem('sw_chat_session_id') || crypto.randomUUID();
+localStorage.setItem('sw_chat_session_id', _chatSessionId);
 var _chatOpen = false;
 var _chatSending = false;
 var _pendingActionCards = [];
@@ -9719,7 +9721,7 @@ async function sendChat() {
     var resp = await fetch(_opsAiBase, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: msgs, view: 'ops' }),
+      body: JSON.stringify({ messages: msgs, view: 'ops', session_id: _chatSessionId }),
     });
     var data = await resp.json();
 
@@ -9764,7 +9766,7 @@ async function confirmChatAction(cardIdx) {
     var resp = await fetch(_opsAiBase, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm_action: card, view: 'ops' }),
+      body: JSON.stringify({ confirm_action: card, view: 'ops', session_id: _chatSessionId }),
     });
     var data = await resp.json();
 
