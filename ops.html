@@ -3248,7 +3248,7 @@ function opsFetch(action, params) {
       if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
     });
   }
-  return fetch(url, { headers: { 'x-api-key': window.SW_API_KEY } }).then(function(resp) {
+  return fetch(url, { headers: { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } }).then(function(resp) {
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
@@ -3258,7 +3258,7 @@ function opsPost(action, body) {
   body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+    headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY },
     body: JSON.stringify(body),
   }).then(function(resp) {
     if (!resp.ok) {
@@ -11544,7 +11544,7 @@ async function sendPOEmail() {
   try {
     var resp = await fetch(window.SUPABASE_URL + '/functions/v1/send-po-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY },
       body: JSON.stringify({
         po_id: poId,
         to: to,
