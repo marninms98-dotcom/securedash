@@ -10163,7 +10163,8 @@ async function searchQQContacts() {
   try {
     var data = await opsFetch('search_ghl_contacts', { q: q });
     if (!data.contacts || data.contacts.length === 0) {
-      resultsEl.innerHTML = '<div class="qq-ghl-item"><em>No contacts found</em></div>';
+      resultsEl.innerHTML = '<div class="qq-ghl-item"><em>No contacts found</em></div>' +
+        '<div class="qq-ghl-item" onclick="createQQContact()" style="cursor:pointer;color:var(--sw-green);font-weight:600;">+ Create New Contact in GHL</div>';
       return;
     }
     var html = '';
@@ -10203,6 +10204,28 @@ function selectQQContact(idx) {
     }).join(', ');
   } else {
     ejEl.innerHTML = '';
+  }
+}
+
+async function createQQContact() {
+  var fn = (document.getElementById('qqFirstName').value || '').trim();
+  var ln = (document.getElementById('qqLastName').value || '').trim();
+  if (!fn && !ln) { showToast('Enter first and last name first', 'warning'); return; }
+  var resultsEl = document.getElementById('qqGHLResults');
+  resultsEl.innerHTML = '<div class="qq-ghl-item"><em>Creating contact...</em></div>';
+  try {
+    var res = await opsPost('create_ghl_contact', {
+      firstName: fn, lastName: ln,
+      email: (document.getElementById('qqEmail').value || '').trim(),
+      phone: (document.getElementById('qqPhone').value || '').trim(),
+      address: (document.getElementById('qqAddress').value || '').trim(),
+      suburb: (document.getElementById('qqSuburb').value || '').trim(),
+    });
+    document.getElementById('qqGHLContactId').value = res.contact_id || '';
+    resultsEl.classList.remove('open');
+    showToast('GHL contact ' + (res.existed ? 'linked' : 'created') + ': ' + (res.name || ''), 'success');
+  } catch (e) {
+    resultsEl.innerHTML = '<div class="qq-ghl-item" style="color:var(--sw-red);">Failed: ' + e.message + '</div>';
   }
 }
 
@@ -10679,7 +10702,16 @@ function renderCommsView(data) {
   html += '<div id="commsClientView">';
 
   if (!j.ghl_contact_id) {
-    html += '<div class="comms-empty">No GHL contact linked to this job.<br><span style="font-size:11px;">Link a contact via the scope tool or GHL.</span></div>';
+    // Search + link + create UI instead of dead-end message
+    html += '<div style="padding:16px;text-align:center;">';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;">No GHL contact linked to this job.</div>';
+    html += '<div style="display:flex;gap:6px;max-width:400px;margin:0 auto 8px;">';
+    html += '<input type="text" id="commsGHLSearch" class="form-input" placeholder="Search GHL contacts..." style="flex:1;font-size:12px;" onkeydown="if(event.key===\'Enter\')searchCommsGHLContact(\'' + j.id + '\')">';
+    html += '<button class="btn btn-sm btn-primary" onclick="searchCommsGHLContact(\'' + j.id + '\')">Search</button>';
+    html += '</div>';
+    html += '<div id="commsGHLResults" style="max-width:400px;margin:0 auto;text-align:left;"></div>';
+    html += '<div style="margin-top:8px;"><button class="btn btn-sm" style="background:var(--sw-green);color:#fff;" onclick="createCommsGHLContact(\'' + j.id + '\')">+ Create New GHL Contact</button></div>';
+    html += '</div>';
   } else {
     // Header: phone + call button
     html += '<div class="comms-header">';
@@ -10830,6 +10862,64 @@ function setCommsChannel(channel) {
     supplierView.style.display = 'none';
     clientTab.classList.add('active');
     supplierTab.classList.remove('active');
+  }
+}
+
+// ── GHL Contact Search/Link/Create from Job Detail Comms ──
+async function searchCommsGHLContact(jobId) {
+  var q = (document.getElementById('commsGHLSearch').value || '').trim();
+  if (!q || q.length < 2) { showToast('Enter at least 2 characters', 'warning'); return; }
+  var resultsEl = document.getElementById('commsGHLResults');
+  resultsEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:8px;">Searching...</div>';
+  try {
+    var data = await opsFetch('search_ghl_contacts', { q: q });
+    if (!data.contacts || data.contacts.length === 0) {
+      resultsEl.innerHTML = '<div style="font-size:11px;color:var(--sw-text-sec);padding:8px;">No contacts found for "' + escapeHtml(q) + '"</div>';
+      return;
+    }
+    var html = '';
+    data.contacts.forEach(function(c) {
+      html += '<div style="padding:8px;border-bottom:1px solid var(--sw-border);cursor:pointer;font-size:12px;" onclick="linkGHLContactToJob(\'' + jobId + '\',\'' + c.id + '\')">';
+      html += '<strong>' + escapeHtml(c.name || 'No name') + '</strong>';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);">' + [c.phone, c.email, c.city].filter(Boolean).join(' · ') + '</div>';
+      html += '</div>';
+    });
+    resultsEl.innerHTML = html;
+  } catch (e) {
+    resultsEl.innerHTML = '<div style="font-size:11px;color:var(--sw-red);padding:8px;">Search failed: ' + e.message + '</div>';
+  }
+}
+
+async function linkGHLContactToJob(jobId, contactId) {
+  try {
+    await opsPost('update_job_field', { job_id: jobId, field: 'ghl_contact_id', value: contactId });
+    showToast('GHL contact linked', 'success');
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch (e) {
+    showToast('Link failed: ' + e.message, 'warning');
+  }
+}
+
+async function createCommsGHLContact(jobId) {
+  var j = _currentJobData ? _currentJobData.job : null;
+  if (!j) { showToast('No job data available', 'warning'); return; }
+  var parts = (j.client_name || '').split(' ');
+  var fn = parts[0] || '';
+  var ln = parts.slice(1).join(' ') || '';
+  if (!fn) { showToast('No client name on this job', 'warning'); return; }
+  try {
+    var res = await opsPost('create_ghl_contact', {
+      firstName: fn, lastName: ln,
+      email: j.client_email || '',
+      phone: j.client_phone || '',
+      address: j.site_address || '',
+      suburb: j.site_suburb || '',
+      job_id: jobId,
+    });
+    showToast('GHL contact ' + (res.existed ? 'linked' : 'created') + ': ' + (res.name || ''), 'success');
+    if (_currentJobId) openJobDetail(_currentJobId);
+  } catch (e) {
+    showToast('Create failed: ' + e.message, 'warning');
   }
 }
 
