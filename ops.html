@@ -2408,6 +2408,12 @@
 <div class="modal-overlay" id="poModal">
   <div class="modal" style="max-width:720px;">
     <div class="modal-title" id="poModalTitle">New Purchase Order</div>
+    <!-- PO Modal Tab Bar (Details / Communications) -->
+    <div id="poModalTabs" style="display:none; gap:0; margin-bottom:12px; border-bottom:1px solid var(--sw-border);">
+      <button id="poTabDetails" onclick="switchPOModalTab('details')" style="background:none; border:none; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; color:var(--sw-orange); border-bottom:2px solid var(--sw-orange);">Details</button>
+      <button id="poTabComms" onclick="switchPOModalTab('comms')" style="background:none; border:none; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; color:var(--sw-text-sec); border-bottom:2px solid transparent;">Communications <span id="poTabCommsBadge" style="background:var(--sw-orange); color:#fff; border-radius:10px; padding:1px 6px; font-size:10px; margin-left:4px;"></span></button>
+    </div>
+    <div id="poDetailsView">
     <!-- Mode indicator -->
     <div id="poModeBar" style="display:none; margin-bottom:12px; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600;">
     </div>
@@ -2493,6 +2499,16 @@
       <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Email Supplier</button>
       <button class="btn btn-secondary" onclick="savePOPrices()">Save Prices</button>
       <button class="btn btn-primary" onclick="confirmPOSend()">Approve &amp; Send to Xero</button>
+    </div>
+    </div><!-- /poDetailsView -->
+    <!-- Communications View (hidden by default) -->
+    <div id="poCommsView" style="display:none;">
+      <div id="poCommsThread" style="max-height:400px; overflow-y:auto; margin-bottom:12px;"></div>
+      <div id="poCommsReplyBar"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal('poModal')">Close</button>
+        <button class="btn btn-secondary" onclick="closeModal('poModal');openPOEmailCompose(_editingPOId)" style="border-color:var(--sw-blue-mid);color:var(--sw-blue-mid);">&#9993; Compose Email</button>
+      </div>
     </div>
   </div>
 </div>
@@ -9095,7 +9111,7 @@ async function openPOEdit(poId) {
 
     // Show tabs, badge, job context, auto-comms
     var emailCount = (po.communications || []).length;
-    document.getElementById('poModalTabs').style.display = 'flex';
+    var tabsEl = document.getElementById('poModalTabs'); if (tabsEl) tabsEl.style.display = 'flex';
     var badge = document.getElementById('poTabCommsBadge');
     if (badge) badge.textContent = emailCount > 0 ? emailCount : '';
     window._editingPO = po;
@@ -9125,7 +9141,7 @@ function resetPOModal() {
   _editingPOId = null;
   _poCommsLoaded = false;
   window._editingPO = null;
-  document.getElementById('poModalTabs').style.display = 'none';
+  var tabs = document.getElementById('poModalTabs'); if (tabs) tabs.style.display = 'none';
   var dv = document.getElementById('poDetailsView'); if (dv) dv.style.display = 'block';
   var cv = document.getElementById('poCommsView'); if (cv) cv.style.display = 'none';
   var badge = document.getElementById('poTabCommsBadge'); if (badge) badge.textContent = '';
@@ -9151,6 +9167,42 @@ function resetPOModal() {
   document.getElementById('poActionsNew').style.display = 'flex';
   document.getElementById('poActionsPricing').style.display = 'none';
   addPOLine(); // Start with one empty row
+}
+
+// Switch between Details and Communications tabs in PO modal
+async function switchPOModalTab(tab) {
+  var dv = document.getElementById('poDetailsView');
+  var cv = document.getElementById('poCommsView');
+  var dt = document.getElementById('poTabDetails');
+  var ct = document.getElementById('poTabComms');
+  if (!dv || !cv) return;
+  if (tab === 'comms') {
+    dv.style.display = 'none';
+    cv.style.display = 'block';
+    if (dt) { dt.style.color = 'var(--sw-text-sec)'; dt.style.borderBottomColor = 'transparent'; }
+    if (ct) { ct.style.color = 'var(--sw-orange)'; ct.style.borderBottomColor = 'var(--sw-orange)'; }
+    // Load comms if not yet loaded
+    if (!_poCommsLoaded && _editingPOId) {
+      _poCommsLoaded = true;
+      try {
+        var emails = await loadPOEmails(_editingPOId);
+        var threadEl = document.getElementById('poCommsThread');
+        if (threadEl && emails && emails.length > 0) {
+          threadEl.innerHTML = renderPOEmailThread(emails, _editingPOId);
+        } else if (threadEl) {
+          threadEl.innerHTML = '<div style="text-align:center; color:var(--sw-text-sec); padding:24px;">No supplier emails yet. Use "Compose Email" to start a conversation.</div>';
+        }
+      } catch (e) {
+        var threadEl2 = document.getElementById('poCommsThread');
+        if (threadEl2) threadEl2.innerHTML = '<div style="color:#c0392b; padding:12px;">Failed to load emails: ' + e.message + '</div>';
+      }
+    }
+  } else {
+    dv.style.display = 'block';
+    cv.style.display = 'none';
+    if (dt) { dt.style.color = 'var(--sw-orange)'; dt.style.borderBottomColor = 'var(--sw-orange)'; }
+    if (ct) { ct.style.color = 'var(--sw-text-sec)'; ct.style.borderBottomColor = 'transparent'; }
+  }
 }
 
 async function submitWO() {
