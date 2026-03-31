@@ -2875,7 +2875,14 @@
     if (!cloud || !cloud.supabase) return Promise.resolve(null);
     return cloud.supabase.auth.getSession().then(function(res) {
       var session = res.data && res.data.session;
-      if (!session) return null;
+      if (!session) {
+        // Fallback: getSession() can return null during initial hydration
+        // even though onAuthStateChange already fired. Try refreshSession().
+        return cloud.supabase.auth.refreshSession().then(function(ref) {
+          var s = ref.data && ref.data.session;
+          return s ? s.access_token : null;
+        }).catch(function() { return null; });
+      }
       // Proactively refresh if token expires within 5 minutes
       var expiresAt = session.expires_at;
       if (expiresAt && (expiresAt * 1000 - Date.now()) < 300000) {
