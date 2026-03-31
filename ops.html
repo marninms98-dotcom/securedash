@@ -7868,8 +7868,9 @@ function renderDispatchCards(job, pos) {
       // No PO
       html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:6px;">Not ordered' + (ms.defaultSupplier ? ' &middot; Default: ' + escapeHtml(ms.defaultSupplier) : '') + '</div>';
       html += '<div style="display:flex;gap:4px;">';
-      html += '<button onclick="createPOForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Create PO</button>';
-      html += '<button onclick="requestQuoteForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);cursor:pointer;color:#fff;font-weight:600;">Request Quote</button>';
+      var defSup = escapeHtml(ms.defaultSupplier || '');
+      html += '<button onclick="createPOForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\',\'' + defSup + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Create PO</button>';
+      html += '<button onclick="requestQuoteForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\',\'' + defSup + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);cursor:pointer;color:#fff;font-weight:600;">Request Quote</button>';
       html += '</div>';
     }
     html += '</div>';
@@ -7891,18 +7892,24 @@ function renderScopeComparison(job, pos) {
     '</div>';
 }
 
-function createPOForCategory(jobId, categoryName) {
+function createPOForCategory(jobId, categoryName, defaultSupplier) {
   closeJobDetail();
-  openPOModal(jobId);
-  // TODO: pre-fill supplier from category defaults when PO modal opens
-  showToast('Create PO for ' + categoryName + ' — select supplier and add items', 'info');
+  openPOModal(jobId).then(function() {
+    if (defaultSupplier) {
+      document.getElementById('poSupplier').value = defaultSupplier;
+    }
+  });
+  showToast('Create PO for ' + categoryName + (defaultSupplier ? ' — ' + defaultSupplier : ''), 'info');
 }
 
-function requestQuoteForCategory(jobId, categoryName) {
+function requestQuoteForCategory(jobId, categoryName, defaultSupplier) {
   closeJobDetail();
-  openPOModal(jobId);
-  showToast('Create PO as "Request Quote" for ' + categoryName, 'info');
-  // TODO: auto-fill supplier, create as quote_requested, open email compose
+  openPOModal(jobId).then(function() {
+    if (defaultSupplier) {
+      document.getElementById('poSupplier').value = defaultSupplier;
+    }
+  });
+  showToast('Request quote for ' + categoryName + (defaultSupplier ? ' from ' + defaultSupplier : ''), 'info');
 }
 
 function getMaterialCategories(job) {
@@ -7912,15 +7919,15 @@ function getMaterialCategories(job) {
 
   if (job.type === 'fencing') {
     var cats = [];
-    cats.push({ name: 'Panels & Posts', keywords: ['panel', 'sheet', 'post', 'rail'] });
+    cats.push({ name: 'Panels & Posts', keywords: ['panel', 'sheet', 'post', 'rail'], defaultSupplier: 'Stratco' });
     if (scope.sections && scope.sections.some(function(s) { return s.retaining; })) {
-      cats.push({ name: 'Plinths / Sleepers', keywords: ['plinth', 'sleeper'] });
+      cats.push({ name: 'Plinths / Sleepers', keywords: ['plinth', 'sleeper'], defaultSupplier: 'Bunnings Trade' });
     }
     if (scope.gates && scope.gates.length > 0) {
-      cats.push({ name: 'Gate Kits', keywords: ['gate'] });
+      cats.push({ name: 'Gate Kits', keywords: ['gate'], defaultSupplier: 'Stratco' });
     }
-    cats.push({ name: 'Concrete', keywords: ['concrete', 'footing', 'boral'] });
-    cats.push({ name: 'Fixings', keywords: ['fixing', 'screw', 'bracket', 'rivet'] });
+    cats.push({ name: 'Concrete', keywords: ['concrete', 'footing', 'boral'], defaultSupplier: 'Boral' });
+    cats.push({ name: 'Fixings', keywords: ['fixing', 'screw', 'bracket', 'rivet'], defaultSupplier: 'Wurth Australia' });
     return cats;
   }
 
@@ -7928,13 +7935,13 @@ function getMaterialCategories(job) {
   var config = scope.config || scope;
   var cats = [];
   if (config.roofing || config.panel_type) {
-    cats.push({ name: 'Roofing Panels', keywords: ['panel', 'solarspan', 'trimdek', 'spandek', 'corrugated'] });
+    cats.push({ name: 'Roofing Panels', keywords: ['panel', 'solarspan', 'trimdek', 'spandek', 'corrugated'], defaultSupplier: 'Stratco' });
   }
-  cats.push({ name: 'Steel (Beams + Posts)', keywords: ['beam', 'post', 'shs', 'steel'] });
-  cats.push({ name: 'Flashings', keywords: ['flash'] });
-  cats.push({ name: 'Footings (Concrete)', keywords: ['concrete', 'footing', 'boral'] });
+  cats.push({ name: 'Steel (Beams + Posts)', keywords: ['beam', 'post', 'shs', 'steel'], defaultSupplier: 'OneSteel' });
+  cats.push({ name: 'Flashings', keywords: ['flash'], defaultSupplier: 'Metroll' });
+  cats.push({ name: 'Footings (Concrete)', keywords: ['concrete', 'footing', 'boral'], defaultSupplier: 'Boral' });
   if (config.gutters) {
-    cats.push({ name: 'Gutters / Downpipes', keywords: ['gutter', 'downpipe'] });
+    cats.push({ name: 'Gutters / Downpipes', keywords: ['gutter', 'downpipe'], defaultSupplier: 'Metroll' });
   }
   return cats;
 }
