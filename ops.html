@@ -7665,37 +7665,23 @@ function renderBuildView(data) {
   // Material Order documents
   html += renderDocumentLinks(data.documents, ['material_order', 'supplier_quote'], '&#128230; Material Documents');
 
-  // Materials readiness
-  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">Materials Readiness <button class="btn btn-secondary btn-sm" onclick="closeJobDetail();openPOModal(\'' + j.id + '\')" style="font-size:10px;">+ New PO</button></div>';
-  var categories = getMaterialCategories(j);
-  var materialsHtml = '<div class="jd-materials-grid">';
-  categories.forEach(function(cat) {
-    var status = matchMaterialStatus(cat, data.purchase_orders || []);
-    materialsHtml += '<div class="jd-material-card">';
-    materialsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-    materialsHtml += '<strong>' + cat.name + '</strong>';
-    materialsHtml += '<span class="jd-material-status ' + status.status + '">' + status.status + '</span>';
-    materialsHtml += '</div>';
-    if (status.poNumber) {
-      materialsHtml += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px;">' + status.poNumber + ' — ' + escapeHtml(status.supplier || '') + '</div>';
-    }
-    materialsHtml += '</div>';
-  });
-  materialsHtml += '</div>';
-  html += materialsHtml;
+  // ── Materials Dispatch Hub ──
+  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">Materials Dispatch <button class="btn btn-secondary btn-sm" onclick="closeJobDetail();openPOModal(\'' + j.id + '\')" style="font-size:10px;">+ New PO</button></div>';
+  html += renderDispatchCards(j, data.purchase_orders || []);
+  html += renderScopeComparison(j, data.purchase_orders || []);
 
-  // PO list with Log Email buttons
+  // PO list (compact, below dispatch cards)
   if ((data.purchase_orders || []).length > 0) {
-    html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Purchase Orders (' + data.purchase_orders.length + ')</div>';
+    html += '<div style="font-size:12px;font-weight:600;margin-top:12px;margin-bottom:6px;color:var(--sw-text-sec);">All POs (' + data.purchase_orders.length + ')</div>';
     data.purchase_orders.forEach(function(po) {
-      html += '<div style="padding:8px 0;border-bottom:1px solid var(--sw-border);font-size:13px;display:flex;align-items:center;gap:8px;">';
+      html += '<div style="padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px;display:flex;align-items:center;gap:6px;">';
       html += '<div style="flex:1;">';
       html += '<strong>' + (po.po_number || '') + '</strong> — ' + escapeHtml(po.supplier_name || '') + ' ';
       html += '<span class="status-badge ' + (po.status || '') + '">' + (po.status || '') + '</span> ';
       html += '<span style="color:var(--sw-green);font-family:var(--sw-font-num);">' + fmt$(po.total) + '</span>';
       html += '</div>';
-      html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);white-space:nowrap;">&#9993; Email Supplier</button>';
-      html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
+      html += '<button onclick="openPOEmailCompose(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993;</button>';
+      html += '<button onclick="openPOEdit(\'' + po.id + '\')" style="font-size:10px;padding:2px 6px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Edit</button>';
       html += '</div>';
     });
   }
@@ -7793,6 +7779,73 @@ async function loadLabourReconciliation(jobId) {
   }
 }
 
+// ── Dispatch Cards: interactive material ordering hub ──
+function renderDispatchCards(job, pos) {
+  var categories = getMaterialCategories(job);
+  if (categories.length === 0) return '<div style="font-size:12px;color:var(--sw-text-sec);padding:8px;">No material categories for this job type.</div>';
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;">';
+  categories.forEach(function(cat) {
+    var ms = matchMaterialStatus(cat, pos);
+    var icon = ms.status === 'delivered' ? '&#9989;' : ms.status === 'confirmed' ? '&#128994;' : ms.status === 'sent' || ms.status === 'quoted' || ms.status === 'draft' ? '&#9203;' : '&#128308;';
+    var borderColor = ms.status === 'delivered' ? 'var(--sw-green)' : ms.status === 'confirmed' ? 'var(--sw-green)' : ms.status === 'missing' ? 'var(--sw-red)' : 'var(--sw-mid)';
+    html += '<div style="border:1px solid var(--sw-border);border-left:3px solid ' + borderColor + ';border-radius:6px;padding:10px 12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+    html += '<span style="font-size:13px;font-weight:700;">' + icon + ' ' + escapeHtml(cat.name) + '</span>';
+    if (ms.poNumber) html += '<span style="font-size:10px;color:var(--sw-text-sec);">' + ms.poNumber + '</span>';
+    html += '</div>';
+    if (ms.status !== 'missing') {
+      // PO exists
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);">' + escapeHtml(ms.supplier || '') + ' &middot; ' + fmt$(ms.total) + '</div>';
+      var details = [];
+      if (ms.deliveryDate) details.push('&#128230; ' + new Date(ms.deliveryDate + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }));
+      details.push('<span class="status-badge ' + ms.poStatus + '">' + ms.poStatus + '</span>');
+      if (ms.emailCount > 0) details.push('&#128233; ' + ms.emailCount);
+      html += '<div style="font-size:11px;margin-top:3px;">' + details.join(' &middot; ') + '</div>';
+      html += '<div style="display:flex;gap:4px;margin-top:6px;">';
+      html += '<button onclick="openPOEdit(\'' + ms.poId + '\');setTimeout(function(){switchPOModalTab(\'comms\')},100)" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">View PO &#9654;</button>';
+      html += '<button onclick="openPOEmailCompose(\'' + ms.poId + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">&#9993; Email</button>';
+      html += '</div>';
+    } else {
+      // No PO
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-bottom:6px;">Not ordered' + (ms.defaultSupplier ? ' &middot; Default: ' + escapeHtml(ms.defaultSupplier) : '') + '</div>';
+      html += '<div style="display:flex;gap:4px;">';
+      html += '<button onclick="createPOForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-border);border-radius:3px;background:var(--sw-card);cursor:pointer;color:var(--sw-text-sec);">Create PO</button>';
+      html += '<button onclick="requestQuoteForCategory(\'' + job.id + '\',\'' + escapeHtml(cat.name) + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--sw-green);border-radius:3px;background:var(--sw-green);cursor:pointer;color:#fff;font-weight:600;">Request Quote</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function renderScopeComparison(job, pos) {
+  var quoteVal = job.pricing_json ? (job.pricing_json.totalIncGST || job.pricing_json.total || 0) : 0;
+  var ordered = pos.reduce(function(s, po) { return s + (po.total || 0); }, 0);
+  var gap = quoteVal - ordered;
+  if (quoteVal <= 0 && ordered <= 0) return '';
+  var gapColor = gap > 0 ? 'var(--sw-orange)' : gap < 0 ? 'var(--sw-red)' : 'var(--sw-green)';
+  return '<div style="margin-top:10px;padding:8px 12px;background:var(--sw-light);border-radius:6px;font-size:12px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">' +
+    '<span><strong>Quote:</strong> ' + fmt$(quoteVal) + '</span>' +
+    '<span><strong>Ordered:</strong> ' + fmt$(ordered) + '</span>' +
+    '<span style="color:' + gapColor + ';font-weight:600;"><strong>Gap:</strong> ' + fmt$(Math.abs(gap)) + (gap > 0 ? ' remaining' : gap < 0 ? ' over' : ' matched') + '</span>' +
+    '</div>';
+}
+
+function createPOForCategory(jobId, categoryName) {
+  closeJobDetail();
+  openPOModal(jobId);
+  // TODO: pre-fill supplier from category defaults when PO modal opens
+  showToast('Create PO for ' + categoryName + ' — select supplier and add items', 'info');
+}
+
+function requestQuoteForCategory(jobId, categoryName) {
+  closeJobDetail();
+  openPOModal(jobId);
+  showToast('Create PO as "Request Quote" for ' + categoryName, 'info');
+  // TODO: auto-fill supplier, create as quote_requested, open email compose
+}
+
 function getMaterialCategories(job) {
   var scope = job.scope_json;
   if (typeof scope === 'string') { try { scope = JSON.parse(scope); } catch(e) { scope = null; } }
@@ -7838,11 +7891,15 @@ function matchMaterialStatus(category, purchaseOrders) {
     if (matched) matchedPO = po;
   });
 
-  if (!matchedPO) return { status: 'missing' };
+  if (!matchedPO) return { status: 'missing', defaultSupplier: category.defaultSupplier || '' };
   var s = (matchedPO.status || '').toLowerCase();
-  if (s === 'billed') return { status: 'delivered', poNumber: matchedPO.po_number, supplier: matchedPO.supplier_name };
-  if (s === 'submitted' || s === 'authorised') return { status: 'ordered', poNumber: matchedPO.po_number, supplier: matchedPO.supplier_name };
-  return { status: 'draft', poNumber: matchedPO.po_number, supplier: matchedPO.supplier_name };
+  var emailCount = (matchedPO.communications || []).length;
+  var base = { poId: matchedPO.id, poNumber: matchedPO.po_number, supplier: matchedPO.supplier_name, total: matchedPO.total || 0, deliveryDate: matchedPO.delivery_date || matchedPO.confirmed_delivery_date, emailCount: emailCount, poStatus: s };
+  if (s === 'billed') return Object.assign(base, { status: 'delivered' });
+  if (s === 'authorised') return Object.assign(base, { status: 'confirmed' });
+  if (s === 'submitted') return Object.assign(base, { status: 'sent' });
+  if (s === 'quote_requested') return Object.assign(base, { status: 'quoted' });
+  return Object.assign(base, { status: 'draft' });
 }
 
 // ── Files View ──
@@ -9036,8 +9093,29 @@ async function openPOEdit(poId) {
       addPOLine(li.description, li.quantity, li.unit, li.unit_price || null);
     });
 
+    // Show tabs, badge, job context, auto-comms
+    var emailCount = (po.communications || []).length;
+    document.getElementById('poModalTabs').style.display = 'flex';
+    var badge = document.getElementById('poTabCommsBadge');
+    if (badge) badge.textContent = emailCount > 0 ? emailCount : '';
+    window._editingPO = po;
+    // Job context bar
+    var titleEl = document.getElementById('poModalTitle');
+    var jobCtx = '';
+    if (po.job_number || po.client_name) {
+      jobCtx = ' <span style="font-size:11px;color:var(--sw-text-sec);font-weight:400;">' + escapeHtml([po.job_number, po.client_name, po.job_type].filter(Boolean).join(' — '));
+      if (po.job_id) jobCtx += ' <a href="#" onclick="event.preventDefault();closeModal(\'poModal\');openJobDetail(\'' + po.job_id + '\')" style="color:var(--sw-mid);font-size:10px;">Open Job &#8599;</a>';
+      jobCtx += '</span>';
+    }
+    titleEl.innerHTML = 'Edit PO — ' + escapeHtml(po.po_number || '') + jobCtx;
+
     await loadSupplierList();
     document.getElementById('poModal').classList.add('active');
+
+    // Auto-switch to Communications tab if PO has emails
+    if (emailCount > 0) {
+      setTimeout(function() { switchPOModalTab('comms'); }, 50);
+    }
   } catch (e) {
     alert('Failed to load PO: ' + e.message);
   }
@@ -9045,6 +9123,17 @@ async function openPOEdit(poId) {
 
 function resetPOModal() {
   _editingPOId = null;
+  _poCommsLoaded = false;
+  window._editingPO = null;
+  document.getElementById('poModalTabs').style.display = 'none';
+  var dv = document.getElementById('poDetailsView'); if (dv) dv.style.display = 'block';
+  var cv = document.getElementById('poCommsView'); if (cv) cv.style.display = 'none';
+  var badge = document.getElementById('poTabCommsBadge'); if (badge) badge.textContent = '';
+  var threadEl = document.getElementById('poCommsThread'); if (threadEl) threadEl.innerHTML = '';
+  var replyEl = document.getElementById('poCommsReplyBar'); if (replyEl) replyEl.innerHTML = '';
+  // Reset tab styles
+  var dt = document.getElementById('poTabDetails'); if (dt) { dt.style.color = 'var(--sw-orange)'; dt.style.borderBottomColor = 'var(--sw-orange)'; }
+  var ct = document.getElementById('poTabComms'); if (ct) { ct.style.color = 'var(--sw-text-sec)'; ct.style.borderBottomColor = 'transparent'; }
   document.getElementById('poModalTitle').textContent = 'New Purchase Order';
   document.getElementById('poJobSelect').value = '';
   document.getElementById('poJobSearch').value = '';
