@@ -535,6 +535,36 @@
       font-size: 14px;
     }
 
+    /* Invoice builder */
+    .inv-header { background: var(--sw-dark); color: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .inv-header-row { display: flex; justify-content: space-between; font-size: 12px; line-height: 1.6; color: rgba(255,255,255,0.7); }
+    .inv-header-row.title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .inv-section-label { font-size: 12px; font-weight: 700; color: var(--sw-mid); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 6px; }
+    .inv-line { background: var(--sw-card); border-radius: 10px; padding: 12px; margin-bottom: 8px; box-shadow: var(--sw-shadow); }
+    .inv-line-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .inv-line-desc { font-size: 14px; font-weight: 600; color: var(--sw-dark); flex: 1; }
+    .inv-line-amount { font-size: 14px; font-weight: 700; color: var(--sw-dark); white-space: nowrap; margin-left: 8px; }
+    .inv-line-detail { font-size: 12px; color: var(--sw-text-sec); margin-top: 2px; }
+    .inv-line-type { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 100px; text-transform: uppercase; }
+    .inv-line-type.labour { background: rgba(52,152,219,0.1); color: #3498DB; }
+    .inv-line-type.travel { background: rgba(155,89,182,0.1); color: #9B59B6; }
+    .inv-line-type.materials { background: rgba(241,90,41,0.1); color: #F15A29; }
+    .inv-line-type.equipment { background: rgba(39,174,96,0.1); color: #27AE60; }
+    .inv-line-type.other { background: rgba(107,114,128,0.1); color: #6B7280; }
+    .inv-add-btn { width: 100%; padding: 12px; background: var(--sw-light); border: 2px dashed var(--sw-border); border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--sw-mid); cursor: pointer; margin-bottom: 8px; }
+    .inv-add-btn:active { background: var(--sw-border); }
+    .inv-totals { background: var(--sw-dark); color: #fff; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .inv-totals-row { display: flex; justify-content: space-between; font-size: 13px; line-height: 1.8; }
+    .inv-totals-row.grand { font-size: 16px; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.15); margin-top: 4px; padding-top: 6px; }
+    .inv-history-item { background: var(--sw-card); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; box-shadow: var(--sw-shadow); display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .inv-history-item:active { background: var(--sw-light); }
+    .inv-status { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 100px; text-transform: uppercase; }
+    .inv-status.draft { background: rgba(107,114,128,0.1); color: #6B7280; }
+    .inv-status.submitted, .inv-status.pending_ops_review { background: rgba(52,152,219,0.1); color: #3498DB; }
+    .inv-status.acknowledged, .inv-status.approved { background: rgba(39,174,96,0.1); color: #27AE60; }
+    .inv-status.paid { background: rgba(39,174,96,0.15); color: #1B7A3D; }
+    .inv-status.rejected { background: rgba(231,76,60,0.1); color: #E74C3C; }
+
     /* Status bar (assignment status buttons) */
     .status-bar {
       display: flex;
@@ -9031,8 +9061,8 @@
       // New 2-step flow: submit for verification first, or direct to Xero
       html += '<button class="hours-submit-btn" id="btnSubmitVerify" onclick="submitForVerification()" style="background:var(--sw-orange)">Submit for Verification</button>';
       html += '<div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();submitTradeHours()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Skip verification — submit directly to Xero</a></div>';
-      // Generate Trade Invoice (per-job line items with clock data)
-      html += '<button class="btn btn-primary" style="width:100%;margin-top:16px;padding:14px;" onclick="generateTradeInvoice(\'' + _hoursWeekStart + '\')">Generate Invoice for This Week</button>';
+      // Invoice builder
+      html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:12px" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
     }
 
     // Lead verification inbox button (Tier 2+ / lead_installer role)
@@ -9042,7 +9072,39 @@
       html += '</div>';
     }
 
+    // Invoice history
+    html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--sw-border)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark)">Recent Invoices</div>';
+    html += '<button class="btn btn-secondary btn-small" onclick="openInvoiceHistory()">View All</button>';
+    html += '</div>';
+    html += '<div id="hoursInvoiceHistory"><div style="font-size:12px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div></div>';
+    html += '</div>';
+
     container.innerHTML = html;
+
+    // Load recent invoices inline
+    api('my_trade_invoices').then(function(res) {
+      var el = document.getElementById('hoursInvoiceHistory');
+      if (!el) return;
+      var invoices = (res.invoices || []).slice(0, 3);
+      if (invoices.length === 0) { el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No invoices yet</div>'; return; }
+      var ih = '';
+      invoices.forEach(function(inv) {
+        var statusCls = (inv.status || 'draft').replace(/ /g, '_');
+        var label = (inv.status || 'draft').replace(/_/g, ' ');
+        ih += '<div class="inv-history-item">';
+        ih += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">Week ending ' + formatDateShort(inv.week_ending) + '</div>';
+        ih += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.xero_bill_number || 'Pending') + '</div></div>';
+        ih += '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(inv.total || 0).toFixed(2) + '</div>';
+        ih += '<span class="inv-status ' + statusCls + '">' + label + '</span></div>';
+        ih += '</div>';
+      });
+      el.innerHTML = ih;
+    }).catch(function() {
+      var el = document.getElementById('hoursInvoiceHistory');
+      if (el) el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec)">Could not load invoices</div>';
+    });
   }
 
   window.shiftWeek = shiftWeek;
@@ -9300,7 +9362,338 @@
   };
 
   // ══════════════════════════════════════════════════
-  // GENERATE TRADE INVOICE (per-job line items)
+  // INVOICE BUILDER
+  // ══════════════════════════════════════════════════
+
+  var _invExtraLines = []; // extra line items (travel, materials, etc.)
+
+  function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr + 'T00:00:00');
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  window.openInvoiceBuilder = function() {
+    if (!_hoursData || !_hoursData.assignments || _hoursData.assignments.length === 0) {
+      toast('No completed hours to invoice', true);
+      return;
+    }
+    _invExtraLines = [];
+    renderInvoiceBuilder();
+  };
+
+  window.openInvoiceHistory = function() {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading invoices...</div>';
+    api('my_trade_invoices').then(function(res) {
+      renderInvoiceHistory(res.invoices || []);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="hours-no-data">Error: ' + friendlyError(err) + '</div>';
+    });
+  };
+
+  function renderInvoiceHistory(invoices) {
+    var container = document.getElementById('hoursContent');
+    var html = '';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">My Invoices</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
+    html += '</div>';
+
+    if (invoices.length === 0) {
+      html += '<div class="hours-no-data">No invoices yet</div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    invoices.forEach(function(inv) {
+      var statusCls = (inv.status || 'draft').replace(/ /g, '_');
+      var label = (inv.status || 'draft').replace(/_/g, ' ');
+      html += '<div class="inv-history-item">';
+      html += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">Week ending ' + formatDateShort(inv.week_ending) + '</div>';
+      html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.xero_bill_number || 'No Xero ref') + '</div></div>';
+      html += '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(inv.total || 0).toFixed(2) + '</div>';
+      html += '<span class="inv-status ' + statusCls + '">' + label + '</span></div>';
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  function renderInvoiceBuilder() {
+    var container = document.getElementById('hoursContent');
+    var data = _hoursData;
+    var details = loadTradeDetails();
+    var rate = data.rate || 0;
+    var html = '';
+
+    // Back button
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">Invoice Builder</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
+    html += '</div>';
+
+    // Invoice header card (dark)
+    var tradeName = details.fullName || (_user ? _user.name : '') || 'Subcontractor';
+    var tradeAbn = details.abn || '';
+    var tradeEmail = details.email || (_user ? _user.email : '') || '';
+    var gstRegistered = details.gstRegistered;
+
+    html += '<div class="inv-header">';
+    html += '<div class="inv-header-row title">Tax Invoice</div>';
+    html += '<div class="inv-header-row"><span>From</span><span style="text-align:right;color:#fff;font-weight:600">' + esc(tradeName) + '</span></div>';
+    if (tradeAbn) html += '<div class="inv-header-row"><span>ABN</span><span>' + esc(tradeAbn) + '</span></div>';
+    html += '<div class="inv-header-row"><span>To</span><span style="color:#fff;font-weight:600">SecureWorks Group Pty Ltd</span></div>';
+    html += '<div class="inv-header-row"><span>Period</span><span>' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(data.week_ending) + '</span></div>';
+    if (!tradeAbn) {
+      html += '<div style="font-size:11px;color:var(--sw-yellow);margin-top:6px">&#9888; ABN not set — <a href="#" onclick="event.preventDefault();showView(\'profile\')" style="color:var(--sw-yellow);text-decoration:underline">update in Profile</a></div>';
+    }
+    html += '</div>';
+
+    // Labour line items (auto-populated from hours)
+    html += '<div class="inv-section-label">Labour (from clock entries)</div>';
+    var labourSubtotal = 0;
+
+    if (data.assignments && data.assignments.length > 0) {
+      // Group by job for cleaner display
+      var jobGroups = {};
+      data.assignments.forEach(function(a) {
+        var job = a.jobs || {};
+        var key = job.job_number || a.job_id || 'misc';
+        if (!jobGroups[key]) jobGroups[key] = { job: job, hours: 0, assignments: [] };
+        var h = a.hours_worked != null ? a.hours_worked : (a.hours || 0);
+        jobGroups[key].hours += h;
+        jobGroups[key].assignments.push(a);
+      });
+
+      Object.keys(jobGroups).forEach(function(key) {
+        var g = jobGroups[key];
+        var lineRate = rate;
+        var lineAmount = g.hours * lineRate;
+        labourSubtotal += lineAmount;
+
+        html += '<div class="inv-line">';
+        html += '<div class="inv-line-top">';
+        html += '<div class="inv-line-desc">' + esc(key) + ' · ' + esc(g.job.client_name || '') + '</div>';
+        html += '<div class="inv-line-amount">' + (lineRate > 0 ? '$' + lineAmount.toFixed(2) : '—') + '</div>';
+        html += '</div>';
+        html += '<div class="inv-line-detail">' + g.hours.toFixed(2) + ' hrs × $' + lineRate.toFixed(2) + '/hr · ' + g.assignments.length + ' day' + (g.assignments.length > 1 ? 's' : '') + '</div>';
+        html += '<span class="inv-line-type labour">Labour</span>';
+        html += '</div>';
+      });
+    }
+
+    // Extra line items (travel, materials, etc.)
+    if (_invExtraLines.length > 0) {
+      html += '<div class="inv-section-label">Additional Items</div>';
+      _invExtraLines.forEach(function(line, idx) {
+        html += '<div class="inv-line">';
+        html += '<div class="inv-line-top">';
+        html += '<div class="inv-line-desc">' + esc(line.description || line.type) + '</div>';
+        html += '<div class="inv-line-amount">$' + Number(line.amount || 0).toFixed(2);
+        html += ' <a href="#" onclick="event.preventDefault();removeInvLine(' + idx + ')" style="color:var(--sw-red);font-size:12px;margin-left:4px" title="Remove">&#10005;</a>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="inv-line-detail">';
+        if (line.quantity && line.rate) html += line.quantity + ' × $' + Number(line.rate).toFixed(2) + ' · ';
+        html += (line.type || 'Other');
+        html += '</div>';
+        html += '<span class="inv-line-type ' + (line.type || 'other').toLowerCase() + '">' + (line.type || 'Other') + '</span>';
+        html += '</div>';
+      });
+    }
+
+    // Add line item button
+    html += '<button class="inv-add-btn" onclick="showAddLineModal()">+ Add Line Item (Travel, Materials, etc.)</button>';
+
+    // Totals
+    var extraTotal = _invExtraLines.reduce(function(s, l) { return s + Number(l.amount || 0); }, 0);
+    var subtotal = labourSubtotal + extraTotal;
+    var gst = gstRegistered ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
+    var total = subtotal + gst;
+
+    html += '<div class="inv-totals">';
+    html += '<div class="inv-totals-row"><span>Labour</span><span>$' + labourSubtotal.toFixed(2) + '</span></div>';
+    if (extraTotal > 0) html += '<div class="inv-totals-row"><span>Additional Items</span><span>$' + extraTotal.toFixed(2) + '</span></div>';
+    html += '<div class="inv-totals-row"><span>Subtotal (ex GST)</span><span>$' + subtotal.toFixed(2) + '</span></div>';
+    if (gstRegistered) {
+      html += '<div class="inv-totals-row"><span>GST (10%)</span><span>$' + gst.toFixed(2) + '</span></div>';
+    } else {
+      html += '<div class="inv-totals-row"><span>GST</span><span style="color:var(--sw-text-sec)">Not registered</span></div>';
+    }
+    html += '<div class="inv-totals-row grand"><span>Total</span><span>$' + total.toFixed(2) + '</span></div>';
+    html += '</div>';
+
+    // Notes
+    html += '<div style="margin-top:12px">';
+    html += '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Notes (optional)</label>';
+    html += '<textarea id="invNotes" rows="2" placeholder="e.g. Extra materials purchased at Bunnings" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);resize:vertical"></textarea>';
+    html += '</div>';
+
+    // Rate warning
+    if (rate <= 0) {
+      html += '<div style="text-align:center;padding:12px;background:#FEF3CD;border-radius:10px;margin-top:12px">';
+      html += '<div style="font-size:13px;font-weight:600;color:#92400E">Set your hourly rate to calculate labour totals</div>';
+      html += '<div style="font-size:12px;color:#92400E;margin-top:4px">Go back and enter your rate, or update it in Profile</div>';
+      html += '</div>';
+    } else {
+      // Submit button
+      html += '<button class="hours-submit-btn" onclick="submitInvoiceFromBuilder()" style="margin-top:16px">Submit Invoice — $' + total.toFixed(2) + '</button>';
+      html += '<div style="text-align:center;font-size:11px;color:var(--sw-text-sec);margin-top:6px">This will generate your invoice and send it for processing</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.removeInvLine = function(idx) {
+    _invExtraLines.splice(idx, 1);
+    renderInvoiceBuilder();
+  };
+
+  window.showAddLineModal = function() {
+    var existing = document.getElementById('invAddLineModal');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'invAddLineModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1001;display:flex;align-items:flex-end;justify-content:center;font-family:var(--sw-font)';
+
+    overlay.innerHTML =
+      '<div style="background:var(--sw-card);border-radius:16px 16px 0 0;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;padding:24px;box-shadow:0 -4px 20px rgba(0,0,0,0.15)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+          '<h3 style="margin:0;font-size:16px;font-weight:700;color:var(--sw-dark)">Add Line Item</h3>' +
+          '<button onclick="document.getElementById(\'invAddLineModal\').remove()" style="background:none;border:none;font-size:20px;color:var(--sw-mid);cursor:pointer;padding:4px">&times;</button>' +
+        '</div>' +
+        '<div style="margin-bottom:12px">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Type</label>' +
+          '<select id="invLineType" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff">' +
+            '<option value="Travel">Travel</option>' +
+            '<option value="Materials">Materials (purchased on site)</option>' +
+            '<option value="Equipment">Equipment Hire</option>' +
+            '<option value="Other">Other</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="margin-bottom:12px">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Description</label>' +
+          '<input type="text" id="invLineDesc" placeholder="e.g. Return trip to site, Bunnings concrete mix" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" />' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+          '<div style="flex:1">' +
+            '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Qty</label>' +
+            '<input type="number" id="invLineQty" value="1" min="0.01" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" oninput="calcAddLineTotal()" />' +
+          '</div>' +
+          '<div style="flex:1">' +
+            '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Unit</label>' +
+            '<select id="invLineUnit" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff">' +
+              '<option value="ea">Each</option>' +
+              '<option value="hr">Hour</option>' +
+              '<option value="km">Kilometre</option>' +
+              '<option value="day">Day</option>' +
+            '</select>' +
+          '</div>' +
+          '<div style="flex:1">' +
+            '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Rate ($)</label>' +
+            '<input type="number" id="invLineRate" placeholder="0.00" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" oninput="calcAddLineTotal()" />' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:16px">' +
+          '<span style="font-size:13px;font-weight:600;color:var(--sw-mid)">Line Total</span>' +
+          '<span id="invLineTotal" style="font-size:16px;font-weight:700;color:var(--sw-dark)">$0.00</span>' +
+        '</div>' +
+        '<button onclick="addInvLine()" style="width:100%;padding:14px;background:var(--sw-orange);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;min-height:48px">Add to Invoice</button>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+    // Close on backdrop tap
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  };
+
+  window.calcAddLineTotal = function() {
+    var qty = parseFloat((document.getElementById('invLineQty') || {}).value) || 0;
+    var rate = parseFloat((document.getElementById('invLineRate') || {}).value) || 0;
+    var total = qty * rate;
+    var el = document.getElementById('invLineTotal');
+    if (el) el.textContent = '$' + total.toFixed(2);
+  };
+
+  window.addInvLine = function() {
+    var type = (document.getElementById('invLineType') || {}).value || 'Other';
+    var desc = (document.getElementById('invLineDesc') || {}).value || type;
+    var qty = parseFloat((document.getElementById('invLineQty') || {}).value) || 1;
+    var unit = (document.getElementById('invLineUnit') || {}).value || 'ea';
+    var rate = parseFloat((document.getElementById('invLineRate') || {}).value) || 0;
+    var amount = qty * rate;
+
+    if (amount <= 0) { toast('Enter a rate to calculate the amount', true); return; }
+
+    _invExtraLines.push({ type: type, description: desc, quantity: qty, unit: unit, rate: rate, amount: amount });
+    var modal = document.getElementById('invAddLineModal');
+    if (modal) modal.remove();
+    renderInvoiceBuilder();
+    toast(type + ' added — $' + amount.toFixed(2));
+  };
+
+  window.submitInvoiceFromBuilder = function() {
+    if (!_hoursData || !_hoursWeekStart) return;
+    var details = loadTradeDetails();
+    var rate = _hoursData.rate || 0;
+    if (rate <= 0) { toast('Set your hourly rate first', true); return; }
+
+    var gstRegistered = details.gstRegistered;
+    var labourSubtotal = 0;
+    if (_hoursData.assignments) {
+      _hoursData.assignments.forEach(function(a) {
+        var h = a.hours_worked != null ? a.hours_worked : (a.hours || 0);
+        labourSubtotal += h * rate;
+      });
+    }
+    var extraTotal = _invExtraLines.reduce(function(s, l) { return s + Number(l.amount || 0); }, 0);
+    var subtotal = labourSubtotal + extraTotal;
+    var gst = gstRegistered ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
+    var total = subtotal + gst;
+    var notes = (document.getElementById('invNotes') || {}).value || '';
+
+    showConfirm(
+      'Submit Invoice',
+      'Submit invoice for $' + total.toFixed(2) + (gstRegistered ? ' (inc GST)' : ' (no GST)') + ' for week ' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '?',
+      'Submit'
+    ).then(function(ok) {
+      if (!ok) return;
+
+      // Use the existing generate_trade_invoice endpoint
+      var container = document.getElementById('hoursContent');
+      container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Submitting invoice...</div>';
+
+      api('generate_trade_invoice', {}, {
+        week_start: _hoursWeekStart,
+        extra_items: _invExtraLines.length > 0 ? _invExtraLines : undefined,
+        notes: notes
+      }).then(function(result) {
+        if (result.error) { toast(result.error, true); loadHoursView(); return; }
+        // Show success
+        var successHtml = '';
+        successHtml += '<div style="text-align:center;padding:40px 20px">';
+        successHtml += '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>';
+        successHtml += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Invoice Submitted</div>';
+        successHtml += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:4px">' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '</div>';
+        successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:16px 0">$' + total.toFixed(2) + '</div>';
+        if (result.total_hours) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + result.total_hours + ' hours logged</div>';
+        if (_invExtraLines.length > 0) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + _invExtraLines.length + ' additional item' + (_invExtraLines.length > 1 ? 's' : '') + '</div>';
+        successHtml += '<div style="margin-top:24px">';
+        successHtml += '<button class="hours-submit-btn" onclick="loadHoursView()" style="max-width:280px;margin:0 auto">Back to Hours</button>';
+        successHtml += '</div></div>';
+        container.innerHTML = successHtml;
+        _invExtraLines = [];
+      }).catch(function(err) {
+        toast('Failed: ' + friendlyError(err), true);
+        loadHoursView();
+      });
+    });
+  };
+
+  // ══════════════════════════════════════════════════
+  // GENERATE TRADE INVOICE (per-job line items) — legacy
   // ══════════════════════════════════════════════════
 
   window.generateTradeInvoice = function(weekStart) {
