@@ -2082,6 +2082,7 @@
         <button class="sub-tab" onclick="showSubTab('pos')" data-sub="pos">Purchase Orders</button>
         <button class="sub-tab" onclick="showSubTab('workorders')" data-sub="workorders">Work Orders</button>
         <button class="sub-tab" onclick="showSubTab('tradebills')" data-sub="tradebills">Trade Bills</button>
+        <button class="sub-tab" onclick="showSubTab('cleardebt')" data-sub="cleardebt" style="color:var(--sw-red,#e74c3c);">Clear Debt</button>
       </div>
 
       <!-- Invoices -->
@@ -2183,6 +2184,13 @@
             <tbody id="tradeBillTableBody"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Clear Debt -->
+      <div id="subCleardebt" class="sub-view">
+        <div id="clearDebtStats" class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin-bottom:16px;"></div>
+        <div id="clearDebtFilters" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px;"></div>
+        <div id="clearDebtCards" style="display:flex;flex-direction:column;gap:12px;"></div>
       </div>
     </div>
 
@@ -11722,5 +11730,7 @@ if (document.readyState === 'loading') {
 }
 </script>
 
+<!-- Clear Debt: payment chase & collection -->
+<script src="modules/ops-clear-debt.js"></script>
 </body>
 </html>
