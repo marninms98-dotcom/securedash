@@ -2852,6 +2852,7 @@
   // ══════════════════════════════════════════════════
 
   var _sessionExpired = false;
+  var _cachedAccessToken = null; // set by onAuthStateChange listener
 
   var _sessionExpireAttempts = 0;
   function handleSessionExpiry() {
@@ -2902,26 +2903,27 @@
   }
 
   function getAuthToken() {
-    if (!cloud || !cloud.supabase) return Promise.resolve(null);
+    if (!cloud || !cloud.supabase) return Promise.resolve(_cachedAccessToken);
     return cloud.supabase.auth.getSession().then(function(res) {
       var session = res.data && res.data.session;
       if (!session) {
-        // Fallback: getSession() can return null during initial hydration
-        // even though onAuthStateChange already fired. Try refreshSession().
-        return cloud.supabase.auth.refreshSession().then(function(ref) {
-          var s = ref.data && ref.data.session;
-          return s ? s.access_token : null;
-        }).catch(function() { return null; });
+        // getSession() can return null during initial hydration even though
+        // onAuthStateChange already fired. Use the cached token if available.
+        return _cachedAccessToken || null;
       }
+      // Update cache
+      _cachedAccessToken = session.access_token;
       // Proactively refresh if token expires within 5 minutes
       var expiresAt = session.expires_at;
       if (expiresAt && (expiresAt * 1000 - Date.now()) < 300000) {
         return cloud.supabase.auth.refreshSession().then(function(ref) {
-          return (ref.data && ref.data.session && ref.data.session.access_token) || session.access_token;
+          var t = (ref.data && ref.data.session && ref.data.session.access_token) || session.access_token;
+          _cachedAccessToken = t;
+          return t;
         }).catch(function() { return session.access_token; });
       }
       return session.access_token;
-    }).catch(function() { return null; });
+    }).catch(function() { return _cachedAccessToken || null; });
   }
 
   // Refresh session when app comes back from background (screen unlock, tab switch)
@@ -9061,8 +9063,10 @@
       // New 2-step flow: submit for verification first, or direct to Xero
       html += '<button class="hours-submit-btn" id="btnSubmitVerify" onclick="submitForVerification()" style="background:var(--sw-orange)">Submit for Verification</button>';
       html += '<div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();submitTradeHours()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Skip verification — submit directly to Xero</a></div>';
-      // Invoice builder
-      html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:12px" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
+      // Invoice builder (only if not already invoiced)
+      if (!data.already_submitted) {
+        html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:12px" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
+      }
     }
 
     // Lead verification inbox button (Tier 2+ / lead_installer role)
@@ -9366,6 +9370,7 @@
   // ══════════════════════════════════════════════════
 
   var _invExtraLines = []; // extra line items (travel, materials, etc.)
+  var _invNotes = ''; // preserved across re-renders
 
   function formatDateShort(dateStr) {
     if (!dateStr) return '';
@@ -9380,6 +9385,7 @@
       return;
     }
     _invExtraLines = [];
+    _invNotes = '';
     renderInvoiceBuilder();
   };
 
@@ -9437,7 +9443,6 @@
     // Invoice header card (dark)
     var tradeName = details.fullName || (_user ? _user.name : '') || 'Subcontractor';
     var tradeAbn = details.abn || '';
-    var tradeEmail = details.email || (_user ? _user.email : '') || '';
     var gstRegistered = details.gstRegistered;
 
     html += '<div class="inv-header">';
@@ -9528,7 +9533,7 @@
     // Notes
     html += '<div style="margin-top:12px">';
     html += '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Notes (optional)</label>';
-    html += '<textarea id="invNotes" rows="2" placeholder="e.g. Extra materials purchased at Bunnings" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);resize:vertical"></textarea>';
+    html += '<textarea id="invNotes" rows="2" placeholder="e.g. Extra materials purchased at Bunnings" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);resize:vertical;box-sizing:border-box">' + esc(_invNotes) + '</textarea>';
     html += '</div>';
 
     // Rate warning
@@ -9547,6 +9552,9 @@
   }
 
   window.removeInvLine = function(idx) {
+    // Preserve notes before re-render
+    var notesEl = document.getElementById('invNotes');
+    if (notesEl) _invNotes = notesEl.value;
     _invExtraLines.splice(idx, 1);
     renderInvoiceBuilder();
   };
@@ -9576,16 +9584,16 @@
         '</div>' +
         '<div style="margin-bottom:12px">' +
           '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Description</label>' +
-          '<input type="text" id="invLineDesc" placeholder="e.g. Return trip to site, Bunnings concrete mix" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" />' +
+          '<input type="text" id="invLineDesc" placeholder="e.g. Return trip to site, Bunnings concrete mix" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box" />' +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:12px">' +
           '<div style="flex:1">' +
             '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Qty</label>' +
-            '<input type="number" id="invLineQty" value="1" min="0.01" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" oninput="calcAddLineTotal()" />' +
+            '<input type="number" id="invLineQty" value="1" min="0.01" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box" oninput="calcAddLineTotal()" />' +
           '</div>' +
           '<div style="flex:1">' +
             '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Unit</label>' +
-            '<select id="invLineUnit" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff">' +
+            '<select id="invLineUnit" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">' +
               '<option value="ea">Each</option>' +
               '<option value="hr">Hour</option>' +
               '<option value="km">Kilometre</option>' +
@@ -9594,7 +9602,7 @@
           '</div>' +
           '<div style="flex:1">' +
             '<label style="font-size:12px;font-weight:600;color:var(--sw-mid);display:block;margin-bottom:4px">Rate ($)</label>' +
-            '<input type="number" id="invLineRate" placeholder="0.00" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark)" oninput="calcAddLineTotal()" />' +
+            '<input type="number" id="invLineRate" placeholder="0.00" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box" oninput="calcAddLineTotal()" />' +
           '</div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:16px">' +
@@ -9627,6 +9635,9 @@
 
     if (amount <= 0) { toast('Enter a rate to calculate the amount', true); return; }
 
+    // Preserve notes before re-render
+    var notesEl = document.getElementById('invNotes');
+    if (notesEl) _invNotes = notesEl.value;
     _invExtraLines.push({ type: type, description: desc, quantity: qty, unit: unit, rate: rate, amount: amount });
     var modal = document.getElementById('invAddLineModal');
     if (modal) modal.remove();
@@ -9652,7 +9663,9 @@
     var subtotal = labourSubtotal + extraTotal;
     var gst = gstRegistered ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
     var total = subtotal + gst;
-    var notes = (document.getElementById('invNotes') || {}).value || '';
+    var notesEl = document.getElementById('invNotes');
+    var notes = (notesEl ? notesEl.value : _invNotes) || '';
+    _invNotes = notes;
 
     showConfirm(
       'Submit Invoice',
@@ -9677,7 +9690,8 @@
         successHtml += '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>';
         successHtml += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Invoice Submitted</div>';
         successHtml += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:4px">' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '</div>';
-        successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:16px 0">$' + total.toFixed(2) + '</div>';
+        var displayTotal = result.total_inc != null ? Number(result.total_inc).toFixed(2) : total.toFixed(2);
+        successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:16px 0">$' + displayTotal + '</div>';
         if (result.total_hours) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + result.total_hours + ' hours logged</div>';
         if (_invExtraLines.length > 0) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + _invExtraLines.length + ' additional item' + (_invExtraLines.length > 1 ? 's' : '') + '</div>';
         successHtml += '<div style="margin-top:24px">';
@@ -13303,6 +13317,15 @@
     }
 
     _opsApiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+
+    // Cache access token from Supabase auth state (most reliable source)
+    cloud.supabase.auth.onAuthStateChange(function(event, session) {
+      if (session && session.access_token) {
+        _cachedAccessToken = session.access_token;
+      } else if (event === 'SIGNED_OUT') {
+        _cachedAccessToken = null;
+      }
+    });
 
     // Listen for auth events
     cloud.on('auth:login', function(profile) {
