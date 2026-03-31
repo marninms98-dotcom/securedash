@@ -3001,6 +3001,33 @@
   </div>
 </div>
 
+<!-- ══════════ INVOICE TO XERO MODAL ══════════ -->
+<div class="modal-overlay" id="invoiceModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">Invoice to Xero</div>
+    <div id="invoiceModalContent" style="font-size:13px;">
+      <div id="invoiceJobSummary" style="padding:12px;background:var(--sw-light);border-radius:8px;margin-bottom:12px;"></div>
+      <div class="form-group">
+        <label class="form-label">Xero Revenue Account</label>
+        <select class="form-select" id="invoiceAccountCode" style="padding:8px 10px;">
+          <option value="">Loading accounts...</option>
+        </select>
+      </div>
+      <div id="invoiceLinePreview" style="font-size:12px;margin-bottom:12px;"></div>
+      <div id="invoiceError" style="color:var(--sw-red);font-size:12px;display:none;margin-bottom:8px;"></div>
+      <div id="invoiceSuccess" style="display:none;text-align:center;padding:16px;">
+        <div style="font-size:32px;margin-bottom:8px;">&#9989;</div>
+        <div style="font-size:14px;font-weight:700;color:var(--sw-green);margin-bottom:4px;">Draft Invoice Created</div>
+        <div id="invoiceSuccessDetail" style="font-size:12px;color:var(--sw-text-sec);"></div>
+      </div>
+    </div>
+    <div class="modal-actions" id="invoiceActions">
+      <button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Cancel</button>
+      <button class="btn btn-primary" id="invoiceSubmitBtn" onclick="submitGeneralInvoice()">Create Draft Invoice</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ JAVASCRIPT ══════════ -->
 <script>
 // ════════════════════════════════════════════════════════════
@@ -5706,6 +5733,7 @@ function showSubTab(tab) {
   if (tab === 'workorders') loadWOs();
   if (tab === 'quotes') loadQuotes();
   if (tab === 'tradebills') loadTradeBills();
+  if (tab === 'cleardebt') loadClearDebt();
 }
 
 async function loadFinancials() {
@@ -6640,6 +6668,10 @@ function renderJobPeek(data) {
   html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openPOModal(\'' + j.id + '\')" style="border-color:var(--sw-purple); color:var(--sw-purple);">+ PO</button>';
   if (['accepted', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openUnifiedInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
+  }
+  // Quick Invoice to Xero for quoted general jobs
+  if (j.status === 'quoted' && (j.type === 'general' || j.type === 'miscellaneous')) {
+    html += '<button class="btn btn-sm" onclick="closeSlidePanel(); openXeroInvoiceModal(\'' + j.id + '\')" style="background:var(--sw-green); color:#fff; font-weight:600;">&#9993; Invoice to Xero</button>';
   }
   // Mark Lost — available for quoted/accepted/scheduled jobs
   if (['quoted', 'accepted', 'scheduled'].indexOf(j.status) >= 0) {
@@ -7588,6 +7620,9 @@ function renderMoneyView(data) {
   // Unified invoice button
   html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">';
   html += '<button class="btn btn-sm" style="background:var(--sw-dark);color:#fff;" onclick="openUnifiedInvoiceModal(\'' + j.id + '\')">+ Invoice</button>';
+  if (j.status === 'quoted' && (j.type === 'general' || j.type === 'miscellaneous')) {
+    html += '<button class="btn btn-sm" style="background:var(--sw-green);color:#fff;font-weight:600;" onclick="openXeroInvoiceModal(\'' + j.id + '\')">&#9993; Quick Invoice to Xero</button>';
+  }
   html += '</div>';
   html += '</div>';
 
@@ -7651,7 +7686,7 @@ function renderBuildView(data) {
   var html = '';
 
   // Miscellaneous jobs: show description + line items instead of scope tool
-  if (j.type === 'miscellaneous' && j.pricing_json && j.pricing_json.source === 'quick_quote') {
+  if ((j.type === 'miscellaneous' || j.type === 'general') && j.pricing_json && j.pricing_json.source === 'quick_quote') {
     var pj = j.pricing_json;
     html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Job Details</div>';
     if (pj.job_type_label) html += '<div style="margin-bottom:4px;"><strong>Type:</strong> ' + escapeHtml(pj.job_type_label) + '</div>';
@@ -10378,6 +10413,101 @@ async function createQQContact() {
   }
 }
 
+// ── Invoice to Xero Flow ──
+var _invoiceJobId = null;
+var _xeroAccounts = null;
+
+async function openXeroInvoiceModal(jobId) {
+  _invoiceJobId = jobId;
+  document.getElementById('invoiceError').style.display = 'none';
+  document.getElementById('invoiceSuccess').style.display = 'none';
+  document.getElementById('invoiceActions').style.display = 'flex';
+  document.getElementById('invoiceSubmitBtn').disabled = false;
+
+  // Find job from loaded data or fetch
+  var job = null;
+  if (_pipelineData && _pipelineData.columns) {
+    Object.values(_pipelineData.columns).forEach(function(arr) {
+      arr.forEach(function(j) { if (j.id === jobId) job = j; });
+    });
+  }
+  if (!job) {
+    try {
+      var d = await opsFetch('job_by_id', { id: jobId });
+      job = d.job || d;
+    } catch(e) {}
+  }
+
+  // Show job summary
+  var summaryEl = document.getElementById('invoiceJobSummary');
+  if (job) {
+    var pricing = job.pricing_json || {};
+    var total = pricing.totalIncGST || pricing.total || job.value || 0;
+    var exGst = total / 1.1;
+    summaryEl.innerHTML =
+      '<div style="font-weight:700;font-size:14px;">' + escapeHtml(job.job_number || '') + ' — ' + escapeHtml(job.client_name || '') + '</div>' +
+      '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml([job.site_address, job.site_suburb].filter(Boolean).join(', ')) + '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:16px;font-size:13px;">' +
+      '<span><strong>Inc GST:</strong> ' + fmt$(total) + '</span>' +
+      '<span><strong>Ex GST:</strong> ' + fmt$(exGst) + '</span>' +
+      '<span><strong>GST:</strong> ' + fmt$(total - exGst) + '</span>' +
+      '</div>';
+
+    // Show line items preview
+    var items = pricing.line_items || [];
+    if (items.length > 0) {
+      var lhtml = '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">Line Items:</div>';
+      items.forEach(function(li) {
+        lhtml += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid var(--sw-border);">';
+        lhtml += '<span>' + escapeHtml(li.description || '') + ' x' + (li.quantity || 1) + '</span>';
+        lhtml += '<span>' + fmt$(li.total || (li.quantity || 1) * (li.unit_price || 0)) + '</span>';
+        lhtml += '</div>';
+      });
+      document.getElementById('invoiceLinePreview').innerHTML = lhtml;
+    }
+  }
+
+  // Load Xero accounts for dropdown
+  var selectEl = document.getElementById('invoiceAccountCode');
+  if (!_xeroAccounts) {
+    try {
+      var acctData = await opsFetch('get_xero_accounts');
+      _xeroAccounts = acctData.accounts || [];
+    } catch(e) { _xeroAccounts = [{ code: '200', name: 'Sales (default)' }]; }
+  }
+  selectEl.innerHTML = _xeroAccounts.map(function(a) {
+    return '<option value="' + a.code + '">' + a.code + ' — ' + escapeHtml(a.name) + '</option>';
+  }).join('');
+
+  document.getElementById('invoiceModal').classList.add('active');
+}
+
+async function submitGeneralInvoice() {
+  if (!_invoiceJobId) return;
+  var btn = document.getElementById('invoiceSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  document.getElementById('invoiceError').style.display = 'none';
+
+  try {
+    var accountCode = document.getElementById('invoiceAccountCode').value || '200';
+    var res = await opsPost('create_general_invoice', { job_id: _invoiceJobId, account_code: accountCode });
+    // Success
+    document.getElementById('invoiceSuccess').style.display = 'block';
+    document.getElementById('invoiceSuccessDetail').innerHTML =
+      '<strong>' + (res.invoice_number || '') + '</strong> — ' + fmt$(res.total || 0) + '<br>' +
+      '<span style="font-size:11px;">Created as DRAFT in Xero. Review and send from Xero.</span>';
+    document.getElementById('invoiceActions').style.display = 'none';
+    showToast('Draft invoice created: ' + (res.invoice_number || ''), 'success');
+    loadJobs(); // refresh pipeline
+  } catch (e) {
+    document.getElementById('invoiceError').textContent = 'Failed: ' + e.message;
+    document.getElementById('invoiceError').style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Create Draft Invoice';
+  }
+}
+
 // ── Line Items ──
 function addQQLine(desc, qty, unit, price, cost, total) {
   var tbody = document.getElementById('qqLineBody');
@@ -10506,6 +10636,7 @@ async function saveQuickQuoteDraft() {
 async function sendQuickQuote() {
   var data = gatherQQData();
   data.status = 'quoted';
+  data.job_type = 'general'; // SWG- prefix
   try {
     var res = await opsPost('create_misc_job', data);
     showToast('Quote created: ' + (res.job.job_number || ''), 'success');
