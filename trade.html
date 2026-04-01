@@ -9570,7 +9570,8 @@
   }
 
   // ── Invoice row data ──
-  var _invRows = []; // { date, job_id, job_text, description, division, hours, rate, amount }
+  var _invRows = []; // { date, job_id, job_text, description, division, hours, rate, amount, client_name, site_address }
+  var _knownJobNumbers = []; // populated from search_all_jobs
   var _invGst = true; // GST toggle state
 
   function _syncRowsFromDOM() {
@@ -9588,6 +9589,10 @@
       if (j) row.job_text = j.value;
       if (desc) row.description = desc.value;
       if (div) row.division = div.value;
+      var cl = document.getElementById('ir_client_' + i);
+      var ad = document.getElementById('ir_addr_' + i);
+      if (cl) row.client_name = cl.value;
+      if (ad) row.site_address = ad.value;
       if (h) row.hours = parseFloat(h.value) || 0;
       if (r) row.rate = parseFloat(r.value) || 0;
       row.amount = Math.round(row.hours * row.rate * 100) / 100;
@@ -9640,36 +9645,92 @@
     var i = row._idx;
     var h = '';
     var rowBg = row._source === 'clock' ? 'rgba(52,152,219,0.06)' : row._source === 'edited' ? 'rgba(241,90,41,0.06)' : '';
+    var hasKnownJob = row.job_text && _knownJobNumbers && _knownJobNumbers.indexOf(row.job_text) >= 0;
     h += '<div class="inv-line" style="padding:8px 10px;overflow:hidden' + (rowBg ? ';background:' + rowBg : '') + '">';
 
     // Line 1: Job + Delete (+ optional date for misc rows)
     h += '<div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">';
     if (showDate) h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 110px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job # or description" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job # (or leave blank)" onchange="invJobChanged(' + i + ')" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
     h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 26px;height:26px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
     h += '</div>';
 
     // Line 2: Division (full width, prominent)
     var noDivSelected = !row.division;
-    h += '<div style="margin-bottom:5px">';
-    h += '<select id="ir_div_' + i + '" style="width:100%;padding:6px 10px;border:2px solid ' + (noDivSelected ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:' + (noDivSelected ? 'var(--sw-text-sec)' : 'var(--sw-dark)') + ';background:#fff;box-sizing:border-box">';
+    h += '<select id="ir_div_' + i + '" style="width:100%;padding:7px 10px;margin-bottom:5px;border:2px solid ' + (noDivSelected ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:' + (noDivSelected ? 'var(--sw-text-sec)' : 'var(--sw-dark)') + ';background:#fff;box-sizing:border-box">';
     h += '<option value=""' + (noDivSelected ? ' selected' : '') + ' disabled>Select type of work...</option>';
-    var divOpts = [['Patio','Patio'],['Fencing','Fencing'],['Decking','Decking'],['Make Safe','Make Safe'],['General Labour','General Labour']];
-    divOpts.forEach(function(dv) {
+    [['Patio','Patio'],['Fencing','Fencing'],['Decking','Decking'],['Make Safe','Make Safe'],['General Labour','General Labour']].forEach(function(dv) {
       h += '<option value="' + dv[0] + '"' + (row.division === dv[0] ? ' selected' : '') + '>' + dv[1] + '</option>';
     });
-    h += '</select></div>';
+    h += '</select>';
 
-    // Line 3: Description + Hours + Rate + Amount
+    // Line 3: Client name + Address (only if no known job selected)
+    if (!hasKnownJob) {
+      h += '<div style="display:flex;gap:5px;margin-bottom:5px">';
+      h += '<input type="text" id="ir_client_' + i + '" value="' + esc(row.client_name || '') + '" placeholder="Client name *" style="flex:1;padding:5px 8px;border:1px solid ' + (!row.client_name ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+      h += '</div>';
+      h += '<div style="position:relative;margin-bottom:5px">';
+      h += '<input type="text" id="ir_addr_' + i + '" value="' + esc(row.site_address || '') + '" placeholder="Site address *" oninput="invAddrSearch(' + i + ')" style="width:100%;padding:5px 8px;border:1px solid ' + (!row.site_address ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+      h += '<div id="ir_addr_dd_' + i + '" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--sw-border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:100;max-height:150px;overflow-y:auto"></div>';
+      h += '</div>';
+    }
+
+    // Line 4: Description (full width)
+    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description of work *" style="width:100%;padding:5px 8px;margin-bottom:5px;border:1px solid ' + (!row.description ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+
+    // Line 5: Hours + Rate + Amount
     h += '<div style="display:flex;gap:5px;align-items:center">';
-    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description" style="flex:1;min-width:0;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:0 0 44px;padding:5px 3px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
-    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="$" oninput="invRowChanged(' + i + ')" style="flex:0 0 44px;padding:5px 3px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:1;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="$/hr" oninput="invRowChanged(' + i + ')" style="flex:1;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
     var amtDisplay = row.amount > 0 ? '$' + row.amount.toFixed(2) : '—';
-    h += '<div id="ir_amt_' + i + '" style="flex:0 0 52px;text-align:right;font-size:12px;font-weight:700;color:' + (row.amount > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + amtDisplay + '</div>';
+    h += '<div id="ir_amt_' + i + '" style="flex:1;text-align:right;font-size:14px;font-weight:700;color:' + (row.amount > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + amtDisplay + '</div>';
     h += '</div></div>';
     return h;
   }
+
+  // Google Places address autocomplete
+  var _addrSearchTimer = null;
+  window.invAddrSearch = function(idx) {
+    clearTimeout(_addrSearchTimer);
+    var input = document.getElementById('ir_addr_' + idx);
+    if (!input) return;
+    var q = input.value.trim();
+    if (q.length < 3) { var dd = document.getElementById('ir_addr_dd_' + idx); if (dd) dd.style.display = 'none'; return; }
+    _addrSearchTimer = setTimeout(function() {
+      fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': 'AIzaSyBylb-lPc5q3Q9_Tapr4SJLmvfWtIuIkAc' },
+        body: JSON.stringify({ input: q, includedRegionCodes: ['au'], includedPrimaryTypes: ['street_address', 'premise', 'subpremise', 'route'] })
+      }).then(function(res) { return res.json(); }).then(function(data) {
+        var dd = document.getElementById('ir_addr_dd_' + idx);
+        if (!dd) return;
+        if (!data.suggestions || data.suggestions.length === 0) { dd.style.display = 'none'; return; }
+        dd.style.display = 'block';
+        dd.innerHTML = data.suggestions.map(function(s) {
+          var text = s.placePrediction.text.text;
+          return '<div onclick="invSelectAddr(' + idx + ',\'' + esc(text).replace(/'/g, "\\'") + '\')" style="padding:8px 10px;font-size:12px;color:var(--sw-dark);cursor:pointer;border-bottom:1px solid var(--sw-border)">' + esc(text) + '</div>';
+        }).join('');
+      }).catch(function() {});
+    }, 300);
+  };
+
+  window.invSelectAddr = function(idx, addr) {
+    var input = document.getElementById('ir_addr_' + idx);
+    if (input) input.value = addr;
+    _invRows[idx].site_address = addr;
+    var dd = document.getElementById('ir_addr_dd_' + idx);
+    if (dd) dd.style.display = 'none';
+  };
+
+  window.invJobChanged = function(idx) {
+    // When job field changes, check if it matches a known job
+    var el = document.getElementById('ir_job_' + idx);
+    if (!el) return;
+    _invRows[idx].job_text = el.value;
+    // Re-render to show/hide client fields
+    _syncRowsFromDOM();
+    renderInvoiceBuilder();
+  };
 
   window.addInvRow = function() {
     _syncRowsFromDOM();
@@ -9885,8 +9946,10 @@
     api('search_all_jobs').then(function(res) {
       var dl = document.getElementById('invJobList');
       if (!dl) return;
-      var h = '<option value="— No job —">Miscellaneous / no job</option>';
+      _knownJobNumbers = [];
+      var h = '';
       (res.jobs || []).forEach(function(j) {
+        if (j.job_number) _knownJobNumbers.push(j.job_number);
         h += '<option value="' + esc(j.job_number || '') + '">' + esc((j.job_number || '') + ' — ' + (j.client_name || '') + (j.site_suburb ? ' (' + j.site_suburb + ')' : '')) + '</option>';
       });
       dl.innerHTML = h;
@@ -9980,10 +10043,19 @@
   window.submitInvoiceFromBuilder = function() {
     _syncRowsFromDOM();
     var isExpense = _invoiceBuilderMode === 'expense';
-    var validRows = _invRows.filter(function(r) { return r.hours > 0 || r.description; });
-    if (validRows.length === 0) { toast('Add at least one line item', true); return; }
-    var missingDiv = validRows.some(function(r) { return !r.division; });
-    if (missingDiv) { toast('Select the type of work for each line item', true); return; }
+    var validRows = _invRows.filter(function(r) { return r.hours > 0 || r.description || r.job_text; });
+    if (validRows.length === 0) { toast('Add at least one line item with hours or a description', true); return; }
+    // Validate each row
+    var errors = [];
+    validRows.forEach(function(r, idx) {
+      if (!r.division) errors.push('Row ' + (idx + 1) + ': select type of work');
+      if (!r.description) errors.push('Row ' + (idx + 1) + ': enter a description');
+      // If no job number selected, require client name + address
+      var hasJob = r.job_text && _knownJobNumbers && _knownJobNumbers.indexOf(r.job_text) >= 0;
+      if (!hasJob && !r.client_name) errors.push('Row ' + (idx + 1) + ': enter client name (no job selected)');
+      if (!hasJob && !r.site_address) errors.push('Row ' + (idx + 1) + ': enter site address (no job selected)');
+    });
+    if (errors.length > 0) { toast(errors[0], true); return; }
 
     var t = _calcInvTotals();
 
@@ -9998,7 +10070,10 @@
       container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Submitting invoice...</div>';
 
       var extraItems = validRows.map(function(r) {
-        return { type: r.division || 'General Labour', description: (r.job_text ? r.job_text + ' — ' : '') + (r.description || ''), quantity: r.hours, unit: 'hr', rate: r.rate, date: r.date, job_id: r.job_id, job_number: r.job_text, division: r.division };
+        var desc = r.description || '';
+        if (r.job_text) desc = r.job_text + ' — ' + desc;
+        if (r.client_name && !r.job_text) desc = r.client_name + ', ' + (r.site_address || '') + ' — ' + desc;
+        return { type: r.division || 'General Labour', description: desc, quantity: r.hours, unit: 'hr', rate: r.rate, date: r.date, job_id: r.job_id, job_number: r.job_text, division: r.division, client_name: r.client_name, site_address: r.site_address };
       });
 
       api('generate_trade_invoice', {}, {
