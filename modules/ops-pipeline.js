@@ -59,8 +59,8 @@ function renderJobs(data) {
 
 function renderKanban(container, columns) {
   var order = _showDrafts
-    ? ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled', 'in_progress', 'complete', 'invoiced']
-    : ['quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled', 'in_progress', 'complete', 'invoiced'];
+    ? ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced']
+    : ['quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -117,7 +117,7 @@ function renderKanban(container, columns) {
         var depPaid = j.deposit_invoice_id && j.deposit_amount;
         html += '<div style="font-size:11px;color:' + (depPaid ? '#27AE60' : '#F39C12') + ';margin-top:3px;">' + (depPaid ? 'Deposit ' + fmt$(j.deposit_amount) + ' &#10003;' : 'Awaiting deposit') + '</div>';
       }
-      if (status === 'pre_build') {
+      if (status === 'processing') {
         var readyBits = [];
         if (j.assignment_count > 0) readyBits.push('Crew');
         if (j.po_count > 0) readyBits.push('POs');
@@ -147,10 +147,10 @@ function kanbanDragAllowed(fromStatus, toStatus) {
     'quoted': ['accepted', 'cancelled'],
     'accepted': ['approvals', 'deposit', 'quoted'],
     'approvals': ['deposit', 'accepted'],
-    'deposit': ['pre_build', 'approvals'],
-    'pre_build': ['in_progress', 'deposit'],
-    'scheduled': ['in_progress', 'pre_build', 'cancelled'],
-    'in_progress': ['complete', 'pre_build', 'cancelled'],
+    'deposit': ['processing', 'approvals'],
+    'processing': ['in_progress', 'deposit'],
+    'scheduled': ['in_progress', 'processing', 'cancelled'],
+    'in_progress': ['complete', 'processing', 'cancelled'],
     'complete': ['in_progress', 'invoiced'],
     'invoiced': ['complete']
   };

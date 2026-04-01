@@ -458,7 +458,7 @@ function renderJobPeek(data) {
       if (shareUrl) {
         html += '<a href="' + escapeHtml(shareUrl) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;text-decoration:none;">View PDF</a>';
       }
-      if (doc.accepted_at && ['accepted','approvals','deposit','pre_build','scheduled','in_progress','complete'].indexOf(j.status) >= 0) {
+      if (doc.accepted_at && ['accepted','approvals','deposit','processing','scheduled','in_progress','complete'].indexOf(j.status) >= 0) {
         html += '<button class="btn btn-sm" onclick="event.stopPropagation();createInvoiceFromQuote(\'' + j.id + '\',\'' + doc.id + '\')" style="background:var(--sw-green);color:#fff;font-size:11px;font-weight:600;">Create Invoice from Quote</button>';
       }
       html += '</div>';
@@ -553,7 +553,7 @@ function renderJobPeek(data) {
   });
   // PO and Invoice action buttons
   html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openPOModal(\'' + j.id + '\')" style="border-color:var(--sw-purple); color:var(--sw-purple);">+ PO</button>';
-  if (['accepted', 'approvals', 'deposit', 'pre_build', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
+  if (['accepted', 'approvals', 'deposit', 'processing', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openUnifiedInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
   }
   // Quick Quote shortcut: Accept & Create Deposit Invoice in one click
@@ -561,7 +561,7 @@ function renderJobPeek(data) {
     html += '<button class="btn btn-sm" onclick="acceptAndDepositQuickQuote(\'' + j.id + '\')" style="background:var(--sw-green); color:#fff; font-weight:600;">Accept &amp; Deposit</button>';
   }
   // Mark Lost — available for quoted/accepted/scheduled jobs
-  if (['quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled'].indexOf(j.status) >= 0) {
+  if (['quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="markJobLost(\'' + j.id + '\')" style="border-color:var(--sw-red); color:var(--sw-red); margin-left:auto;">Mark Lost</button>';
   }
   html += '</div>';
@@ -3354,8 +3354,8 @@ function getNextStatuses(current, jobType) {
     'quoted': ['accepted', 'cancelled'],
     'accepted': jobType === 'fencing' ? ['deposit'] : ['approvals', 'deposit'],
     'approvals': ['deposit'],
-    'deposit': ['pre_build'],
-    'pre_build': ['in_progress'],
+    'deposit': ['processing'],
+    'processing': ['in_progress'],
     'scheduled': ['in_progress', 'cancelled'],
     'in_progress': ['complete', 'cancelled'],
     'complete': ['invoiced'],
