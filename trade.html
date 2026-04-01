@@ -17,6 +17,7 @@
 
   <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script>
     window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
     window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
@@ -9980,21 +9981,35 @@
         notes: _invNotes
       }).then(function(result) {
         if (result.error) { toast(result.error, true); loadHoursView(); return; }
+
+        // Generate PDF for the trade's records
+        var pdfData = { invoiceNumber: result.invoice_number, rows: validRows, notes: _invNotes, gst: _invGst, total: t };
+        _lastInvoicePdfData = pdfData;
+
         // Show success
         var successHtml = '';
         successHtml += '<div style="text-align:center;padding:40px 20px">';
         successHtml += '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>';
         successHtml += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Invoice Submitted</div>';
-        if (result.invoice_number) successHtml += '<div style="font-size:13px;color:var(--sw-mid);margin-bottom:4px">' + result.invoice_number + '</div>';
-        successHtml += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:4px">' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '</div>';
-        var displayTotal = result.total_inc != null ? Number(result.total_inc).toFixed(2) : total.toFixed(2);
-        successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:16px 0">$' + displayTotal + '</div>';
-        if (result.total_hours) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + result.total_hours + ' hours logged</div>';
-        if (_invExtraLines.length > 0) successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + _invExtraLines.length + ' additional item' + (_invExtraLines.length > 1 ? 's' : '') + '</div>';
-        successHtml += '<div style="margin-top:24px">';
-        successHtml += '<button class="hours-submit-btn" onclick="loadHoursView()" style="max-width:280px;margin:0 auto">Back to Hours</button>';
-        successHtml += '</div></div>';
+        if (result.invoice_number) successHtml += '<div style="font-size:14px;font-weight:600;color:var(--sw-mid);margin-bottom:4px">' + result.invoice_number + '</div>';
+        if (result.xero_bill_number) {
+          successHtml += '<div style="font-size:12px;color:var(--sw-green);margin-bottom:8px">&#10003; Sent to Xero — ' + result.xero_bill_number + '</div>';
+        } else if (result.xero_bill_id) {
+          successHtml += '<div style="font-size:12px;color:var(--sw-green);margin-bottom:8px">&#10003; Sent to Xero as draft bill</div>';
+        } else {
+          successHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:8px">Saved — Xero sync pending</div>';
+        }
+        var displayTotal = result.total_inc != null ? Number(result.total_inc).toFixed(2) : t.total.toFixed(2);
+        successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:12px 0">$' + displayTotal + '</div>';
+        successHtml += '<div style="font-size:13px;color:var(--sw-text-sec)">' + validRows.length + ' line item' + (validRows.length > 1 ? 's' : '') + '</div>';
+        successHtml += '<div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;max-width:280px;margin-left:auto;margin-right:auto">';
+        successHtml += '<button class="hours-submit-btn" onclick="downloadInvoicePDF()" style="margin:0;background:var(--sw-dark)">Download PDF</button>';
+        successHtml += '<button class="hours-submit-btn" onclick="loadHoursView()" style="margin:0">Done</button>';
+        successHtml += '</div>';
+        successHtml += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:12px">Your invoice has been sent to the bookkeepers</div>';
+        successHtml += '</div>';
         container.innerHTML = successHtml;
+        _invRows = [];
         _invExtraLines = [];
       }).catch(function(err) {
         toast('Failed: ' + friendlyError(err), true);
@@ -10002,6 +10017,135 @@
       });
     });
   };
+
+  // ══════════════════════════════════════════════════
+  // INVOICE PDF GENERATION
+  // ══════════════════════════════════════════════════
+
+  var _lastInvoicePdfData = null;
+
+  window.downloadInvoicePDF = function() {
+    if (!_lastInvoicePdfData) { toast('No invoice data to generate PDF', true); return; }
+    var pdf = _generateInvoicePDF(_lastInvoicePdfData);
+    if (pdf) {
+      var fileName = (_lastInvoicePdfData.invoiceNumber || 'Invoice') + '.pdf';
+      pdf.save(fileName);
+    }
+  };
+
+  function _generateInvoicePDF(data) {
+    var jsPDF = window.jspdf ? window.jspdf.jsPDF : null;
+    if (!jsPDF) { toast('PDF library not loaded — try refreshing', true); return null; }
+
+    var doc = new jsPDF('p', 'mm', 'a4');
+    var details = loadTradeDetails();
+    var tradeName = details.fullName || (_user ? _user.name : '') || 'Subcontractor';
+    var tradeAbn = _formatAbn(details.abn || '');
+    var w = 210; // A4 width
+    var margin = 15;
+    var cw = w - margin * 2; // content width
+    var y = 0;
+
+    // Dark header band
+    doc.setFillColor(41, 60, 70); // --sw-dark
+    doc.rect(0, 0, w, 42, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TAX INVOICE', margin, 16);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(data.invoiceNumber || '', margin, 24);
+
+    // Right side — SecureWorks
+    doc.setFontSize(9);
+    doc.text('To: SecureWorks Group Pty Ltd', w - margin, 14, { align: 'right' });
+    doc.text('From: ' + tradeName, w - margin, 20, { align: 'right' });
+    if (tradeAbn) doc.text('ABN: ' + tradeAbn, w - margin, 26, { align: 'right' });
+    if (details.phone) doc.text(details.phone, w - margin, 32, { align: 'right' });
+    if (details.email) doc.text(details.email, w - margin, 38, { align: 'right' });
+
+    y = 50;
+
+    // Line items table header
+    doc.setTextColor(100, 100, 100);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DATE', margin, y);
+    doc.text('JOB', margin + 22, y);
+    doc.text('DESCRIPTION', margin + 50, y);
+    doc.text('DIV', margin + 110, y);
+    doc.text('HRS', margin + 130, y);
+    doc.text('RATE', margin + 145, y);
+    doc.text('AMOUNT', w - margin, y, { align: 'right' });
+    y += 2;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, w - margin, y);
+    y += 5;
+
+    // Line items
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(50, 50, 50);
+    doc.setFontSize(8);
+    var rows = data.rows || [];
+    rows.forEach(function(r) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      var dateStr = r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', { day: '2-digit', month: 'short' }) : '';
+      doc.text(dateStr, margin, y);
+      doc.text((r.job_text || '').slice(0, 12), margin + 22, y);
+      doc.text((r.description || '').slice(0, 30), margin + 50, y);
+      doc.text((r.division || '').slice(0, 8), margin + 110, y);
+      doc.text(r.hours ? r.hours.toFixed(2) : '0', margin + 130, y);
+      doc.text(r.rate ? '$' + r.rate.toFixed(0) : '', margin + 145, y);
+      doc.text(r.amount ? '$' + r.amount.toFixed(2) : '$0.00', w - margin, y, { align: 'right' });
+      y += 5;
+    });
+
+    // Totals
+    y += 3;
+    doc.line(margin + 100, y, w - margin, y);
+    y += 6;
+    doc.setFontSize(9);
+    doc.text('Subtotal (ex GST)', margin + 100, y);
+    doc.text('$' + data.total.subtotal.toFixed(2), w - margin, y, { align: 'right' });
+    y += 5;
+    if (data.gst) {
+      doc.text('GST (10%)', margin + 100, y);
+      doc.text('$' + data.total.gst.toFixed(2), w - margin, y, { align: 'right' });
+      y += 5;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('TOTAL', margin + 100, y);
+    doc.text('$' + data.total.total.toFixed(2), w - margin, y, { align: 'right' });
+    y += 8;
+
+    // Notes
+    if (data.notes) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Notes: ' + data.notes, margin, y, { maxWidth: cw });
+      y += 8;
+    }
+
+    // Bank details
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    if (details.bsb || details.accountNo) {
+      y += 4;
+      doc.text('Payment Details:', margin, y);
+      y += 4;
+      if (details.bsb) { doc.text('BSB: ' + details.bsb, margin, y); y += 4; }
+      if (details.accountNo) { doc.text('Account: ' + details.accountNo, margin, y); y += 4; }
+      if (details.accountName) { doc.text('Name: ' + details.accountName, margin, y); y += 4; }
+    }
+
+    return doc;
+  }
 
   // ══════════════════════════════════════════════════
   // GENERATE TRADE INVOICE (per-job line items) — legacy
