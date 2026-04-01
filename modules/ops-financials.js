@@ -334,6 +334,17 @@ function showInvoiceSuccessModal(invNumber, email, xeroId, action) {
   var body = '<div style="margin-bottom:8px;"><strong>' + invNumber + '</strong> has been ' + action + '.</div>';
   if (email) body += '<div style="font-size:12px; color:var(--sw-text-sec);">Sent to <strong>' + escapeHtml(email) + '</strong></div>';
 
+  // Auto-open Xero in new tab
+  if (xeroId) {
+    var xeroUrl = 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroId;
+    var opened = window.open(xeroUrl, '_blank');
+    if (opened) {
+      body += '<div style="font-size:11px; color:var(--sw-text-sec); margin-top:8px;">Xero opened in new tab</div>';
+    } else {
+      body += '<div style="font-size:11px; color:var(--sw-orange); margin-top:8px;">Pop-up blocked? Click the button below to open Xero.</div>';
+    }
+  }
+
   document.getElementById('invoiceSuccessBody').innerHTML = body;
   document.getElementById('invoiceSuccessXeroLink').href = 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroId;
   document.getElementById('invoiceSuccessModal').classList.add('active');

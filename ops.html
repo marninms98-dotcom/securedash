@@ -769,15 +769,17 @@
 
     /* ── Kanban ── */
     .kanban-container {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      display: flex;
       gap: 10px;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 8px;
     }
     .kanban-col {
       background: var(--sw-warm-100);
       border-radius: 0;
-      min-width: 200px;
+      min-width: 220px;
+      flex: 0 0 220px;
     }
     .kanban-col-header {
       padding: 10px 12px;
@@ -1570,7 +1572,7 @@
 
     /* ── Responsive ── */
     @media (max-width: 1024px) {
-      .kanban-container { grid-template-columns: repeat(3, 1fr); }
+      .kanban-col { min-width: 200px; flex: 0 0 200px; }
       .two-col { grid-template-columns: 1fr; }
       .cal-week-grid { grid-template-columns: repeat(4, 1fr); }
       .crew-cal-wrap { grid-template-columns: 1fr; }
@@ -1605,7 +1607,7 @@
       .mobile-nav button.active { color: #fff; border-top: 2px solid var(--sw-orange); }
       .container { padding: 16px; padding-bottom: 80px; }
       .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
-      .kanban-container { grid-template-columns: 1fr 1fr; }
+      .kanban-col { min-width: 180px; flex: 0 0 180px; }
       .cal-week-grid { grid-template-columns: 1fr; }
       .materials-kanban { grid-template-columns: repeat(2, 1fr); }
     }

@@ -1314,19 +1314,43 @@ function confirmUnifiedInvoiceSend() {
   linesHtml += '</tfoot></table>';
 
   var bodyHtml = '';
+
+  // ── PDF-style invoice preview ──
+  var siteAddr = _invJobCache ? (_invJobCache.site_address || _invJobCache.site_suburb || '') : '';
+  var refSuffix = _currentRefSuffix ? '-' + _currentRefSuffix : '';
+  bodyHtml += '<div style="border:1px solid var(--sw-border);background:#fff;padding:16px;margin-bottom:14px;">';
+  // Header row
+  bodyHtml += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid var(--sw-dark);">';
+  bodyHtml += '<div>';
+  bodyHtml += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark);">TAX INVOICE</div>';
+  bodyHtml += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">SecureWorks WA</div>';
+  bodyHtml += '</div>';
+  bodyHtml += '<div style="text-align:right;font-size:12px;">';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Reference:</span> <strong>' + escapeHtml(jobNumber + refSuffix) + '</strong></div>';
+  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Due:</span> <strong>' + escapeHtml(dueDate) + '</strong></div>';
+  bodyHtml += '</div>';
+  bodyHtml += '</div>';
+  // Bill to
+  bodyHtml += '<div style="margin-bottom:12px;font-size:12px;">';
+  bodyHtml += '<div style="font-size:10px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:3px;">Bill To</div>';
+  bodyHtml += '<div style="font-weight:600;">' + escapeHtml(clientName) + '</div>';
+  if (siteAddr) bodyHtml += '<div style="color:var(--sw-text-sec);">' + escapeHtml(siteAddr) + '</div>';
+  if (clientEmail) bodyHtml += '<div style="color:var(--sw-text-sec);">' + escapeHtml(clientEmail) + '</div>';
+  bodyHtml += '</div>';
+  // Line items
+  bodyHtml += linesHtml;
+  // Account info
+  var trackLabel = _invJobCache ? trackingCategoryLabel(_invJobCache.job_number) : '';
+  bodyHtml += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:6px;padding-top:6px;border-top:1px solid var(--sw-border);">';
+  bodyHtml += 'Account: ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ')';
+  if (trackLabel) bodyHtml += ' &middot; Tracking: ' + escapeHtml(trackLabel);
+  bodyHtml += '</div>';
+  bodyHtml += '</div>';
+
+  // ── Send controls ──
   bodyHtml += '<div style="margin-bottom:10px;">';
   bodyHtml += '<label style="font-size:11px; font-weight:600; color:var(--sw-text-sec); text-transform:uppercase; letter-spacing:0.3px;">Send To Email</label>';
   bodyHtml += '<input type="email" id="sendConfirmEmail" class="form-input" value="' + (clientEmail || '').replace(/"/g, '&quot;') + '" style="font-size:13px; padding:6px 8px; margin-top:2px;">';
-  bodyHtml += '</div>';
-  bodyHtml += '<div style="display:flex; gap:16px; margin-bottom:10px; font-size:12px;">';
-  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Xero Reference:</span> <strong>' + escapeHtml(jobNumber) + '</strong></div>';
-  bodyHtml += '<div><span style="color:var(--sw-text-sec);">Due Date:</span> <strong>' + escapeHtml(dueDate) + '</strong></div>';
-  bodyHtml += '</div>';
-  bodyHtml += linesHtml;
-  var trackLabel = _invJobCache ? trackingCategoryLabel(_invJobCache.job_number) : '';
-  bodyHtml += '<div style="font-size:11px; color:var(--sw-text-sec); margin:6px 0 10px; padding:6px 8px; background:var(--sw-light); border:1px solid var(--sw-border); line-height:1.6;">';
-  bodyHtml += '<strong>Sales Account:</strong> ' + acCode + ' (' + escapeHtml(acLabel.split(' — ')[1] || 'General') + ' Revenue)';
-  if (trackLabel) bodyHtml += '<br><strong>Tracking:</strong> ' + escapeHtml(trackLabel);
   bodyHtml += '</div>';
   bodyHtml += '<label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">';
   bodyHtml += '<input type="checkbox" id="sendConfirmBranded" checked>';
@@ -1382,13 +1406,13 @@ async function submitUnifiedInvoice(mode, emailOverride, useBrandedEmail, openIn
     var msg = 'Invoice ' + invNum + (mode === 'send' ? ' sent' : ' saved as draft') + ' — ' + fmt$(invTotal);
     if (result.warning) msg += '\n' + result.warning;
     closeModal('unifiedInvoiceModal');
+    closeSlidePanel();
     loadInvoices();
     refreshActiveView();
 
     if (mode === 'send' && xeroInvId) {
       showInvoiceSuccessModal(invNum, emailOverride || '', xeroInvId, 'sent');
     } else if (openInXero && xeroInvId) {
-      // Open the draft in Xero for preview
       showToast(msg, 'success');
       window.open('https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + xeroInvId, '_blank');
     } else {
@@ -1430,6 +1454,49 @@ function resetUnifiedInvoiceModal() {
 
 // Backward compat
 function resetInvoiceModal() { resetUnifiedInvoiceModal(); }
+
+// ── Create Invoice from Quote (one-click auto-fill) ──
+var _pendingQuoteAutoPopulate = null;
+
+async function createInvoiceFromQuote(jobId, quoteDocId) {
+  // Store the quote doc ID so we can auto-populate after the modal loads the job
+  _pendingQuoteAutoPopulate = quoteDocId;
+  closeSlidePanel();
+  await openUnifiedInvoiceModal(jobId);
+
+  // After modal has loaded, auto-populate from quote data
+  if (_invJobCache && _invJobDetailCache) {
+    autoPopulateFromQuoteData(_invJobCache, _invJobDetailCache, quoteDocId);
+  }
+  _pendingQuoteAutoPopulate = null;
+}
+
+function autoPopulateFromQuoteData(job, jobDetail, quoteDocId) {
+  var pricing = job.pricing_json;
+  if (typeof pricing === 'string') try { pricing = JSON.parse(pricing); } catch(e) { pricing = null; }
+  if (!pricing) return;
+
+  var totalIncGst = pricing.totalIncGST || pricing.total || 0;
+  var totalExGst = Math.round((totalIncGst / 1.1) * 100) / 100;
+
+  // Build rich description line
+  var desc = buildSmartInvoiceDescription('Project', job);
+
+  // Clear existing line items and add the auto-populated one
+  var container = document.getElementById('invLineItems');
+  container.innerHTML = '';
+
+  addInvLine(desc, 1, totalExGst);
+
+  // Auto-check the quote doc in the quotes section
+  if (quoteDocId) {
+    var checks = document.querySelectorAll('.uni-quote-check');
+    checks.forEach(function(cb) {
+      cb.checked = cb.value === quoteDocId;
+    });
+    updateSelectedQuoteDocs();
+  }
+}
 
 // ════════════════════════════════════════════════════════════
 // EDIT INVOICE MODAL

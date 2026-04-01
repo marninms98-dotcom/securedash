@@ -314,6 +314,16 @@ function closeSlidePanel() {
   document.getElementById('slideBackdrop').classList.remove('open');
 }
 
+function togglePeekQuoteDetail(el) {
+  var detail = el.querySelector('.peek-quote-detail');
+  if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
+}
+
+function togglePeekInvoiceDetail(el) {
+  var detail = el.querySelector('.peek-inv-detail');
+  if (detail) detail.style.display = detail.style.display === 'none' ? '' : 'none';
+}
+
 var _peekData = null;
 function renderJobPeek(data) {
   _peekData = data;
@@ -388,6 +398,150 @@ function renderJobPeek(data) {
       html += '<div style="height:100%; width:' + barPct + '%; background:' + marginColor + '; border-radius:3px;"></div></div>';
       html += '<div style="text-align:right; margin-top:2px; font-weight:600; color:' + marginColor + ';">Margin: ' + margin.toFixed(0) + '%</div>';
     }
+    html += '</div>';
+  }
+
+  // ── Quotes Section ──
+  var quoteDocs = (data.documents || []).filter(function(d) { return d.type === 'quote'; });
+  if (quoteDocs.length > 0) {
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Quotes (' + quoteDocs.length + ')</div>';
+    quoteDocs.forEach(function(doc, idx) {
+      var statusLabel = doc.accepted_at ? 'Accepted' : doc.sent_to_client ? (doc.viewed_at ? 'Viewed' : 'Sent') : 'Draft';
+      var statusBg = doc.accepted_at ? 'var(--sw-green)' : doc.sent_to_client ? '#2196F3' : '#e0e0e0';
+      var statusColor = doc.accepted_at || doc.sent_to_client ? '#fff' : '#333';
+      var quoteNum = doc.quote_number || ('v' + (doc.version || 1));
+      var quoteTotal = doc.data_snapshot_json?.totalIncGST || doc.data_snapshot_json?.total || '';
+      var url = doc.storage_url || doc.pdf_url;
+      var shareUrl = doc.share_token ? 'https://kevgrhcjxspbxgovpmfl.supabase.co/functions/v1/send-quote/view?token=' + encodeURIComponent(doc.share_token) : url;
+
+      html += '<div style="border:1px solid var(--sw-border);padding:10px;margin-bottom:6px;cursor:pointer;" onclick="togglePeekQuoteDetail(this)">';
+      // Quote row header
+      html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;">';
+      html += '<span style="font-weight:600;">' + escapeHtml(quoteNum) + '</span>';
+      html += '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;background:' + statusBg + ';color:' + statusColor + ';">' + statusLabel + '</span>';
+      if (doc.sent_at) html += '<span style="color:var(--sw-text-sec);font-size:11px;">' + fmtDate(doc.sent_at) + '</span>';
+      if (quoteTotal) html += '<span style="margin-left:auto;font-weight:700;font-family:var(--sw-font-num);">' + fmt$(quoteTotal) + '</span>';
+      html += '</div>';
+
+      // Expandable quote detail (hidden by default)
+      html += '<div class="peek-quote-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--sw-border);" onclick="event.stopPropagation();">';
+      // Line items from data_snapshot_json
+      var snapItems = doc.data_snapshot_json?.items || doc.data_snapshot_json?.lineItems || [];
+      if (snapItems.length > 0) {
+        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">';
+        html += '<thead><tr style="border-bottom:1px solid var(--sw-border);text-align:left;"><th style="padding:3px 4px;">Description</th><th style="padding:3px 4px;text-align:center;width:35px;">Qty</th><th style="padding:3px 4px;text-align:right;width:65px;">Price</th><th style="padding:3px 4px;text-align:right;width:65px;">Total</th></tr></thead><tbody>';
+        snapItems.forEach(function(item) {
+          var iDesc = item.description || item.name || '';
+          var iQty = item.quantity || item.qty || 1;
+          var iPrice = item.unit_price || item.unitPrice || item.price || 0;
+          html += '<tr style="border-bottom:1px solid var(--sw-border);">';
+          html += '<td style="padding:3px 4px;">' + escapeHtml(iDesc) + '</td>';
+          html += '<td style="padding:3px 4px;text-align:center;">' + iQty + '</td>';
+          html += '<td style="padding:3px 4px;text-align:right;font-family:var(--sw-font-num);">' + fmt$(iPrice) + '</td>';
+          html += '<td style="padding:3px 4px;text-align:right;font-family:var(--sw-font-num);">' + fmt$(iQty * iPrice) + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // Totals
+      var snapTotal = doc.data_snapshot_json?.totalIncGST || doc.data_snapshot_json?.total || 0;
+      var snapTotalEx = Math.round((snapTotal / 1.1) * 100) / 100;
+      var snapGst = Math.round((snapTotal - snapTotalEx) * 100) / 100;
+      html += '<div style="display:flex;justify-content:flex-end;font-size:12px;gap:12px;">';
+      html += '<span style="color:var(--sw-text-sec);">Ex GST: <strong>' + fmt$(snapTotalEx) + '</strong></span>';
+      html += '<span style="color:var(--sw-text-sec);">GST: <strong>' + fmt$(snapGst) + '</strong></span>';
+      html += '<span style="font-weight:700;">Inc GST: <strong>' + fmt$(snapTotal) + '</strong></span>';
+      html += '</div>';
+      // Action buttons
+      html += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">';
+      if (shareUrl) {
+        html += '<a href="' + escapeHtml(shareUrl) + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;text-decoration:none;">View PDF</a>';
+      }
+      if (doc.accepted_at && ['accepted','approvals','deposit','pre_build','scheduled','in_progress','complete'].indexOf(j.status) >= 0) {
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation();createInvoiceFromQuote(\'' + j.id + '\',\'' + doc.id + '\')" style="background:var(--sw-green);color:#fff;font-size:11px;font-weight:600;">Create Invoice from Quote</button>';
+      }
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Invoices Section ──
+  var peekInvoices = (data.invoices || []).filter(function(inv) {
+    return inv.invoice_type === 'ACCREC' && ['VOIDED','DELETED'].indexOf(inv.status) < 0;
+  });
+  if (peekInvoices.length > 0) {
+    html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Invoices (' + peekInvoices.length + ')</div>';
+    peekInvoices.forEach(function(inv) {
+      var isPaid = inv.status === 'PAID';
+      var isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && ['AUTHORISED','SUBMITTED','SENT'].indexOf(inv.status) >= 0;
+      var isDraft = inv.status === 'DRAFT';
+      var amountDue = parseFloat(inv.amount_due) || (parseFloat(inv.total) - parseFloat(inv.amount_paid || 0));
+      var amountPaid = parseFloat(inv.amount_paid) || 0;
+
+      var sBg, sColor;
+      if (isOverdue) { sBg = 'var(--sw-red)'; sColor = '#fff'; }
+      else if (isDraft) { sBg = '#e0e0e0'; sColor = '#333'; }
+      else if (inv.status === 'AUTHORISED') { sBg = '#2196F3'; sColor = '#fff'; }
+      else if (isPaid) { sBg = 'var(--sw-green)'; sColor = '#fff'; }
+      else { sBg = 'var(--sw-orange)'; sColor = '#fff'; }
+      var sLabel = isOverdue ? 'OVERDUE' : inv.status;
+
+      var xeroLink = inv.xero_invoice_id ? 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + inv.xero_invoice_id : '';
+
+      html += '<div style="border:1px solid var(--sw-border);padding:10px;margin-bottom:6px;cursor:pointer;" onclick="togglePeekInvoiceDetail(this)">';
+      // Invoice row header
+      html += '<div style="display:flex;align-items:center;gap:8px;font-size:13px;">';
+      html += '<span style="font-weight:600;">' + (inv.invoice_number || 'Draft') + '</span>';
+      html += '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;background:' + sBg + ';color:' + sColor + ';">' + sLabel + '</span>';
+      if (inv.due_date) html += '<span style="color:var(--sw-text-sec);font-size:11px;">Due ' + fmtDate(inv.due_date) + '</span>';
+      html += '<span style="margin-left:auto;font-weight:700;font-family:var(--sw-font-num);">' + fmt$(inv.total) + '</span>';
+      html += '</div>';
+      // Paid/owing summary
+      if (!isDraft) {
+        html += '<div style="display:flex;gap:12px;font-size:11px;margin-top:4px;color:var(--sw-text-sec);">';
+        html += '<span>Paid: <strong style="color:var(--sw-green);">' + fmt$(amountPaid) + '</strong></span>';
+        if (amountDue > 0) html += '<span>Owing: <strong style="color:' + (isOverdue ? 'var(--sw-red)' : 'var(--sw-dark)') + ';">' + fmt$(amountDue) + '</strong></span>';
+        html += '</div>';
+      }
+
+      // Expandable invoice detail (hidden by default)
+      html += '<div class="peek-inv-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--sw-border);" onclick="event.stopPropagation();">';
+      var lineItems = inv.line_items || [];
+      if (Array.isArray(lineItems) && lineItems.length > 0) {
+        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">';
+        html += '<thead><tr style="border-bottom:1px solid var(--sw-border);text-align:left;"><th style="padding:3px 4px;">Description</th><th style="padding:3px 4px;text-align:center;width:35px;">Qty</th><th style="padding:3px 4px;text-align:right;width:65px;">Price</th><th style="padding:3px 4px;text-align:right;width:65px;">Total</th></tr></thead><tbody>';
+        lineItems.forEach(function(li) {
+          var desc = li.Description || li.description || '';
+          var qty = li.Quantity || li.quantity || 1;
+          var unitPrice = li.UnitAmount || li.unit_price || 0;
+          var lineTotal = li.LineAmount || li.total || (qty * unitPrice);
+          html += '<tr style="border-bottom:1px solid var(--sw-border);">';
+          html += '<td style="padding:3px 4px;">' + escapeHtml(desc) + '</td>';
+          html += '<td style="padding:3px 4px;text-align:center;">' + qty + '</td>';
+          html += '<td style="padding:3px 4px;text-align:right;font-family:var(--sw-font-num);">' + fmt$(unitPrice) + '</td>';
+          html += '<td style="padding:3px 4px;text-align:right;font-family:var(--sw-font-num);">' + fmt$(lineTotal) + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      }
+      // Totals
+      html += '<div style="display:flex;justify-content:flex-end;font-size:12px;gap:12px;">';
+      html += '<span style="color:var(--sw-text-sec);">Ex GST: <strong>' + fmt$(inv.sub_total || 0) + '</strong></span>';
+      html += '<span style="color:var(--sw-text-sec);">GST: <strong>' + fmt$(inv.total_tax || 0) + '</strong></span>';
+      html += '<span style="font-weight:700;">Total: <strong>' + fmt$(inv.total) + '</strong></span>';
+      html += '</div>';
+      // Action buttons
+      html += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">';
+      if (xeroLink) html += '<a href="' + xeroLink + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;text-decoration:none;">Open in Xero &#8599;</a>';
+      if (isDraft) html += '<button class="btn btn-sm" onclick="event.stopPropagation();closeSlidePanel();approveInvoice(\'' + inv.xero_invoice_id + '\',\'' + (inv.invoice_number || '') + '\',\'' + escapeHtml(j.client_email || '') + '\')" style="background:#2196F3;color:#fff;font-size:11px;">Approve</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
     html += '</div>';
   }
 
