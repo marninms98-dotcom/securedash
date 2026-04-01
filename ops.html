@@ -853,6 +853,31 @@
       opacity: 0.6;
       margin-left: 4px;
     }
+    .next-step-bar {
+      background: var(--sw-warm-100, #F8F6F3);
+      border-left: 3px solid var(--sw-orange);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .next-step-stage {
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .next-step-hint {
+      font-size: 11px;
+      color: var(--sw-text-sec);
+      display: block;
+      margin-bottom: 8px;
+    }
+    .next-step-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
     .kanban-ghl-link {
       font-size: 12px; color: var(--sw-text-sec); text-decoration: none;
       padding: 2px 4px; border-radius: 4px; margin-left: auto;
@@ -5705,6 +5730,82 @@ var SUB_STAGE_ORDER = {
   complete: ['Needs Invoice', 'Awaiting Payment', 'Get Sign-off'],
 };
 
+function getNextAction(j) {
+  var sub = computeSubStage(j, j.status);
+  var result = { stage: sub, hint: '', actions: [] };
+  switch (j.status) {
+    case 'quoted':
+      result.hint = 'Move to accepted when client confirms the quote';
+      result.actions.push({ label: 'Accept Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','accepted')", primary: true });
+      break;
+    case 'accepted':
+      if (sub === 'Create Invoice') {
+        result.hint = 'Create a deposit invoice for this job';
+        result.actions.push({ label: 'Create Invoice', onclick: "closeQuickView();openUnifiedInvoiceModal('" + j.id + "')", primary: true });
+        if (j.type !== 'fencing') result.actions.push({ label: 'Skip \u2192 Approvals', onclick: "closeQuickView();changeJobStatus('" + j.id + "','approvals')" });
+        result.actions.push({ label: 'Skip \u2192 Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')" });
+      } else if (sub === 'Awaiting Deposit') {
+        result.hint = 'Deposit invoice sent \u2014 waiting on client payment';
+        if (j.type !== 'fencing') result.actions.push({ label: 'Deposit Received \u2192 Approvals', onclick: "closeQuickView();changeJobStatus('" + j.id + "','approvals')", primary: true });
+        result.actions.push({ label: 'Deposit Received \u2192 Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')", primary: j.type === 'fencing' });
+      } else {
+        result.hint = 'Deposit received \u2014 ready to move forward';
+        if (j.type !== 'fencing') result.actions.push({ label: 'Move to Approvals', onclick: "closeQuickView();changeJobStatus('" + j.id + "','approvals')", primary: true });
+        result.actions.push({ label: 'Move to Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')", primary: j.type === 'fencing' });
+      }
+      break;
+    case 'approvals':
+      if (sub === 'Not Started') {
+        result.hint = 'Start a council/engineering submission';
+        result.actions.push({ label: 'Start Council', onclick: "closeQuickView();openCouncilModal('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Skip \u2192 Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')" });
+      } else if (sub === 'Approved') {
+        result.hint = 'Council approved \u2014 move to processing';
+        result.actions.push({ label: 'Move to Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')", primary: true });
+      } else {
+        result.hint = 'Council/engineering in progress \u2014 waiting on vendors';
+        result.actions.push({ label: 'Override \u2192 Processing', onclick: "closeQuickView();changeJobStatus('" + j.id + "','processing')" });
+      }
+      break;
+    case 'processing':
+      if (sub === 'Order Materials') {
+        result.hint = 'Create purchase orders for materials';
+        result.actions.push({ label: 'Create PO', onclick: "closeQuickView();openPOModal('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
+      } else if (sub === 'Materials Ordered') {
+        result.hint = 'Materials ordered \u2014 assign a crew';
+        result.actions.push({ label: 'Assign Crew', onclick: "closeQuickView();openJobDetail('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
+      } else if (sub === 'Crew Assigned') {
+        result.hint = 'Crew assigned \u2014 create a work order';
+        result.actions.push({ label: 'Create Work Order', onclick: "closeQuickView();openCreateWOModal('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
+      } else {
+        result.hint = 'Everything ready \u2014 start the job';
+        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')", primary: true });
+      }
+      break;
+    case 'in_progress':
+      result.hint = 'Mark complete when all work is finished';
+      result.actions.push({ label: 'Complete Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','complete')", primary: true });
+      break;
+    case 'complete':
+      if (sub === 'Needs Invoice') {
+        result.hint = 'Create the final invoice';
+        result.actions.push({ label: 'Create Invoice', onclick: "closeQuickView();openUnifiedInvoiceModal('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Move to Invoiced', onclick: "closeQuickView();changeJobStatus('" + j.id + "','invoiced')" });
+      } else if (sub === 'Awaiting Payment') {
+        result.hint = 'Invoice sent \u2014 waiting on final payment';
+        result.actions.push({ label: 'Move to Invoiced', onclick: "closeQuickView();changeJobStatus('" + j.id + "','invoiced')" });
+      } else {
+        result.hint = 'All paid \u2014 close out the job';
+        result.actions.push({ label: 'Move to Invoiced', onclick: "closeQuickView();changeJobStatus('" + j.id + "','invoiced')", primary: true });
+      }
+      break;
+  }
+  return result;
+}
+
 function renderKanban(container, columns) {
   var order = _showDrafts
     ? ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced']
@@ -8586,14 +8687,20 @@ async function openJobQuickView(jobId) {
 
     document.getElementById('jdQvBody').innerHTML = html;
 
-    // Footer
+    // Footer — context-aware "What's Next" action bar
     var footerHtml = '';
-    // Quick action buttons
-    var nextStatuses = getNextStatuses(j.status, j.type);
-    nextStatuses.forEach(function(s) {
-      footerHtml += '<button class="btn btn-secondary btn-sm" onclick="closeQuickView();changeJobStatus(\'' + j.id + '\',\'' + s + '\')">' + (STATUS_LABELS[s] || s) + '</button>';
-    });
-    footerHtml += '<button class="btn btn-primary btn-sm" onclick="closeQuickView();openJobDetail(\'' + j.id + '\')">Open Full Record</button>';
+    var action = getNextAction(j);
+    if (action && action.stage) {
+      footerHtml += '<div class="next-step-bar">';
+      footerHtml += '<div class="next-step-label"><span class="next-step-stage">' + action.stage + '</span>';
+      if (action.hint) footerHtml += '<span class="next-step-hint">' + action.hint + '</span>';
+      footerHtml += '</div><div class="next-step-actions">';
+      action.actions.forEach(function(a) {
+        footerHtml += '<button class="btn btn-sm ' + (a.primary ? 'btn-primary' : 'btn-secondary') + '" onclick="' + a.onclick + '">' + a.label + '</button>';
+      });
+      footerHtml += '</div></div>';
+    }
+    footerHtml += '<button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="closeQuickView();openJobDetail(\'' + j.id + '\')">Open Full Record</button>';
     document.getElementById('jdQvFooter').innerHTML = footerHtml;
 
   } catch(e) {
