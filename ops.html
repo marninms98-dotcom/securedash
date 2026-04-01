@@ -5724,8 +5724,8 @@ function computeSubStage(j, status) {
     case 'quoted':
       return j.days_in_stage > 7 ? 'Following Up' : 'Quote Sent';
     case 'accepted':
-      if (!j.deposit_invoice_id && !j.has_deposit_invoice) return 'Create Invoice';
-      if (j.deposit_paid) return 'Deposit Received';
+      if (!j.deposit_invoice_id && !j.has_any_invoice) return 'Create Invoice';
+      if (j.any_invoice_paid) return 'Deposit Received';
       return 'Awaiting Deposit';
     case 'approvals':
       if (!j.council_count) return 'Not Started';
