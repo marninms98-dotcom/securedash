@@ -93,10 +93,10 @@ async function loadCalendar() {
     _calDeliveries = data.deliveries || [];
     _calReadiness = data.readiness || {};
 
-    // Extract unscheduled jobs (accepted status, no scheduled assignments)
+    // Extract unscheduled jobs (accepted/approvals/deposit/pre_build — jobs needing scheduling)
     if (results[1]) {
       var cols = results[1].columns || {};
-      _unschedJobs = (cols.accepted || []);
+      _unschedJobs = [].concat(cols.accepted || [], cols.approvals || [], cols.deposit || [], cols.pre_build || []);
     }
 
     // Parse crew availability → keyed by "CrewName_date"

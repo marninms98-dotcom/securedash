@@ -66,11 +66,13 @@ function crewColor(name) {
 var GHL_LOCATION_ID = '13yKADzN94BRxX4hByYX';
 
 var STATUS_LABELS = {
-  draft: 'Drafts', quoted: 'Quoted', accepted: 'Accepted', scheduled: 'Scheduled', in_progress: 'In Progress',
+  draft: 'Drafts', quoted: 'Quoted', accepted: 'Accepted', approvals: 'Approvals', deposit: 'Deposit', pre_build: 'Pre-Build',
+  scheduled: 'Scheduled', in_progress: 'In Progress',
   complete: 'Complete', invoiced: 'Invoiced', paid: 'Paid', lost: 'Lost', cancelled: 'Cancelled'
 };
 var STATUS_COLORS = {
-  draft: '#8FA4B2', quoted: '#9B59B6', accepted: '#3498DB', scheduled: '#E67E22', in_progress: '#F15A29',
+  draft: '#8FA4B2', quoted: '#9B59B6', accepted: '#3498DB', approvals: '#1ABC9C', deposit: '#F39C12', pre_build: '#E74C3C',
+  scheduled: '#E67E22', in_progress: '#F15A29',
   complete: '#27AE60', invoiced: '#7F8C8D', cancelled: '#E74C3C', lost: '#95A5A6'
 };
 var _showDrafts = false;

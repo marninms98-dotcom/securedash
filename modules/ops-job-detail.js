@@ -393,13 +393,13 @@ function renderJobPeek(data) {
 
   // Status actions + PO/Invoice buttons
   html += '<div style="margin-bottom:16px; display:flex; gap:6px; flex-wrap:wrap;">';
-  var nextStatuses = getNextStatuses(j.status);
+  var nextStatuses = getNextStatuses(j.status, j.type);
   nextStatuses.forEach(function(s) {
     html += '<button class="btn btn-secondary btn-sm" onclick="changeJobStatus(\'' + j.id + '\',\'' + s + '\')">' + STATUS_LABELS[s] + '</button>';
   });
   // PO and Invoice action buttons
   html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openPOModal(\'' + j.id + '\')" style="border-color:var(--sw-purple); color:var(--sw-purple);">+ PO</button>';
-  if (['accepted', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
+  if (['accepted', 'approvals', 'deposit', 'pre_build', 'quoted', 'scheduled', 'in_progress', 'complete'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="closeSlidePanel(); openUnifiedInvoiceModal(\'' + j.id + '\')" style="border-color:var(--sw-green); color:var(--sw-green);">+ Invoice</button>';
   }
   // Quick Quote shortcut: Accept & Create Deposit Invoice in one click
@@ -407,7 +407,7 @@ function renderJobPeek(data) {
     html += '<button class="btn btn-sm" onclick="acceptAndDepositQuickQuote(\'' + j.id + '\')" style="background:var(--sw-green); color:#fff; font-weight:600;">Accept &amp; Deposit</button>';
   }
   // Mark Lost — available for quoted/accepted/scheduled jobs
-  if (['quoted', 'accepted', 'scheduled'].indexOf(j.status) >= 0) {
+  if (['quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled'].indexOf(j.status) >= 0) {
     html += '<button class="btn btn-secondary btn-sm" onclick="markJobLost(\'' + j.id + '\')" style="border-color:var(--sw-red); color:var(--sw-red); margin-left:auto;">Mark Lost</button>';
   }
   html += '</div>';
@@ -1063,7 +1063,7 @@ function renderOverviewView(data) {
     html += '<span style="font-size:13px;flex:1;">' + a.icon + ' ' + a.message + '</span>';
     html += '<span style="font-size:11px;color:var(--sw-mid);">&#8594;</span></div>';
   });
-  var nextStatuses = getNextStatuses(j.status);
+  var nextStatuses = getNextStatuses(j.status, j.type);
   nextStatuses.forEach(function(s) {
     var color = s === 'cancelled' ? 'var(--sw-red)' : 'var(--sw-dark)';
     html += '<div style="background:var(--sw-light);padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:8px;border-left:3px solid ' + color + ';">';
@@ -3042,7 +3042,7 @@ function renderActionDrawer(data) {
     html += '<button class="jd-drawer-btn" onclick="showJobSubView(\'comms\')"><span class="icon">&#128172;</span> SMS</button>';
   }
   // Status change buttons
-  var nextStatuses = getNextStatuses(j.status);
+  var nextStatuses = getNextStatuses(j.status, j.type);
   nextStatuses.forEach(function(s) {
     var bgColor = s === 'cancelled' ? 'var(--sw-red)' : 'var(--sw-orange)';
     html += '<button class="jd-drawer-btn" style="border-color:' + bgColor + ';color:' + bgColor + ';" onclick="changeJobStatus(\'' + j.id + '\',\'' + s + '\')">' + (STATUS_LABELS[s] || s) + '</button>';
@@ -3179,7 +3179,7 @@ async function openJobQuickView(jobId) {
     // Footer
     var footerHtml = '';
     // Quick action buttons
-    var nextStatuses = getNextStatuses(j.status);
+    var nextStatuses = getNextStatuses(j.status, j.type);
     nextStatuses.forEach(function(s) {
       footerHtml += '<button class="btn btn-secondary btn-sm" onclick="closeQuickView();changeJobStatus(\'' + j.id + '\',\'' + s + '\')">' + (STATUS_LABELS[s] || s) + '</button>';
     });
@@ -3195,10 +3195,13 @@ function closeQuickView() {
   document.getElementById('jdQuickviewOverlay').classList.remove('open');
 }
 
-function getNextStatuses(current) {
+function getNextStatuses(current, jobType) {
   var transitions = {
     'quoted': ['accepted', 'cancelled'],
-    'accepted': ['scheduled'],
+    'accepted': jobType === 'fencing' ? ['deposit'] : ['approvals', 'deposit'],
+    'approvals': ['deposit'],
+    'deposit': ['pre_build'],
+    'pre_build': ['in_progress'],
     'scheduled': ['in_progress', 'cancelled'],
     'in_progress': ['complete', 'cancelled'],
     'complete': ['invoiced'],

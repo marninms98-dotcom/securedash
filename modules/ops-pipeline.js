@@ -59,8 +59,8 @@ function renderJobs(data) {
 
 function renderKanban(container, columns) {
   var order = _showDrafts
-    ? ['draft', 'quoted', 'accepted', 'scheduled', 'in_progress', 'complete', 'invoiced']
-    : ['quoted', 'accepted', 'scheduled', 'in_progress', 'complete', 'invoiced'];
+    ? ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled', 'in_progress', 'complete', 'invoiced']
+    : ['quoted', 'accepted', 'approvals', 'deposit', 'pre_build', 'scheduled', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -108,6 +108,22 @@ function renderKanban(container, columns) {
       }
       if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
       html += '</div>';
+      // Contextual info for new pipeline stages
+      if (status === 'approvals' && j.council_status) {
+        var cColor = j.council_status === 'complete' ? '#27AE60' : j.council_status === 'blocked' ? '#E74C3C' : '#3498DB';
+        html += '<div style="font-size:11px;color:' + cColor + ';margin-top:3px;">Council ' + (j.council_step || '') + '</div>';
+      }
+      if (status === 'deposit') {
+        var depPaid = j.deposit_invoice_id && j.deposit_amount;
+        html += '<div style="font-size:11px;color:' + (depPaid ? '#27AE60' : '#F39C12') + ';margin-top:3px;">' + (depPaid ? 'Deposit ' + fmt$(j.deposit_amount) + ' &#10003;' : 'Awaiting deposit') + '</div>';
+      }
+      if (status === 'pre_build') {
+        var readyBits = [];
+        if (j.assignment_count > 0) readyBits.push('Crew');
+        if (j.po_count > 0) readyBits.push('POs');
+        if (j.wo_count > 0) readyBits.push('WO');
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:3px;">' + (readyBits.length > 0 ? readyBits.join(' &#183; ') : 'Needs setup') + '</div>';
+      }
       var stale = j.days_in_stage > 14;
       html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
       html += '</div>';
@@ -129,9 +145,12 @@ function kanbanDragAllowed(fromStatus, toStatus) {
   var allowed = {
     'draft': ['quoted'],
     'quoted': ['accepted', 'cancelled'],
-    'accepted': ['quoted', 'scheduled'],
-    'scheduled': ['accepted', 'in_progress', 'cancelled'],
-    'in_progress': ['scheduled', 'complete', 'cancelled'],
+    'accepted': ['approvals', 'deposit', 'quoted'],
+    'approvals': ['deposit', 'accepted'],
+    'deposit': ['pre_build', 'approvals'],
+    'pre_build': ['in_progress', 'deposit'],
+    'scheduled': ['in_progress', 'pre_build', 'cancelled'],
+    'in_progress': ['complete', 'pre_build', 'cancelled'],
     'complete': ['in_progress', 'invoiced'],
     'invoiced': ['complete']
   };
