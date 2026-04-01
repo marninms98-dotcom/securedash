@@ -9389,7 +9389,7 @@
     if (_invRows.length === 0) {
       // Start with one blank row
       var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
-      _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0 });
+      _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0 });
     }
     renderInvoiceBuilder();
   };
@@ -9422,7 +9422,7 @@
       });
       if (_invRows.length === 0) {
         var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
-        _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0 });
+        _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0 });
       }
       renderInvoiceBuilder();
     }).catch(function(err) {
@@ -9515,12 +9515,29 @@
     }
 
     // Xero ref
-    if (inv.xero_bill_number) {
-      html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec)">Xero: ' + esc(inv.xero_bill_number) + '</div>';
+    if (inv.xero_bill_id) {
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec)">Synced to Xero</div>';
+    }
+
+    // Delete button (not for paid invoices)
+    if (inv.status !== 'paid') {
+      html += '<button class="btn btn-danger" style="width:100%;margin-top:16px" onclick="deleteTradeInvoice(\'' + inv.id + '\')">Delete Invoice</button>';
     }
 
     container.innerHTML = html;
   }
+
+  window.deleteTradeInvoice = function(invoiceId) {
+    showConfirm('Delete Invoice', 'This will permanently delete this invoice. If it was synced to Xero, the bookkeeper will need to delete the Xero bill separately.', 'Delete').then(function(ok) {
+      if (!ok) return;
+      api('delete_trade_invoice', null, { invoice_id: invoiceId }).then(function() {
+        toast('Invoice deleted');
+        openInvoiceHistory();
+      }).catch(function(err) {
+        toast('Failed: ' + friendlyError(err), true);
+      });
+    });
+  };
 
   function renderInvoiceHistory(invoices) {
     var container = document.getElementById('hoursContent');
@@ -9623,26 +9640,33 @@
     var i = row._idx;
     var h = '';
     var rowBg = row._source === 'clock' ? 'rgba(52,152,219,0.06)' : row._source === 'edited' ? 'rgba(241,90,41,0.06)' : '';
-    h += '<div class="inv-line" style="padding:8px 10px' + (rowBg ? ';background:' + rowBg : '') + '">';
-    // Line 1: Job + Division + Delete (+ optional date for misc rows)
+    h += '<div class="inv-line" style="padding:8px 10px;overflow:hidden' + (rowBg ? ';background:' + rowBg : '') + '">';
+
+    // Line 1: Job + Delete (+ optional date for misc rows)
     h += '<div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">';
     if (showDate) h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 110px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job #" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<select id="ir_div_' + i + '" style="flex:0 0 75px;padding:5px 2px;border:1px solid var(--sw-border);border-radius:6px;font-size:10px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
-    var divOpts = [['Patio','Patio'],['Fencing','Fence'],['Decking','Deck'],['Make Safe','M/Safe'],['General Labour','Gen']];
+    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job # or description" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 26px;height:26px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
+    h += '</div>';
+
+    // Line 2: Division (full width, prominent)
+    var noDivSelected = !row.division;
+    h += '<div style="margin-bottom:5px">';
+    h += '<select id="ir_div_' + i + '" style="width:100%;padding:6px 10px;border:2px solid ' + (noDivSelected ? 'var(--sw-orange)' : 'var(--sw-border)') + ';border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:' + (noDivSelected ? 'var(--sw-text-sec)' : 'var(--sw-dark)') + ';background:#fff;box-sizing:border-box">';
+    h += '<option value=""' + (noDivSelected ? ' selected' : '') + ' disabled>Select type of work...</option>';
+    var divOpts = [['Patio','Patio'],['Fencing','Fencing'],['Decking','Decking'],['Make Safe','Make Safe'],['General Labour','General Labour']];
     divOpts.forEach(function(dv) {
       h += '<option value="' + dv[0] + '"' + (row.division === dv[0] ? ' selected' : '') + '>' + dv[1] + '</option>';
     });
-    h += '</select>';
-    h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 26px;height:26px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
-    h += '</div>';
-    // Line 2: Description + Hours + Rate + Amount
-    h += '<div style="display:flex;gap:6px;align-items:center">';
-    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description" style="flex:2;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:0 0 50px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
-    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="Rate" oninput="invRowChanged(' + i + ')" style="flex:0 0 55px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '</select></div>';
+
+    // Line 3: Description + Hours + Rate + Amount
+    h += '<div style="display:flex;gap:5px;align-items:center">';
+    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description" style="flex:1;min-width:0;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:0 0 44px;padding:5px 3px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="$" oninput="invRowChanged(' + i + ')" style="flex:0 0 44px;padding:5px 3px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
     var amtDisplay = row.amount > 0 ? '$' + row.amount.toFixed(2) : '—';
-    h += '<div id="ir_amt_' + i + '" style="flex:0 0 65px;text-align:right;font-size:13px;font-weight:700;color:' + (row.amount > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + amtDisplay + '</div>';
+    h += '<div id="ir_amt_' + i + '" style="flex:0 0 52px;text-align:right;font-size:12px;font-weight:700;color:' + (row.amount > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + amtDisplay + '</div>';
     h += '</div></div>';
     return h;
   }
@@ -9651,14 +9675,14 @@
     _syncRowsFromDOM();
     var today = new Date().toISOString().slice(0, 10);
     var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
-    _invRows.push({ date: today, job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0, _misc: true });
+    _invRows.push({ date: today, job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0, _misc: true });
     renderInvoiceBuilder();
   };
 
   window.addInvRowForDay = function(dateStr) {
     _syncRowsFromDOM();
     var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
-    _invRows.push({ date: dateStr, job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0 });
+    _invRows.push({ date: dateStr, job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0 });
     renderInvoiceBuilder();
   };
 
@@ -9958,6 +9982,8 @@
     var isExpense = _invoiceBuilderMode === 'expense';
     var validRows = _invRows.filter(function(r) { return r.hours > 0 || r.description; });
     if (validRows.length === 0) { toast('Add at least one line item', true); return; }
+    var missingDiv = validRows.some(function(r) { return !r.division; });
+    if (missingDiv) { toast('Select the type of work for each line item', true); return; }
 
     var t = _calcInvTotals();
 
