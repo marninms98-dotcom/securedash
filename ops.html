@@ -5667,6 +5667,44 @@ function renderJobs(data) {
   }
 }
 
+// ── Sub-stage computation ──
+function computeSubStage(j, status) {
+  switch (status) {
+    case 'quoted':
+      return j.days_in_stage > 7 ? 'Following Up' : 'Quote Sent';
+    case 'accepted':
+      if (!j.deposit_invoice_id) return 'Create Invoice';
+      if (!j.deposit_amount) return 'Awaiting Deposit';
+      return 'Deposit Received';
+    case 'approvals':
+      if (!j.council_count) return 'Not Started';
+      if (j.council_status === 'complete') return 'Approved';
+      return 'Council ' + (j.council_step || 'In Progress');
+    case 'processing':
+      if (j.po_count === 0) return 'Order Materials';
+      if (j.assignment_count === 0) return 'Materials Ordered';
+      if (j.wo_count === 0) return 'Crew Assigned';
+      return 'Ready to Start';
+    case 'in_progress':
+      return 'On Site';
+    case 'complete':
+      if (!j.has_invoice) return 'Needs Invoice';
+      if (!j.invoice_paid) return 'Awaiting Payment';
+      return 'Get Sign-off';
+    default:
+      return null;
+  }
+}
+
+var SUB_STAGE_ORDER = {
+  quoted: ['Quote Sent', 'Following Up'],
+  accepted: ['Create Invoice', 'Awaiting Deposit', 'Deposit Received'],
+  approvals: null,
+  processing: ['Order Materials', 'Materials Ordered', 'Crew Assigned', 'Ready to Start'],
+  in_progress: ['On Site'],
+  complete: ['Needs Invoice', 'Awaiting Payment', 'Get Sign-off'],
+};
+
 function renderKanban(container, columns) {
   var order = _showDrafts
     ? ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced']
@@ -5675,38 +5713,134 @@ function renderKanban(container, columns) {
 
   order.forEach(function(status) {
     var jobs = columns[status] || [];
-    html += '<div class="kanban-col" data-status="' + status + '">';
+    html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
     html += '<div class="kanban-col-header">' + STATUS_LABELS[status] + '<span class="count">' + jobs.length + '</span></div>';
     html += '<div class="kanban-body">';
 
     if (jobs.length === 0) {
       html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">No jobs</div>';
+    } else {
+      // Group jobs by sub-stage
+      var groups = {};
+      var groupOrder = [];
+      jobs.forEach(function(j) {
+        var sub = computeSubStage(j, status) || 'Other';
+        if (!groups[sub]) { groups[sub] = []; groupOrder.push(sub); }
+        groups[sub].push(j);
+      });
+      var definedOrder = SUB_STAGE_ORDER[status];
+      if (definedOrder) {
+        groupOrder.sort(function(a, b) {
+          var ai = definedOrder.indexOf(a); if (ai < 0) ai = 999;
+          var bi = definedOrder.indexOf(b); if (bi < 0) bi = 999;
+          return ai - bi;
+        });
+      }
+      var lastIdx = groupOrder.length - 1;
+      groupOrder.forEach(function(subName, idx) {
+        var subJobs = groups[subName];
+        var isLast = idx === lastIdx;
+        var subColor = isLast ? '#27AE60' : 'var(--sw-text-sec)';
+        html += '<div class="kanban-substage-header" style="color:' + subColor + ';">';
+        html += subName + ' <span class="count">' + subJobs.length + '</span></div>';
+        subJobs.forEach(function(j) {
+          html += renderKanbanCard(j, status);
+        });
+      });
     }
-
-    jobs.forEach(function(j) {
-      html += '<div class="kanban-card" onclick="openJobQuickView(\'' + j.id + '\')">';
-      html += '<div class="kanban-card-header">';
-      html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
-      if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
-      html += '</div>';
-      html += '<div class="kanban-suburb">' + (j.site_suburb || '') + '</div>';
-      html += '<div class="kanban-meta">';
-      html += '<span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span>';
-      if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
-      if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
-      if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
-      if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
-      html += '</div>';
-      var stale = j.days_in_stage > 14;
-      html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
-      html += '</div>';
-    });
 
     html += '</div></div>';
   });
 
   html += '</div>';
   container.innerHTML = html;
+}
+
+function renderKanbanCard(j, status) {
+  var html = '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobQuickView(\'' + j.id + '\')" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
+  html += '<div class="kanban-card-header">';
+  html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
+  if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
+  html += '</div>';
+  html += '<div class="kanban-suburb">' + (j.site_suburb || '') + '</div>';
+  html += '<div class="kanban-meta">';
+  html += '<span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span>';
+  if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
+  if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
+  if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
+  if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
+  if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
+  html += '</div>';
+  var stale = j.days_in_stage > 14;
+  html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
+  html += '</div>';
+  return html;
+}
+
+/* ── Kanban drag-and-drop ── */
+var _kanbanDragJobId = null;
+var _kanbanDragFromStatus = null;
+
+function kanbanDragAllowed(fromStatus, toStatus) {
+  if (fromStatus === toStatus) return false;
+  var allowed = {
+    'draft': ['quoted'],
+    'quoted': ['accepted', 'cancelled'],
+    'accepted': ['approvals', 'processing'],
+    'approvals': ['processing', 'accepted'],
+    'processing': ['in_progress', 'approvals'],
+    'in_progress': ['complete', 'processing', 'cancelled'],
+    'complete': ['in_progress', 'invoiced'],
+    'invoiced': ['complete']
+  };
+  return (allowed[fromStatus] || []).indexOf(toStatus) !== -1;
+}
+
+function kanbanDragStart(e) {
+  var card = e.target.closest('.kanban-card');
+  _kanbanDragJobId = card.dataset.jobId;
+  _kanbanDragFromStatus = card.dataset.status;
+  card.style.opacity = '0.4';
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function kanbanDragEnd(e) {
+  e.target.closest('.kanban-card').style.opacity = '1';
+  _kanbanDragJobId = null;
+  _kanbanDragFromStatus = null;
+  document.querySelectorAll('.kanban-col').forEach(function(col) { col.style.outline = ''; });
+}
+
+function kanbanDragOver(e) {
+  e.preventDefault();
+  var col = e.target.closest('.kanban-col');
+  if (!col || !_kanbanDragFromStatus) return;
+  var toStatus = col.dataset.status;
+  if (kanbanDragAllowed(_kanbanDragFromStatus, toStatus)) {
+    col.style.outline = '2px solid var(--sw-orange)';
+    e.dataTransfer.dropEffect = 'move';
+  }
+}
+
+function kanbanDragLeave(e) {
+  var col = e.target.closest('.kanban-col');
+  if (col) col.style.outline = '';
+}
+
+async function kanbanDrop(e) {
+  e.preventDefault();
+  var col = e.target.closest('.kanban-col');
+  if (!col) return;
+  col.style.outline = '';
+  var toStatus = col.dataset.status;
+  if (!_kanbanDragJobId || !kanbanDragAllowed(_kanbanDragFromStatus, toStatus)) return;
+  try {
+    await opsPost('update_job_status', { jobId: _kanbanDragJobId, status: toStatus });
+    showToast('Job moved to ' + (STATUS_LABELS[toStatus] || toStatus), 'success');
+    loadJobs();
+  } catch (err) {
+    showToast('Failed to move job: ' + err.message, 'error');
+  }
 }
 
 function renderJobList(container, columns) {
