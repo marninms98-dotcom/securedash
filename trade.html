@@ -2428,8 +2428,8 @@
     <span class="nav-badge" id="scheduleBadge" style="display:none">0</span>
   </button>
   <button data-view="hours" onclick="showView('hours')">
-    <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-    Hours
+    <svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+    Financial
   </button>
   <button data-view="profile" onclick="showView('profile')">
     <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -8965,152 +8965,142 @@
       return;
     }
 
+    // ── Financial Hub — 3 big action buttons ──
+    var btnStyle = 'display:flex;align-items:center;gap:14px;width:100%;padding:18px 16px;background:var(--sw-card);border:1px solid var(--sw-border);border-radius:12px;cursor:pointer;text-align:left;font-family:var(--sw-font);box-shadow:var(--sw-shadow);margin-bottom:10px';
+    var iconStyle = 'flex:0 0 44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px';
     var html = '';
 
-    // Week navigator
-    html += '<div class="hours-week-nav">';
-    html += '  <button onclick="shiftWeek(-1)">&larr;</button>';
-    html += '  <div class="hours-week-label">' + formatWeekRange(data.week_ending) + '</div>';
-    html += '  <button onclick="shiftWeek(1)">&rarr;</button>';
+    html += '<div style="padding:8px 0 16px;text-align:center">';
+    html += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark)">Financial</div>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec)">Invoices, expenses & reimbursements</div>';
     html += '</div>';
 
-    // Totals card
-    html += '<div class="hours-totals">';
-    html += '  <div class="hours-totals-row"><span>Total Hours</span><span>' + data.total_hours.toFixed(2) + ' hrs</span></div>';
-    // Editable rate row — pre-filled from profile but user can adjust before submitting
-    html += '  <div class="hours-totals-row"><span>Rate</span><span style="display:flex;align-items:center;gap:4px">';
-    html += '    <span style="font-size:14px;color:var(--sw-mid)">$</span>';
-    html += '    <input type="number" id="hoursRateInput" step="0.01" min="0" value="' + (data.rate > 0 ? data.rate.toFixed(2) : '') + '" placeholder="0.00" style="width:70px;padding:4px 6px;border:1px solid var(--sw-border);border-radius:6px;font-size:14px;font-weight:600;color:var(--sw-dark);font-family:var(--sw-font);text-align:right" oninput="recalcHoursTotals()" />';
-    html += '    <span style="font-size:12px;color:var(--sw-text-sec)">/hr</span>';
-    html += '  </span></div>';
-    if (data.rate > 0) {
-      html += '  <div class="hours-totals-row" id="hoursSubtotalRow"><span>Subtotal</span><span>$' + data.subtotal.toFixed(2) + '</span></div>';
-      html += '  <div class="hours-totals-row" id="hoursGstRow"><span>GST (10%)</span><span>$' + data.gst.toFixed(2) + '</span></div>';
-      html += '  <div class="hours-totals-row grand" id="hoursTotalRow"><span>Total</span><span>$' + data.total.toFixed(2) + '</span></div>';
-    } else {
-      html += '  <div class="hours-totals-row" id="hoursSubtotalRow"><span>Subtotal</span><span>—</span></div>';
-      html += '  <div class="hours-totals-row" id="hoursGstRow"><span>GST (10%)</span><span>—</span></div>';
-      html += '  <div class="hours-totals-row grand" id="hoursTotalRow"><span>Total</span><span>—</span></div>';
-      html += '  <div style="font-size:11px;color:var(--sw-yellow);margin-top:4px">Enter your hourly rate above to see totals</div>';
-    }
-    html += '</div>';
+    // 1. Weekly Invoice
+    html += '<button onclick="openWeeklyInvoice()" style="' + btnStyle + '">';
+    html += '<div style="' + iconStyle + ';background:rgba(241,90,41,0.1)"><span style="font-size:22px">&#128203;</span></div>';
+    html += '<div><div style="font-size:15px;font-weight:700;color:var(--sw-dark)">Weekly Invoice</div>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec)">Process your hours & pay</div></div>';
+    html += '</button>';
 
-    // Assignments grouped by day
-    if (!data.assignments || data.assignments.length === 0) {
-      html += '<div class="hours-no-data">No completed hours this week</div>';
-    } else {
-      var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      var currentDay = '';
+    // 2. Company Expense
+    html += '<button onclick="openExpenseCapture(\'company_expense\')" style="' + btnStyle + '">';
+    html += '<div style="' + iconStyle + ';background:rgba(52,152,219,0.1)"><span style="font-size:22px">&#128451;</span></div>';
+    html += '<div><div style="font-size:15px;font-weight:700;color:var(--sw-dark)">Company Expense</div>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec)">Log a receipt or purchase</div></div>';
+    html += '</button>';
 
-      data.assignments.forEach(function(a) {
-        var d = new Date(a.scheduled_date + 'T00:00:00');
-        var dayLabel = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
-        if (dayLabel !== currentDay) {
-          currentDay = dayLabel;
-          html += '<div class="hours-day-header">' + dayLabel + '</div>';
-        }
+    // 3. Reimbursement
+    html += '<button onclick="openExpenseCapture(\'reimbursement\')" style="' + btnStyle + '">';
+    html += '<div style="' + iconStyle + ';background:rgba(39,174,96,0.1)"><span style="font-size:22px">&#128181;</span></div>';
+    html += '<div><div style="font-size:15px;font-weight:700;color:var(--sw-dark)">Reimbursement</div>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec)">Claim back out-of-pocket expenses</div></div>';
+    html += '</button>';
 
-        var job = a.jobs || {};
-        var jobNum = job.job_number || '';
-        var division = '';
-        if (jobNum.startsWith('SWP')) division = 'patio';
-        else if (jobNum.startsWith('SWF')) division = 'fencing';
-        else if (jobNum.startsWith('SWD')) division = 'decking';
-
-        // Use clocked_on/off if available, fall back to started_at/completed_at
-        var clockOnRaw = a.clocked_on_at || a.started_at;
-        var clockOffRaw = a.clocked_off_at || a.completed_at;
-        var startTime = clockOnRaw ? new Date(clockOnRaw).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
-        var endTime = clockOffRaw ? new Date(clockOffRaw).toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit', hour12:false}) : '?';
-        var breakMins = a.break_minutes || 0;
-        var netHours = a.hours_worked != null ? a.hours_worked : (a.hours || 0);
-        var rate = a.hourly_rate || data.rate || 0;
-        var lineAmount = netHours * rate;
-
-        html += '<div class="hours-row">';
-        html += '  <div class="hours-row-top">';
-        html += '    <div>';
-        html += '      <div class="hours-row-job">' + esc(jobNum) + ' · ' + esc(job.client_name || '') + '</div>';
-        html += '      <div class="hours-row-client">' + esc(job.site_suburb || job.site_address || '') + (division ? ' · ' + division : '') + '</div>';
-        html += '    </div>';
-        html += '    <div class="hours-row-amount">' + netHours.toFixed(2) + 'h';
-        if (rate > 0) html += ' · $' + lineAmount.toFixed(2);
-        html += '</div>';
-        html += '  </div>';
-        html += '  <div class="hours-row-time">' + startTime + ' – ' + endTime;
-        if (breakMins > 0) html += ' · Break: ' + breakMins + 'm';
-        html += ' · Net: ' + netHours.toFixed(2) + 'h';
-        html += '</div>';
-        if (rate > 0) {
-          html += '  <div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">Rate: $' + rate.toFixed(2) + '/hr · Amount: $' + lineAmount.toFixed(2) + '</div>';
-        }
-        if (a.manual_override_flag) {
-          html += '  <span style="display:inline-block;font-size:10px;background:#FEF3CD;color:#92400E;padding:2px 6px;border-radius:4px;margin-top:4px">Manual override</span>';
-        }
-        html += '</div>';
-      });
-    }
-
-    // Submit / invoice flow
-    if (data.already_submitted) {
-      html += '<div class="hours-submitted-pill">';
-      html += '  &#10003; Invoiced';
-      if (data.xero_bill_number) html += ' — ' + esc(data.xero_bill_number);
-      html += '</div>';
-    } else if (data.pending_verification) {
-      html += '<div style="text-align:center;padding:12px;background:#FEF3CD;border-radius:10px;margin-top:12px">';
-      html += '<div style="font-size:14px;font-weight:600;color:#92400E">Awaiting verification</div>';
-      html += '<div style="font-size:12px;color:#92400E;margin-top:4px">Your work order lead will review and approve these hours</div>';
-      html += '</div>';
-    } else if (data.assignments && data.assignments.length > 0) {
-      html += '<button class="hours-submit-btn" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
-    }
-
-    // Always show expense invoice option
-    html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:8px" onclick="openInvoiceBuilder({expenseOnly:true})">New Expense Invoice</button>';
-
-    // Lead verification inbox button (Tier 2+ / lead_installer role)
-    if (_user && (_user.role === 'lead_installer' || _userTier >= 2)) {
-      html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--sw-border)">';
-      html += '<button class="btn btn-secondary" style="width:100%;font-size:13px" onclick="openVerificationInbox()">Review Crew Hours</button>';
-      html += '</div>';
-    }
-
-    // Invoice history
+    // Recent activity
     html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--sw-border)">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
-    html += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark)">Recent Invoices</div>';
+    html += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark)">Recent Activity</div>';
     html += '<button class="btn btn-secondary btn-small" onclick="openInvoiceHistory()">View All</button>';
     html += '</div>';
-    html += '<div id="hoursInvoiceHistory"><div style="font-size:12px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div></div>';
+    html += '<div id="hoursRecentActivity"><div style="font-size:12px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div></div>';
     html += '</div>';
 
     container.innerHTML = html;
 
-    // Load recent invoices inline
+    // Load recent invoices async
     api('my_trade_invoices').then(function(res) {
-      var el = document.getElementById('hoursInvoiceHistory');
+      var el = document.getElementById('hoursRecentActivity');
       if (!el) return;
       var invoices = (res.invoices || []).slice(0, 3);
-      if (invoices.length === 0) { el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No invoices yet</div>'; return; }
+      if (invoices.length === 0) { el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No activity yet</div>'; return; }
       var ih = '';
       invoices.forEach(function(inv) {
         var statusCls = (inv.status || 'draft').replace(/ /g, '_');
         var label = (inv.status || 'draft').replace(/_/g, ' ');
-        ih += '<div class="inv-history-item">';
-        ih += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">Week ending ' + formatDateShort(inv.week_ending) + '</div>';
-        ih += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.xero_bill_number || 'Pending') + '</div></div>';
+        var dateLabel = inv.week_ending ? 'Week ending ' + formatDateShort(inv.week_ending) : (inv.invoice_number || 'Invoice');
+        var onclick = inv.status === 'draft' ? 'openInvoiceDraft(\'' + inv.id + '\')' : 'viewInvoiceDetail(\'' + inv.id + '\')';
+        ih += '<div class="inv-history-item" onclick="' + onclick + '">';
+        ih += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + dateLabel + '</div>';
+        ih += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.invoice_number || inv.xero_bill_number || '') + '</div></div>';
         ih += '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(inv.total || 0).toFixed(2) + '</div>';
         ih += '<span class="inv-status ' + statusCls + '">' + label + '</span></div>';
         ih += '</div>';
       });
       el.innerHTML = ih;
     }).catch(function() {
-      var el = document.getElementById('hoursInvoiceHistory');
-      if (el) el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec)">Could not load invoices</div>';
+      var el = document.getElementById('hoursRecentActivity');
+      if (el) el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec)">Could not load activity</div>';
     });
   }
+
+  // ── Weekly Invoice — week picker then invoice builder ──
+  window.openWeeklyInvoice = function() {
+    var container = document.getElementById('hoursContent');
+    if (!_hoursWeekEnd) _hoursWeekEnd = getWeekEndSunday(0);
+    var html = '';
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">Weekly Invoice</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
+    html += '</div>';
+
+    html += '<div style="text-align:center;padding:20px 0">';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px">Select the week to invoice</div>';
+    html += '<div class="hours-week-nav">';
+    html += '<button onclick="shiftInvoiceWeek(-1)">&larr;</button>';
+    html += '<div class="hours-week-label" id="invoiceWeekLabel">' + formatWeekRange(_hoursWeekEnd) + '</div>';
+    html += '<button onclick="shiftInvoiceWeek(1)">&rarr;</button>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '<button class="hours-submit-btn" onclick="loadAndOpenInvoice()">Continue</button>';
+    container.innerHTML = html;
+  };
+
+  window.shiftInvoiceWeek = function(dir) {
+    if (!_hoursWeekEnd) return;
+    var d = new Date(_hoursWeekEnd + 'T00:00:00');
+    d.setDate(d.getDate() + dir * 7);
+    _hoursWeekEnd = awstDateStr(d);
+    // Compute Monday
+    var sunDate = new Date(_hoursWeekEnd + 'T00:00:00');
+    var monDate = new Date(sunDate);
+    monDate.setDate(monDate.getDate() - 6);
+    _hoursWeekStart = awstDateStr(monDate);
+    var label = document.getElementById('invoiceWeekLabel');
+    if (label) label.textContent = formatWeekRange(_hoursWeekEnd);
+  };
+
+  window.loadAndOpenInvoice = function() {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading hours...</div>';
+    // Compute week start
+    var sunDate = new Date(_hoursWeekEnd + 'T00:00:00');
+    var monDate = new Date(sunDate);
+    monDate.setDate(monDate.getDate() - 6);
+    _hoursWeekStart = awstDateStr(monDate);
+
+    api('my_hours', { week_ending: _hoursWeekEnd }).then(function(data) {
+      _hoursData = data;
+      _tradeRate = data.rate;
+      openInvoiceBuilder();
+    }).catch(function(err) {
+      toast('Failed to load hours: ' + friendlyError(err), true);
+      loadHoursView();
+    });
+  };
+
+  // ── Expense Capture (company expense or reimbursement) ──
+  window.openExpenseCapture = function(expenseType) {
+    _expenseIsGeneral = true;
+    _expenseJobId = null;
+    _expenseState = 'capture';
+    _expensePhotoUrl = null;
+    _expenseExtraction = null;
+    _expenseId = null;
+    _expenseType = expenseType || 'company_expense';
+    renderExpenseStep();
+  };
 
   window.shiftWeek = shiftWeek;
 
@@ -9615,6 +9605,8 @@
     _invRows[idx].hours = h;
     _invRows[idx].rate = r;
     _invRows[idx].amount = amt;
+    // Mark clock rows as edited if user changes values
+    if (_invRows[idx]._source === 'clock') _invRows[idx]._source = 'edited';
     var ae = document.getElementById('ir_amt_' + idx);
     if (ae) { ae.textContent = amt > 0 ? '$' + amt.toFixed(2) : '—'; ae.style.color = amt > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)'; }
     _updateInvTotals();
@@ -9629,7 +9621,8 @@
   function _renderInvRow(row, showDate) {
     var i = row._idx;
     var h = '';
-    h += '<div class="inv-line" style="padding:8px 10px">';
+    var rowBg = row._source === 'clock' ? 'rgba(52,152,219,0.06)' : row._source === 'edited' ? 'rgba(241,90,41,0.06)' : '';
+    h += '<div class="inv-line" style="padding:8px 10px' + (rowBg ? ';background:' + rowBg : '') + '">';
     // Line 1: Job + Division + Delete (+ optional date for misc rows)
     h += '<div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">';
     if (showDate) h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 110px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
@@ -9706,7 +9699,8 @@
         division: _divFromJobNum(jn),
         hours: h,
         rate: a.hourly_rate || rate,
-        amount: Math.round(h * (a.hourly_rate || rate) * 100) / 100
+        amount: Math.round(h * (a.hourly_rate || rate) * 100) / 100,
+        _source: 'clock'
       });
     });
   }
@@ -13848,6 +13842,7 @@
   var _expenseIsGeneral = false;
   var _expensePhotoUrl = null;
   var _expenseExtraction = null;
+  var _expenseType = 'company_expense'; // 'company_expense' or 'reimbursement'
   var _expenseId = null;
 
   window.openExpenseOverlay = function(jobId) {
