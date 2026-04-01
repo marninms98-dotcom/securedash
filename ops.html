@@ -3073,6 +3073,32 @@
   </div>
 </div>
 
+<!-- Invoice Preview Modal -->
+<div class="modal-overlay" id="invoicePreviewModal">
+  <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-title" id="invPreviewTitle">Invoice Preview</div>
+    <div id="invPreviewBody" style="font-size:13px;"></div>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:6px;">
+      <button class="btn btn-secondary" onclick="closeModal('invoicePreviewModal')">Close</button>
+      <a id="invPreviewXeroLink" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;">Open in Xero &#8599;</a>
+      <button id="invPreviewJobBtn" class="btn btn-secondary" style="display:none;" onclick="">View Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quote Preview Modal -->
+<div class="modal-overlay" id="quotePreviewModal">
+  <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-title" id="quotePreviewTitle">Quote Preview</div>
+    <div id="quotePreviewBody" style="font-size:13px;"></div>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:6px;">
+      <button class="btn btn-secondary" onclick="closeModal('quotePreviewModal')">Close</button>
+      <a id="quotePreviewPdfLink" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;">View Quote PDF &#8599;</a>
+      <button id="quotePreviewJobBtn" class="btn btn-secondary" style="display:none;" onclick="">View Job</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ JAVASCRIPT ══════════ -->
 <script>
 // ════════════════════════════════════════════════════════════
