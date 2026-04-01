@@ -9567,13 +9567,16 @@
 
   function _syncRowsFromDOM() {
     _invRows.forEach(function(row, i) {
-      var d = document.getElementById('ir_date_' + i);
+      // Only misc rows have a date input — weekly rows get date from day group
+      if (row._misc) {
+        var d = document.getElementById('ir_date_' + i);
+        if (d) row.date = d.value;
+      }
       var j = document.getElementById('ir_job_' + i);
       var desc = document.getElementById('ir_desc_' + i);
       var div = document.getElementById('ir_div_' + i);
       var h = document.getElementById('ir_hrs_' + i);
       var r = document.getElementById('ir_rate_' + i);
-      if (d) row.date = d.value;
       if (j) row.job_text = j.value;
       if (desc) row.description = desc.value;
       if (div) row.division = div.value;
@@ -9623,32 +9626,27 @@
     _updateInvTotals();
   };
 
-  function _renderInvRow(row) {
+  function _renderInvRow(row, showDate) {
     var i = row._idx;
     var h = '';
-    h += '<div class="inv-line" style="padding:10px">';
-    // Row 1: Date + Job + Delete
-    h += '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">';
-    h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 115px;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job # or misc" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 28px;height:28px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
-    h += '</div>';
-    // Row 2: Description + Division
-    h += '<div style="display:flex;gap:6px;margin-bottom:6px">';
-    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description of work" style="flex:2;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<select id="ir_div_' + i + '" style="flex:1;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
+    h += '<div class="inv-line" style="padding:8px 10px">';
+    // Line 1: Job + Division + Delete (+ optional date for misc rows)
+    h += '<div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">';
+    if (showDate) h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 110px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job #" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<select id="ir_div_' + i + '" style="flex:0 0 90px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
     ['Patio', 'Fencing', 'Decking', 'Make Safe', 'General Labour'].forEach(function(d) {
       h += '<option' + (row.division === d ? ' selected' : '') + '>' + d + '</option>';
     });
-    h += '</select></div>';
-    // Row 3: Hours + Rate + Amount
+    h += '</select>';
+    h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 26px;height:26px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
+    h += '</div>';
+    // Line 2: Description + Hours + Rate + Amount
     h += '<div style="display:flex;gap:6px;align-items:center">';
-    h += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Hours</div>';
-    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
-    h += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Rate ($/hr)</div>';
-    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
-    h += '<div style="flex:1;text-align:right"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Amount</div>';
-    h += '<div id="ir_amt_' + i + '" style="font-size:14px;font-weight:700;color:var(--sw-dark);padding:6px 0">$' + (row.amount || 0).toFixed(2) + '</div></div>';
+    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description" style="flex:2;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:0 0 50px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="Rate" oninput="invRowChanged(' + i + ')" style="flex:0 0 55px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
+    h += '<div id="ir_amt_' + i + '" style="flex:0 0 65px;text-align:right;font-size:13px;font-weight:700;color:var(--sw-dark)">$' + (row.amount || 0).toFixed(2) + '</div>';
     h += '</div></div>';
     return h;
   }
@@ -9778,48 +9776,61 @@
       html += '</div>';
     }
 
-    // ── Day-grouped line items ──
+    // ── 7-Day Timesheet (Mon–Sun) ──
     html += '<div class="inv-section-label" style="margin-top:16px">Your Hours</div>';
 
     var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var shortDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-    // Group rows by date (weekly rows only — misc rows go to bottom section)
-    var dayGroups = {};
+    // Build Mon–Sun dates for the week
+    var weekStart = _hoursWeekStart || new Date().toISOString().slice(0, 10);
+    var monDate = new Date(weekStart + 'T00:00:00');
+    // Ensure monDate is Monday
+    while (monDate.getDay() !== 1) monDate.setDate(monDate.getDate() - 1);
+
+    var weekDates = [];
+    for (var wd = 0; wd < 7; wd++) {
+      var dd = new Date(monDate);
+      dd.setDate(dd.getDate() + wd);
+      weekDates.push(dd.toISOString().slice(0, 10));
+    }
+
+    // Index rows by date, separate misc rows
+    var dayRowMap = {};
     var miscRows = [];
     _invRows.forEach(function(row, i) {
       row._idx = i;
       if (row._misc) { miscRows.push(row); return; }
-      var dk = row.date || 'nodate';
-      if (!dayGroups[dk]) dayGroups[dk] = [];
-      dayGroups[dk].push(row);
+      var dk = row.date || '';
+      if (!dayRowMap[dk]) dayRowMap[dk] = [];
+      dayRowMap[dk].push(row);
     });
 
-    // Sort day keys
-    var dayKeys = Object.keys(dayGroups).sort();
-    if (dayKeys.length === 0 && miscRows.length === 0) {
-      html += '<div style="text-align:center;padding:16px;font-size:13px;color:var(--sw-text-sec)">No hours — add rows below</div>';
-    }
-
-    dayKeys.forEach(function(dk) {
-      var rows = dayGroups[dk];
-      var d = new Date(dk + 'T00:00:00');
+    // Render each day Mon→Sun
+    weekDates.forEach(function(dateStr) {
+      var d = new Date(dateStr + 'T00:00:00');
       var dayLabel = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
-      html += '<div class="hours-day-header">' + dayLabel + '</div>';
+      var rows = dayRowMap[dateStr] || [];
+      var hasRows = rows.length > 0;
+
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:' + (hasRows ? '12' : '6') + 'px;margin-bottom:4px">';
+      html += '<div class="hours-day-header" style="margin:0">' + dayLabel + '</div>';
+      if (!hasRows) html += '<span style="font-size:11px;color:var(--sw-text-sec)">No hours</span>';
+      html += '</div>';
 
       rows.forEach(function(row) {
-        html += _renderInvRow(row);
+        html += _renderInvRow(row, false);
       });
 
-      // Add row for this day
-      html += '<button class="inv-add-btn" style="font-size:12px;padding:8px;margin-bottom:12px" onclick="addInvRowForDay(\'' + dk + '\')">+ Add row for ' + dayNames[d.getDay()] + '</button>';
+      html += '<button class="inv-add-btn" style="font-size:11px;padding:6px;margin-bottom:4px" onclick="addInvRowForDay(\'' + dateStr + '\')">+ ' + shortDays[d.getDay()] + '</button>';
     });
 
     // ── Additional / Miscellaneous ──
     html += '<div class="inv-section-label" style="margin-top:16px">Additional / Miscellaneous</div>';
     if (miscRows.length > 0) {
       miscRows.forEach(function(row) {
-        html += _renderInvRow(row);
+        html += _renderInvRow(row, true);
       });
     }
     html += '<button class="inv-add-btn" onclick="addInvRow()">+ Add Misc Row</button>';
