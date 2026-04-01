@@ -9616,7 +9616,7 @@
     _invRows[idx].rate = r;
     _invRows[idx].amount = amt;
     var ae = document.getElementById('ir_amt_' + idx);
-    if (ae) ae.textContent = '$' + amt.toFixed(2);
+    if (ae) { ae.textContent = amt > 0 ? '$' + amt.toFixed(2) : '—'; ae.style.color = amt > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)'; }
     _updateInvTotals();
   };
 
@@ -9634,9 +9634,10 @@
     h += '<div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">';
     if (showDate) h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 110px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
     h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job #" style="flex:1;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-    h += '<select id="ir_div_' + i + '" style="flex:0 0 90px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
-    ['Patio', 'Fencing', 'Decking', 'Make Safe', 'General Labour'].forEach(function(d) {
-      h += '<option' + (row.division === d ? ' selected' : '') + '>' + d + '</option>';
+    h += '<select id="ir_div_' + i + '" style="flex:0 0 75px;padding:5px 2px;border:1px solid var(--sw-border);border-radius:6px;font-size:10px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
+    var divOpts = [['Patio','Patio'],['Fencing','Fence'],['Decking','Deck'],['Make Safe','M/Safe'],['General Labour','Gen']];
+    divOpts.forEach(function(dv) {
+      h += '<option value="' + dv[0] + '"' + (row.division === dv[0] ? ' selected' : '') + '>' + dv[1] + '</option>';
     });
     h += '</select>';
     h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 26px;height:26px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
@@ -9646,7 +9647,8 @@
     h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description" style="flex:2;padding:5px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
     h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="Hrs" oninput="invRowChanged(' + i + ')" style="flex:0 0 50px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
     h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="Rate" oninput="invRowChanged(' + i + ')" style="flex:0 0 55px;padding:5px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box;text-align:center">';
-    h += '<div id="ir_amt_' + i + '" style="flex:0 0 65px;text-align:right;font-size:13px;font-weight:700;color:var(--sw-dark)">$' + (row.amount || 0).toFixed(2) + '</div>';
+    var amtDisplay = row.amount > 0 ? '$' + row.amount.toFixed(2) : '—';
+    h += '<div id="ir_amt_' + i + '" style="flex:0 0 65px;text-align:right;font-size:13px;font-weight:700;color:' + (row.amount > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)') + '">' + amtDisplay + '</div>';
     h += '</div></div>';
     return h;
   }
@@ -9785,9 +9787,11 @@
 
     // Build Mon–Sun dates for the week
     var weekStart = _hoursWeekStart || new Date().toISOString().slice(0, 10);
-    var monDate = new Date(weekStart + 'T00:00:00');
-    // Ensure monDate is Monday
-    while (monDate.getDay() !== 1) monDate.setDate(monDate.getDate() - 1);
+    var monDate = new Date(weekStart + 'T12:00:00'); // noon to avoid DST edge cases
+    // Ensure monDate is Monday (getDay: 0=Sun, 1=Mon, ..., 6=Sat)
+    var dayOfWeek = monDate.getDay();
+    var daysToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Sun→-6, Mon→0, Tue→-1, etc.
+    monDate.setDate(monDate.getDate() + daysToMon);
 
     var weekDates = [];
     for (var wd = 0; wd < 7; wd++) {
@@ -9810,20 +9814,24 @@
     // Render each day Mon→Sun
     weekDates.forEach(function(dateStr) {
       var d = new Date(dateStr + 'T00:00:00');
-      var dayLabel = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+      var dayLabel = shortDays[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
       var rows = dayRowMap[dateStr] || [];
       var hasRows = rows.length > 0;
 
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:' + (hasRows ? '12' : '6') + 'px;margin-bottom:4px">';
-      html += '<div class="hours-day-header" style="margin:0">' + dayLabel + '</div>';
-      if (!hasRows) html += '<span style="font-size:11px;color:var(--sw-text-sec)">No hours</span>';
-      html += '</div>';
-
-      rows.forEach(function(row) {
-        html += _renderInvRow(row, false);
-      });
-
-      html += '<button class="inv-add-btn" style="font-size:11px;padding:6px;margin-bottom:4px" onclick="addInvRowForDay(\'' + dateStr + '\')">+ ' + shortDays[d.getDay()] + '</button>';
+      if (hasRows) {
+        // Day with data — full header + rows + add button
+        html += '<div class="hours-day-header" style="margin-top:12px;margin-bottom:4px">' + dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + '</div>';
+        rows.forEach(function(row) {
+          html += _renderInvRow(row, false);
+        });
+        html += '<button class="inv-add-btn" style="font-size:11px;padding:5px;margin-bottom:2px" onclick="addInvRowForDay(\'' + dateStr + '\')">+ Add</button>';
+      } else {
+        // Empty day — compact single line with inline add
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--sw-border)">';
+        html += '<span style="font-size:12px;font-weight:600;color:var(--sw-mid)">' + dayLabel + '</span>';
+        html += '<button onclick="addInvRowForDay(\'' + dateStr + '\')" style="font-size:11px;padding:3px 10px;background:none;border:1px dashed var(--sw-border);border-radius:6px;color:var(--sw-mid);cursor:pointer">+ Add</button>';
+        html += '</div>';
+      }
     });
 
     // ── Additional / Miscellaneous ──
