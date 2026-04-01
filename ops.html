@@ -839,6 +839,20 @@
       margin-top: 4px;
     }
     .kanban-days.stale { color: var(--sw-red); font-weight: 600; }
+    .kanban-substage-header {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 10px 4px;
+      margin-top: 4px;
+      border-bottom: 1px dashed var(--sw-border, #ddd);
+    }
+    .kanban-substage-header .count {
+      font-weight: 400;
+      opacity: 0.6;
+      margin-left: 4px;
+    }
     .kanban-ghl-link {
       font-size: 12px; color: var(--sw-text-sec); text-decoration: none;
       padding: 2px 4px; border-radius: 4px; margin-left: auto;
@@ -5655,8 +5669,8 @@ function renderJobs(data) {
 
 function renderKanban(container, columns) {
   var order = _showDrafts
-    ? ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced']
-    : ['quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced'];
+    ? ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced']
+    : ['quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -8460,9 +8474,8 @@ function closeQuickView() {
 function getNextStatuses(current, jobType) {
   var transitions = {
     'quoted': ['accepted', 'cancelled'],
-    'accepted': jobType === 'fencing' ? ['deposit'] : ['approvals', 'deposit'],
-    'approvals': ['deposit'],
-    'deposit': ['processing'],
+    'accepted': jobType === 'fencing' ? ['processing'] : ['approvals', 'processing'],
+    'approvals': ['processing'],
     'processing': ['in_progress'],
     'scheduled': ['in_progress', 'cancelled'],
     'in_progress': ['complete', 'cancelled'],

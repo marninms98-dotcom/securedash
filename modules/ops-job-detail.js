@@ -3437,9 +3437,8 @@ function closeQuickView() {
 function getNextStatuses(current, jobType) {
   var transitions = {
     'quoted': ['accepted', 'cancelled'],
-    'accepted': jobType === 'fencing' ? ['deposit'] : ['approvals', 'deposit'],
-    'approvals': ['deposit'],
-    'deposit': ['processing'],
+    'accepted': jobType === 'fencing' ? ['processing'] : ['approvals', 'processing'],
+    'approvals': ['processing'],
     'processing': ['in_progress'],
     'scheduled': ['in_progress', 'cancelled'],
     'in_progress': ['complete', 'cancelled'],

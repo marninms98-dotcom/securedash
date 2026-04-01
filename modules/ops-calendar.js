@@ -93,10 +93,10 @@ async function loadCalendar() {
     _calDeliveries = data.deliveries || [];
     _calReadiness = data.readiness || {};
 
-    // Extract unscheduled jobs (accepted/approvals/deposit/processing — jobs needing scheduling)
+    // Extract unscheduled jobs (accepted/approvals/processing — jobs needing scheduling)
     if (results[1]) {
       var cols = results[1].columns || {};
-      _unschedJobs = [].concat(cols.accepted || [], cols.approvals || [], cols.deposit || [], cols.processing || []);
+      _unschedJobs = [].concat(cols.accepted || [], cols.approvals || [], cols.processing || []);
     }
 
     // Parse crew availability → keyed by "CrewName_date"

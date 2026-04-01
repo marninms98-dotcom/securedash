@@ -57,10 +57,50 @@ function renderJobs(data) {
   }
 }
 
+// ── Sub-stage computation ──
+// Returns a sub-stage label for a job based on its data, used to group cards within a column
+function computeSubStage(j, status) {
+  switch (status) {
+    case 'quoted':
+      return j.days_in_stage > 7 ? 'Following Up' : 'Quote Sent';
+    case 'accepted':
+      if (!j.deposit_invoice_id) return 'Create Invoice';
+      if (!j.deposit_amount) return 'Awaiting Deposit';
+      return 'Deposit Received';
+    case 'approvals':
+      if (!j.council_count) return 'Not Started';
+      if (j.council_status === 'complete') return 'Approved';
+      return 'Council ' + (j.council_step || 'In Progress');
+    case 'processing':
+      if (j.po_count === 0) return 'Order Materials';
+      if (j.assignment_count === 0) return 'Materials Ordered';
+      if (j.wo_count === 0) return 'Crew Assigned';
+      return 'Ready to Start';
+    case 'in_progress':
+      return 'On Site';
+    case 'complete':
+      if (!j.has_invoice) return 'Needs Invoice';
+      if (!j.invoice_paid) return 'Awaiting Payment';
+      return 'Get Sign-off';
+    default:
+      return null;
+  }
+}
+
+// Sub-stage ordering per column (top = earliest, bottom = most progressed)
+var SUB_STAGE_ORDER = {
+  quoted: ['Quote Sent', 'Following Up'],
+  accepted: ['Create Invoice', 'Awaiting Deposit', 'Deposit Received'],
+  approvals: null, // dynamic — sort alphabetically
+  processing: ['Order Materials', 'Materials Ordered', 'Crew Assigned', 'Ready to Start'],
+  in_progress: ['On Site'],
+  complete: ['Needs Invoice', 'Awaiting Payment', 'Get Sign-off'],
+};
+
 function renderKanban(container, columns) {
   var order = _showDrafts
-    ? ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced']
-    : ['quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced'];
+    ? ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced']
+    : ['quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -71,69 +111,84 @@ function renderKanban(container, columns) {
 
     if (jobs.length === 0) {
       html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">No jobs</div>';
+    } else {
+      // Group jobs by sub-stage
+      var groups = {};
+      var groupOrder = [];
+      jobs.forEach(function(j) {
+        var sub = computeSubStage(j, status) || 'Other';
+        if (!groups[sub]) { groups[sub] = []; groupOrder.push(sub); }
+        groups[sub].push(j);
+      });
+      // Sort groups by defined order if available
+      var definedOrder = SUB_STAGE_ORDER[status];
+      if (definedOrder) {
+        groupOrder.sort(function(a, b) {
+          var ai = definedOrder.indexOf(a); if (ai < 0) ai = 999;
+          var bi = definedOrder.indexOf(b); if (bi < 0) bi = 999;
+          return ai - bi;
+        });
+      }
+      // Render sub-stage groups
+      var lastIdx = groupOrder.length - 1;
+      groupOrder.forEach(function(subName, idx) {
+        var subJobs = groups[subName];
+        var isLast = idx === lastIdx;
+        var subColor = isLast ? '#27AE60' : 'var(--sw-text-sec)';
+        html += '<div class="kanban-substage-header" style="color:' + subColor + ';">';
+        html += subName + ' <span class="count">' + subJobs.length + '</span></div>';
+        subJobs.forEach(function(j) {
+          html += renderKanbanCard(j, status);
+        });
+      });
     }
-
-    jobs.forEach(function(j) {
-      html += '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobQuickView(\'' + j.id + '\')" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
-      html += '<div class="kanban-card-header">';
-      html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
-      if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
-      html += '</div>';
-      html += '<div class="kanban-suburb">' + (j.site_suburb || '') + '</div>';
-      html += '<div class="kanban-meta">';
-      html += '<span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span>';
-      if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
-      if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
-      if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
-      if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
-      // Quick quote status badge
-      if (j.type === 'miscellaneous' && j.pricing_json) {
-        try {
-          var pjm = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
-          if (pjm.source === 'quick_quote') {
-            var qqs = j.status === 'invoiced' ? 'invoiced' : j.status === 'accepted' ? 'accepted' : j.quoted_at ? 'sent' : 'draft';
-            var qqc = { draft: '#95A5A6', sent: '#3498DB', accepted: '#E67E22', invoiced: '#27AE60' };
-            html += '<span class="kanban-meta-badge" style="background:' + (qqc[qqs] || '#999') + '20;color:' + (qqc[qqs] || '#999') + ';">Q:' + qqs + '</span>';
-          }
-        } catch(e) {}
-      }
-      // Multi-run fencing badge (static count from pricing_json, no extra query)
-      if (j.type === 'fencing' && j.pricing_json) {
-        try {
-          var pjk = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
-          if (pjk.runs && pjk.runs.length > 1) {
-            html += '<span class="kanban-meta-badge" style="background:rgba(241,90,41,0.1);color:var(--sw-orange);">' + pjk.runs.length + ' runs</span>';
-          }
-        } catch(e) {}
-      }
-      if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
-      html += '</div>';
-      // Contextual info for new pipeline stages
-      if (status === 'approvals' && j.council_status) {
-        var cColor = j.council_status === 'complete' ? '#27AE60' : j.council_status === 'blocked' ? '#E74C3C' : '#3498DB';
-        html += '<div style="font-size:11px;color:' + cColor + ';margin-top:3px;">Council ' + (j.council_step || '') + '</div>';
-      }
-      if (status === 'deposit') {
-        var depPaid = j.deposit_invoice_id && j.deposit_amount;
-        html += '<div style="font-size:11px;color:' + (depPaid ? '#27AE60' : '#F39C12') + ';margin-top:3px;">' + (depPaid ? 'Deposit ' + fmt$(j.deposit_amount) + ' &#10003;' : 'Awaiting deposit') + '</div>';
-      }
-      if (status === 'processing') {
-        var readyBits = [];
-        if (j.assignment_count > 0) readyBits.push('Crew');
-        if (j.po_count > 0) readyBits.push('POs');
-        if (j.wo_count > 0) readyBits.push('WO');
-        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:3px;">' + (readyBits.length > 0 ? readyBits.join(' &#183; ') : 'Needs setup') + '</div>';
-      }
-      var stale = j.days_in_stage > 14;
-      html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
-      html += '</div>';
-    });
 
     html += '</div></div>';
   });
 
   html += '</div>';
   container.innerHTML = html;
+}
+
+function renderKanbanCard(j, status) {
+  var html = '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobQuickView(\'' + j.id + '\')" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
+  html += '<div class="kanban-card-header">';
+  html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
+  if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
+  html += '</div>';
+  html += '<div class="kanban-suburb">' + (j.site_suburb || '') + '</div>';
+  html += '<div class="kanban-meta">';
+  html += '<span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span>';
+  if (j.assignment_count > 0) html += '<span class="kanban-meta-badge">' + j.assignment_count + ' sched</span>';
+  if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
+  if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
+  if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
+  // Quick quote status badge
+  if (j.type === 'miscellaneous' && j.pricing_json) {
+    try {
+      var pjm = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
+      if (pjm.source === 'quick_quote') {
+        var qqs = j.status === 'invoiced' ? 'invoiced' : j.status === 'accepted' ? 'accepted' : j.quoted_at ? 'sent' : 'draft';
+        var qqc = { draft: '#95A5A6', sent: '#3498DB', accepted: '#E67E22', invoiced: '#27AE60' };
+        html += '<span class="kanban-meta-badge" style="background:' + (qqc[qqs] || '#999') + '20;color:' + (qqc[qqs] || '#999') + ';">Q:' + qqs + '</span>';
+      }
+    } catch(e) {}
+  }
+  // Multi-run fencing badge
+  if (j.type === 'fencing' && j.pricing_json) {
+    try {
+      var pjk = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json;
+      if (pjk.runs && pjk.runs.length > 1) {
+        html += '<span class="kanban-meta-badge" style="background:rgba(241,90,41,0.1);color:var(--sw-orange);">' + pjk.runs.length + ' runs</span>';
+      }
+    } catch(e) {}
+  }
+  if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
+  html += '</div>';
+  var stale = j.days_in_stage > 14;
+  html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
+  html += '</div>';
+  return html;
 }
 
 /* ── Kanban drag-and-drop ── */
@@ -145,11 +200,9 @@ function kanbanDragAllowed(fromStatus, toStatus) {
   var allowed = {
     'draft': ['quoted'],
     'quoted': ['accepted', 'cancelled'],
-    'accepted': ['approvals', 'deposit', 'quoted'],
-    'approvals': ['deposit', 'accepted'],
-    'deposit': ['processing', 'approvals'],
-    'processing': ['in_progress', 'deposit'],
-    'scheduled': ['in_progress', 'processing', 'cancelled'],
+    'accepted': ['approvals', 'processing'],
+    'approvals': ['processing', 'accepted'],
+    'processing': ['in_progress', 'approvals'],
     'in_progress': ['complete', 'processing', 'cancelled'],
     'complete': ['in_progress', 'invoiced'],
     'invoiced': ['complete']
