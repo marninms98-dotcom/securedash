@@ -9052,10 +9052,10 @@
       });
     }
 
-    // Submit / verification flow
+    // Submit / invoice flow
     if (data.already_submitted) {
       html += '<div class="hours-submitted-pill">';
-      html += '  &#10003; Submitted to Xero';
+      html += '  &#10003; Invoiced';
       if (data.xero_bill_number) html += ' — ' + esc(data.xero_bill_number);
       html += '</div>';
     } else if (data.pending_verification) {
@@ -9063,19 +9063,12 @@
       html += '<div style="font-size:14px;font-weight:600;color:#92400E">Awaiting verification</div>';
       html += '<div style="font-size:12px;color:#92400E;margin-top:4px">Your work order lead will review and approve these hours</div>';
       html += '</div>';
-    } else if (data.all_verified) {
-      // All verified — can now submit to Xero
-      html += '<div style="text-align:center;padding:8px;margin-top:8px"><span style="color:var(--sw-green);font-weight:600;font-size:13px">&#10003; All hours verified by lead</span></div>';
-      html += '<button class="hours-submit-btn" id="btnSubmitHours" onclick="submitTradeHours()">Submit Invoice to Xero</button>';
     } else if (data.assignments && data.assignments.length > 0) {
-      // New 2-step flow: submit for verification first, or direct to Xero
-      html += '<button class="hours-submit-btn" id="btnSubmitVerify" onclick="submitForVerification()" style="background:var(--sw-orange)">Submit for Verification</button>';
-      html += '<div style="text-align:center;margin-top:8px"><a href="#" onclick="event.preventDefault();submitTradeHours()" style="font-size:12px;color:var(--sw-text-sec);text-decoration:underline">Skip verification — submit directly to Xero</a></div>';
-      // Invoice builder (only if not already invoiced)
-      if (!data.already_submitted) {
-        html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:12px" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
-      }
+      html += '<button class="hours-submit-btn" onclick="openInvoiceBuilder()">Create Invoice for This Week</button>';
     }
+
+    // Always show expense invoice option
+    html += '<button class="hours-submit-btn" style="background:var(--sw-dark);margin-top:8px" onclick="openInvoiceBuilder({expenseOnly:true})">New Expense Invoice</button>';
 
     // Lead verification inbox button (Tier 2+ / lead_installer role)
     if (_user && (_user.role === 'lead_installer' || _userTier >= 2)) {
@@ -9379,6 +9372,8 @@
 
   var _invExtraLines = []; // extra line items (travel, materials, etc.)
   var _invNotes = ''; // preserved across re-renders
+  var _draftInvoiceId = null; // existing draft being edited
+  var _invoiceBuilderMode = 'weekly'; // 'weekly' or 'expense'
 
   function formatDateShort(dateStr) {
     if (!dateStr) return '';
@@ -9387,14 +9382,36 @@
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   }
 
-  window.openInvoiceBuilder = function() {
-    if (!_hoursData || !_hoursData.assignments || _hoursData.assignments.length === 0) {
-      toast('No completed hours to invoice', true);
-      return;
-    }
+  window.openInvoiceBuilder = function(opts) {
+    opts = opts || {};
     _invExtraLines = [];
     _invNotes = '';
+    _draftInvoiceId = null;
+    _invoiceBuilderMode = opts.expenseOnly ? 'expense' : 'weekly';
     renderInvoiceBuilder();
+  };
+
+  // Load a draft invoice for editing
+  window.openInvoiceDraft = function(draftId) {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading draft...</div>';
+    api('get_trade_invoice', { invoice_id: draftId }).then(function(res) {
+      var inv = res.invoice;
+      _draftInvoiceId = inv.id;
+      _invNotes = inv.notes || '';
+      _invExtraLines = [];
+      _invoiceBuilderMode = inv.week_start ? 'weekly' : 'expense';
+      // Restore extra lines from saved data
+      (inv.lines || []).forEach(function(l) {
+        if (l.line_type && l.line_type !== 'labour') {
+          _invExtraLines.push({ type: l.line_type, description: l.description || '', quantity: l.quantity || 1, unit: l.unit || 'ea', rate: l.unit_rate || 0, amount: l.line_total_ex || 0 });
+        }
+      });
+      renderInvoiceBuilder();
+    }).catch(function(err) {
+      toast('Failed to load draft: ' + friendlyError(err), true);
+      loadHoursView();
+    });
   };
 
   window.openInvoiceHistory = function() {
@@ -9406,6 +9423,87 @@
       container.innerHTML = '<div class="hours-no-data">Error: ' + friendlyError(err) + '</div>';
     });
   };
+
+  window.viewInvoiceDetail = function(invoiceId) {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading invoice...</div>';
+    api('get_trade_invoice', { invoice_id: invoiceId }).then(function(res) {
+      renderInvoiceDetail(res.invoice);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="hours-no-data">Error: ' + friendlyError(err) + '</div>';
+    });
+  };
+
+  function renderInvoiceDetail(inv) {
+    var container = document.getElementById('hoursContent');
+    var details = loadTradeDetails();
+    var tradeName = details.fullName || (_user ? _user.name : '') || 'Subcontractor';
+    var lines = inv.lines || [];
+    var html = '';
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">Invoice Detail</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="openInvoiceHistory()">Back</button>';
+    html += '</div>';
+
+    // Header
+    html += '<div class="inv-header">';
+    html += '<div class="inv-header-row title">' + (inv.invoice_number || 'Tax Invoice') + '</div>';
+    html += '<div class="inv-header-row"><span>From</span><span style="color:#fff;font-weight:600">' + esc(tradeName) + '</span></div>';
+    html += '<div class="inv-header-row"><span>To</span><span style="color:#fff;font-weight:600">SecureWorks Group Pty Ltd</span></div>';
+    if (inv.week_start) html += '<div class="inv-header-row"><span>Period</span><span>' + formatDateShort(inv.week_start) + ' – ' + formatDateShort(inv.week_end) + '</span></div>';
+    var statusCls = (inv.status || 'draft').replace(/ /g, '_');
+    html += '<div style="margin-top:8px"><span class="inv-status ' + statusCls + '">' + (inv.status || 'draft').replace(/_/g, ' ') + '</span></div>';
+    html += '</div>';
+
+    // Labour lines
+    var labourLines = lines.filter(function(l) { return !l.line_type || l.line_type === 'labour'; });
+    if (labourLines.length > 0) {
+      html += '<div class="inv-section-label">Labour</div>';
+      labourLines.forEach(function(l) {
+        html += '<div class="inv-line"><div class="inv-line-top">';
+        html += '<div class="inv-line-desc">' + esc(l.job_number || 'Job') + ' · ' + esc(l.client_name || '') + '</div>';
+        html += '<div class="inv-line-amount">$' + Number(l.line_total_ex || 0).toFixed(2) + '</div>';
+        html += '</div><div class="inv-line-detail">' + Number(l.total_hours || 0).toFixed(2) + 'h × $' + Number(l.hourly_rate || 0).toFixed(2) + '/hr</div>';
+        html += '<span class="inv-line-type labour">Labour</span></div>';
+      });
+    }
+
+    // Extra lines
+    var extraLines = lines.filter(function(l) { return l.line_type && l.line_type !== 'labour'; });
+    if (extraLines.length > 0) {
+      html += '<div class="inv-section-label">Additional Items</div>';
+      extraLines.forEach(function(l) {
+        var typeCls = (l.line_type || 'other').toLowerCase();
+        html += '<div class="inv-line"><div class="inv-line-top">';
+        html += '<div class="inv-line-desc">' + esc(l.description || l.line_type || 'Item') + '</div>';
+        html += '<div class="inv-line-amount">$' + Number(l.line_total_ex || 0).toFixed(2) + '</div>';
+        html += '</div>';
+        if (l.quantity && l.unit_rate) html += '<div class="inv-line-detail">' + l.quantity + ' × $' + Number(l.unit_rate).toFixed(2) + '</div>';
+        html += '<span class="inv-line-type ' + typeCls + '">' + (l.line_type || 'other') + '</span></div>';
+      });
+    }
+
+    // Totals
+    html += '<div class="inv-totals">';
+    html += '<div class="inv-totals-row"><span>Subtotal</span><span>$' + Number(inv.subtotal_ex || 0).toFixed(2) + '</span></div>';
+    html += '<div class="inv-totals-row"><span>GST (10%)</span><span>$' + Number(inv.gst || 0).toFixed(2) + '</span></div>';
+    html += '<div class="inv-totals-row grand"><span>Total</span><span>$' + Number(inv.total_inc || 0).toFixed(2) + '</span></div>';
+    html += '</div>';
+
+    // Notes
+    if (inv.notes) {
+      html += '<div style="margin-top:12px;padding:12px;background:var(--sw-light);border-radius:8px;font-size:13px;color:var(--sw-text-sec)">';
+      html += '<strong>Notes:</strong> ' + esc(inv.notes) + '</div>';
+    }
+
+    // Xero ref
+    if (inv.xero_bill_number) {
+      html += '<div style="margin-top:8px;font-size:12px;color:var(--sw-text-sec)">Xero: ' + esc(inv.xero_bill_number) + '</div>';
+    }
+
+    container.innerHTML = html;
+  }
 
   function renderInvoiceHistory(invoices) {
     var container = document.getElementById('hoursContent');
@@ -9424,9 +9522,11 @@
     invoices.forEach(function(inv) {
       var statusCls = (inv.status || 'draft').replace(/ /g, '_');
       var label = (inv.status || 'draft').replace(/_/g, ' ');
-      html += '<div class="inv-history-item">';
-      html += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">Week ending ' + formatDateShort(inv.week_ending) + '</div>';
-      html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.xero_bill_number || 'No Xero ref') + '</div></div>';
+      var dateLabel = inv.week_ending ? 'Week ending ' + formatDateShort(inv.week_ending) : (inv.invoice_number || 'Expense Invoice');
+      var onclick = inv.status === 'draft' ? 'openInvoiceDraft(\'' + inv.id + '\')' : 'viewInvoiceDetail(\'' + inv.id + '\')';
+      html += '<div class="inv-history-item" onclick="' + onclick + '">';
+      html += '<div><div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + dateLabel + '</div>';
+      html += '<div style="font-size:12px;color:var(--sw-text-sec)">' + (inv.invoice_number || inv.xero_bill_number || '') + '</div></div>';
       html += '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(inv.total || 0).toFixed(2) + '</div>';
       html += '<span class="inv-status ' + statusCls + '">' + label + '</span></div>';
       html += '</div>';
@@ -9437,16 +9537,21 @@
 
   function renderInvoiceBuilder() {
     var container = document.getElementById('hoursContent');
-    var data = _hoursData;
+    var data = _hoursData || {};
     var details = loadTradeDetails();
     var rate = data.rate || 0;
+    var isExpense = _invoiceBuilderMode === 'expense';
     var html = '';
 
     // Back button
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">Invoice Builder</h2>';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">' + (isExpense ? 'Expense Invoice' : 'Invoice Builder') + '</h2>';
     html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
     html += '</div>';
+
+    if (_draftInvoiceId) {
+      html += '<div style="font-size:11px;color:var(--sw-mid);padding:4px 0 8px;display:flex;align-items:center;gap:4px"><span class="inv-status draft">Draft</span> Editing saved draft</div>';
+    }
 
     // Invoice header card (dark)
     var tradeName = details.fullName || (_user ? _user.name : '') || 'Subcontractor';
@@ -9458,17 +9563,21 @@
     html += '<div class="inv-header-row"><span>From</span><span style="text-align:right;color:#fff;font-weight:600">' + esc(tradeName) + '</span></div>';
     if (tradeAbn) html += '<div class="inv-header-row"><span>ABN</span><span>' + esc(tradeAbn) + '</span></div>';
     html += '<div class="inv-header-row"><span>To</span><span style="color:#fff;font-weight:600">SecureWorks Group Pty Ltd</span></div>';
-    html += '<div class="inv-header-row"><span>Period</span><span>' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(data.week_ending) + '</span></div>';
+    if (!isExpense && _hoursWeekStart) {
+      html += '<div class="inv-header-row"><span>Period</span><span>' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(data.week_ending) + '</span></div>';
+    } else {
+      html += '<div class="inv-header-row"><span>Date</span><span>' + formatDateShort(new Date().toISOString().slice(0, 10)) + '</span></div>';
+    }
     if (!tradeAbn) {
       html += '<div style="font-size:11px;color:var(--sw-yellow);margin-top:6px">&#9888; ABN not set — <a href="#" onclick="event.preventDefault();showView(\'profile\')" style="color:var(--sw-yellow);text-decoration:underline">update in Profile</a></div>';
     }
     html += '</div>';
 
-    // Labour line items (auto-populated from hours)
-    html += '<div class="inv-section-label">Labour (from clock entries)</div>';
+    // Labour line items (auto-populated from hours — skip for expense-only)
     var labourSubtotal = 0;
 
-    if (data.assignments && data.assignments.length > 0) {
+    if (!isExpense && data.assignments && data.assignments.length > 0) {
+      html += '<div class="inv-section-label">Labour (from clock entries)</div>';
       // Group by job for cleaner display
       var jobGroups = {};
       data.assignments.forEach(function(a) {
@@ -9544,16 +9653,29 @@
     html += '<textarea id="invNotes" rows="2" placeholder="e.g. Extra materials purchased at Bunnings" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);color:var(--sw-dark);resize:vertical;box-sizing:border-box">' + esc(_invNotes) + '</textarea>';
     html += '</div>';
 
-    // Rate warning
-    if (rate <= 0) {
+    // Rate warning (only for weekly invoices with labour)
+    var canSubmit = true;
+    if (!isExpense && rate <= 0 && data.assignments && data.assignments.length > 0) {
       html += '<div style="text-align:center;padding:12px;background:#FEF3CD;border-radius:10px;margin-top:12px">';
       html += '<div style="font-size:13px;font-weight:600;color:#92400E">Set your hourly rate to calculate labour totals</div>';
       html += '<div style="font-size:12px;color:#92400E;margin-top:4px">Go back and enter your rate, or update it in Profile</div>';
       html += '</div>';
-    } else {
-      // Submit button
-      html += '<button class="hours-submit-btn" onclick="submitInvoiceFromBuilder()" style="margin-top:16px">Submit Invoice — $' + total.toFixed(2) + '</button>';
-      html += '<div style="text-align:center;font-size:11px;color:var(--sw-text-sec);margin-top:6px">This will generate your invoice and send it for processing</div>';
+      canSubmit = false;
+    }
+    if (isExpense && _invExtraLines.length === 0) {
+      html += '<div style="text-align:center;padding:12px;background:var(--sw-light);border-radius:10px;margin-top:12px;font-size:13px;color:var(--sw-text-sec)">Add at least one line item to submit</div>';
+      canSubmit = false;
+    }
+
+    if (canSubmit && total > 0) {
+      // Action buttons
+      html += '<div style="display:flex;gap:8px;margin-top:16px">';
+      html += '<button class="hours-submit-btn" onclick="saveDraftInvoice()" style="flex:1;background:var(--sw-mid);margin:0">Save Draft</button>';
+      html += '<button class="hours-submit-btn" onclick="submitInvoiceFromBuilder()" style="flex:2;margin:0">Submit — $' + total.toFixed(2) + '</button>';
+      html += '</div>';
+      html += '<div style="text-align:center;font-size:11px;color:var(--sw-text-sec);margin-top:6px">Draft saves for later. Submit sends for processing.</div>';
+    } else if (canSubmit) {
+      html += '<button class="hours-submit-btn" onclick="saveDraftInvoice()" style="margin-top:16px;background:var(--sw-mid)">Save Draft</button>';
     }
 
     container.innerHTML = html;
@@ -9653,16 +9775,56 @@
     toast(type + ' added — $' + amount.toFixed(2));
   };
 
+  window.saveDraftInvoice = function() {
+    var notesEl = document.getElementById('invNotes');
+    _invNotes = (notesEl ? notesEl.value : _invNotes) || '';
+    var data = _hoursData || {};
+    var rate = data.rate || 0;
+    var isExpense = _invoiceBuilderMode === 'expense';
+
+    // Build labour lines for saving
+    var labourLines = [];
+    if (!isExpense && data.assignments && data.assignments.length > 0) {
+      var jobGroups = {};
+      data.assignments.forEach(function(a) {
+        var job = a.jobs || {};
+        var key = job.job_number || a.job_id || 'misc';
+        if (!jobGroups[key]) jobGroups[key] = { job: job, hours: 0, job_id: a.job_id };
+        jobGroups[key].hours += (a.hours_worked != null ? a.hours_worked : (a.hours || 0));
+      });
+      Object.keys(jobGroups).forEach(function(key) {
+        var g = jobGroups[key];
+        labourLines.push({ job_id: g.job_id, job_number: key, client_name: g.job.client_name || '', total_hours: g.hours, hourly_rate: rate, line_total_ex: g.hours * rate });
+      });
+    }
+
+    api('save_trade_invoice_draft', null, {
+      week_start: isExpense ? null : (_hoursWeekStart || null),
+      extra_items: _invExtraLines,
+      notes: _invNotes,
+      labour_lines: labourLines
+    }).then(function(res) {
+      _draftInvoiceId = res.draft_id;
+      toast('Draft saved');
+    }).catch(function(err) {
+      toast('Failed to save draft: ' + friendlyError(err), true);
+    });
+  };
+
   window.submitInvoiceFromBuilder = function() {
-    if (!_hoursData || !_hoursWeekStart) return;
+    var data = _hoursData || {};
     var details = loadTradeDetails();
-    var rate = _hoursData.rate || 0;
-    if (rate <= 0) { toast('Set your hourly rate first', true); return; }
+    var rate = data.rate || 0;
+    var isExpense = _invoiceBuilderMode === 'expense';
+
+    if (!isExpense && rate <= 0 && data.assignments && data.assignments.length > 0) {
+      toast('Set your hourly rate first', true); return;
+    }
 
     var gstRegistered = details.gstRegistered;
     var labourSubtotal = 0;
-    if (_hoursData.assignments) {
-      _hoursData.assignments.forEach(function(a) {
+    if (!isExpense && data.assignments) {
+      data.assignments.forEach(function(a) {
         var h = a.hours_worked != null ? a.hours_worked : (a.hours || 0);
         labourSubtotal += h * rate;
       });
@@ -9675,19 +9837,19 @@
     var notes = (notesEl ? notesEl.value : _invNotes) || '';
     _invNotes = notes;
 
+    var periodLabel = isExpense ? formatDateShort(new Date().toISOString().slice(0, 10)) : formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(data.week_ending);
     showConfirm(
       'Submit Invoice',
-      'Submit invoice for $' + total.toFixed(2) + (gstRegistered ? ' (inc GST)' : ' (no GST)') + ' for week ' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '?',
+      'Submit invoice for $' + total.toFixed(2) + (gstRegistered ? ' (inc GST)' : ' (no GST)') + ' — ' + periodLabel + '?',
       'Submit'
     ).then(function(ok) {
       if (!ok) return;
 
-      // Use the existing generate_trade_invoice endpoint
       var container = document.getElementById('hoursContent');
       container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Submitting invoice...</div>';
 
       api('generate_trade_invoice', {}, {
-        week_start: _hoursWeekStart,
+        week_start: isExpense ? undefined : (_hoursWeekStart || undefined),
         extra_items: _invExtraLines.length > 0 ? _invExtraLines : undefined,
         notes: notes
       }).then(function(result) {
@@ -9697,6 +9859,7 @@
         successHtml += '<div style="text-align:center;padding:40px 20px">';
         successHtml += '<div style="font-size:48px;margin-bottom:16px">&#9989;</div>';
         successHtml += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);margin-bottom:8px">Invoice Submitted</div>';
+        if (result.invoice_number) successHtml += '<div style="font-size:13px;color:var(--sw-mid);margin-bottom:4px">' + result.invoice_number + '</div>';
         successHtml += '<div style="font-size:14px;color:var(--sw-text-sec);margin-bottom:4px">' + formatDateShort(_hoursWeekStart) + ' – ' + formatDateShort(_hoursData.week_ending) + '</div>';
         var displayTotal = result.total_inc != null ? Number(result.total_inc).toFixed(2) : total.toFixed(2);
         successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:16px 0">$' + displayTotal + '</div>';
