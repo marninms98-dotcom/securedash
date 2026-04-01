@@ -12015,14 +12015,14 @@
 
     var status = document.getElementById('tdSaveStatus');
 
-    // Try to sync to backend (graceful failure)
-    // TODO: ops-api?action=update_trade_profile — save ABN, GST status, bank details, licence to users table
+    // Sync to backend
     api('update_trade_profile', null, details).then(function() {
-      if (status) { status.textContent = 'Saved'; status.style.color = 'var(--sw-green)'; }
+      if (status) { status.textContent = 'Saved to your account'; status.style.color = 'var(--sw-green)'; }
       toast('Details saved');
-    }).catch(function() {
-      if (status) { status.textContent = 'Saved locally — will sync when backend is ready'; status.style.color = 'var(--sw-yellow)'; }
-      toast('Details saved locally');
+    }).catch(function(err) {
+      console.warn('[trade] Profile sync failed:', err);
+      if (status) { status.textContent = 'Saved locally — will retry on next save'; status.style.color = 'var(--sw-yellow)'; }
+      toast('Saved locally');
     });
   };
 
