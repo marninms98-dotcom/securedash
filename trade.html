@@ -9623,11 +9623,48 @@
     _updateInvTotals();
   };
 
+  function _renderInvRow(row) {
+    var i = row._idx;
+    var h = '';
+    h += '<div class="inv-line" style="padding:10px">';
+    // Row 1: Date + Job + Delete
+    h += '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">';
+    h += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 115px;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job # or misc" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 28px;height:28px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
+    h += '</div>';
+    // Row 2: Description + Division
+    h += '<div style="display:flex;gap:6px;margin-bottom:6px">';
+    h += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description of work" style="flex:2;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
+    h += '<select id="ir_div_' + i + '" style="flex:1;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
+    ['Patio', 'Fencing', 'Decking', 'Make Safe', 'General Labour'].forEach(function(d) {
+      h += '<option' + (row.division === d ? ' selected' : '') + '>' + d + '</option>';
+    });
+    h += '</select></div>';
+    // Row 3: Hours + Rate + Amount
+    h += '<div style="display:flex;gap:6px;align-items:center">';
+    h += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Hours</div>';
+    h += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
+    h += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Rate ($/hr)</div>';
+    h += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
+    h += '<div style="flex:1;text-align:right"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Amount</div>';
+    h += '<div id="ir_amt_' + i + '" style="font-size:14px;font-weight:700;color:var(--sw-dark);padding:6px 0">$' + (row.amount || 0).toFixed(2) + '</div></div>';
+    h += '</div></div>';
+    return h;
+  }
+
   window.addInvRow = function() {
     _syncRowsFromDOM();
     var today = new Date().toISOString().slice(0, 10);
     var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
-    _invRows.push({ date: today, job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0 });
+    _invRows.push({ date: today, job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0, _misc: true });
+    renderInvoiceBuilder();
+  };
+
+  window.addInvRowForDay = function(dateStr) {
+    _syncRowsFromDOM();
+    var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
+    _invRows.push({ date: dateStr, job_id: null, job_text: '', description: '', division: 'General Labour', hours: 0, rate: defRate, amount: 0 });
     renderInvoiceBuilder();
   };
 
@@ -9732,44 +9769,60 @@
     html += '<option value="— No job —">Miscellaneous / no job</option>';
     html += '</datalist>';
 
-    // ── Line items table ──
-    html += '<div class="inv-section-label" style="margin-top:16px">Line Items</div>';
+    // ── Work Order Review (leads only) ──
+    var isLead = _user && (_user.role === 'lead_installer' || _userTier >= 2);
+    if (isLead && !isExpense) {
+      html += '<div id="invCrewReview" style="margin-top:16px">';
+      html += '<div class="inv-section-label">Crew Charges on Your Jobs</div>';
+      html += '<div id="invCrewCharges"><div style="font-size:12px;color:var(--sw-text-sec);padding:8px"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div></div>';
+      html += '</div>';
+    }
 
+    // ── Day-grouped line items ──
+    html += '<div class="inv-section-label" style="margin-top:16px">Your Hours</div>';
+
+    var dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // Group rows by date (weekly rows only — misc rows go to bottom section)
+    var dayGroups = {};
+    var miscRows = [];
     _invRows.forEach(function(row, i) {
-      html += '<div class="inv-line" style="padding:10px">';
-
-      // Row 1: Date + Job + Delete
-      html += '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">';
-      html += '<input type="date" id="ir_date_' + i + '" value="' + (row.date || '') + '" style="flex:0 0 115px;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-      html += '<input type="text" id="ir_job_' + i + '" value="' + esc(row.job_text || '') + '" list="invJobList" placeholder="Job #" style="flex:1;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-      html += '<button onclick="deleteInvRow(' + i + ')" style="flex:0 0 28px;height:28px;background:none;border:1px solid var(--sw-border);border-radius:6px;color:var(--sw-red);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Delete">&times;</button>';
-      html += '</div>';
-
-      // Row 2: Description + Division
-      html += '<div style="display:flex;gap:6px;margin-bottom:6px">';
-      html += '<input type="text" id="ir_desc_' + i + '" value="' + esc(row.description || '') + '" placeholder="Description of work" style="flex:2;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box">';
-      html += '<select id="ir_div_' + i + '" style="flex:1;padding:6px 4px;border:1px solid var(--sw-border);border-radius:6px;font-size:11px;font-family:var(--sw-font);color:var(--sw-dark);background:#fff;box-sizing:border-box">';
-      ['Patio', 'Fencing', 'Decking', 'Make Safe', 'General Labour'].forEach(function(d) {
-        html += '<option' + (row.division === d ? ' selected' : '') + '>' + d + '</option>';
-      });
-      html += '</select>';
-      html += '</div>';
-
-      // Row 3: Hours + Rate + Amount
-      html += '<div style="display:flex;gap:6px;align-items:center">';
-      html += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Hours</div>';
-      html += '<input type="number" id="ir_hrs_' + i + '" value="' + (row.hours || '') + '" step="0.25" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
-      html += '<div style="flex:1"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Rate ($/hr)</div>';
-      html += '<input type="number" id="ir_rate_' + i + '" value="' + (row.rate || '') + '" step="0.01" min="0" placeholder="0" oninput="invRowChanged(' + i + ')" style="width:100%;padding:6px 8px;border:1px solid var(--sw-border);border-radius:6px;font-size:13px;font-weight:600;font-family:var(--sw-font);color:var(--sw-dark);box-sizing:border-box"></div>';
-      html += '<div style="flex:1;text-align:right"><div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px">Amount</div>';
-      html += '<div id="ir_amt_' + i + '" style="font-size:14px;font-weight:700;color:var(--sw-dark);padding:6px 0">$' + (row.amount || 0).toFixed(2) + '</div></div>';
-      html += '</div>';
-
-      html += '</div>';
+      row._idx = i;
+      if (row._misc) { miscRows.push(row); return; }
+      var dk = row.date || 'nodate';
+      if (!dayGroups[dk]) dayGroups[dk] = [];
+      dayGroups[dk].push(row);
     });
 
-    // Add row button
-    html += '<button class="inv-add-btn" onclick="addInvRow()">+ Add Row</button>';
+    // Sort day keys
+    var dayKeys = Object.keys(dayGroups).sort();
+    if (dayKeys.length === 0 && miscRows.length === 0) {
+      html += '<div style="text-align:center;padding:16px;font-size:13px;color:var(--sw-text-sec)">No hours — add rows below</div>';
+    }
+
+    dayKeys.forEach(function(dk) {
+      var rows = dayGroups[dk];
+      var d = new Date(dk + 'T00:00:00');
+      var dayLabel = dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()];
+      html += '<div class="hours-day-header">' + dayLabel + '</div>';
+
+      rows.forEach(function(row) {
+        html += _renderInvRow(row);
+      });
+
+      // Add row for this day
+      html += '<button class="inv-add-btn" style="font-size:12px;padding:8px;margin-bottom:12px" onclick="addInvRowForDay(\'' + dk + '\')">+ Add row for ' + dayNames[d.getDay()] + '</button>';
+    });
+
+    // ── Additional / Miscellaneous ──
+    html += '<div class="inv-section-label" style="margin-top:16px">Additional / Miscellaneous</div>';
+    if (miscRows.length > 0) {
+      miscRows.forEach(function(row) {
+        html += _renderInvRow(row);
+      });
+    }
+    html += '<button class="inv-add-btn" onclick="addInvRow()">+ Add Misc Row</button>';
 
     // ── Notes ──
     html += '<div style="margin-top:8px">';
@@ -9799,7 +9852,72 @@
     }
 
     container.innerHTML = html;
+
+    // Load crew charges async (leads only)
+    if (isLead && !isExpense && _hoursWeekStart) {
+      api('crew_charges_on_my_jobs', { week_start: _hoursWeekStart }).then(function(res) {
+        var el = document.getElementById('invCrewCharges');
+        if (!el) return;
+        var charges = res.charges || [];
+        if (charges.length === 0) { el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec);padding:4px">No crew charges this week</div>'; return; }
+        var ch = '';
+        var approvedTotal = 0;
+        charges.forEach(function(c) {
+          var statusColor = c.acknowledgment_status === 'acknowledged' ? 'var(--sw-green)' : c.acknowledgment_status === 'queried' ? 'var(--sw-red)' : 'var(--sw-mid)';
+          if (c.acknowledgment_status === 'acknowledged') approvedTotal += (c.override_amount != null ? c.override_amount : c.line_total_ex);
+          ch += '<div class="inv-line" style="padding:10px" id="crew_' + c.line_id + '">';
+          ch += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+          ch += '<div><div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + esc(c.trade_name) + '</div>';
+          ch += '<div style="font-size:12px;color:var(--sw-text-sec)">' + esc(c.job_number || '') + (c.description ? ' — ' + esc(c.description) : '') + '</div></div>';
+          ch += '<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:var(--sw-dark)">$' + Number(c.line_total_ex || 0).toFixed(2) + '</div>';
+          ch += '<div style="font-size:11px;color:' + statusColor + '">' + (c.total_hours || 0) + 'h × $' + (c.hourly_rate || 0) + '</div></div>';
+          ch += '</div>';
+          // Action buttons
+          if (c.acknowledgment_status === 'pending') {
+            ch += '<div style="display:flex;gap:6px;margin-top:8px">';
+            ch += '<button onclick="reviewCrewCharge(\'' + c.line_id + '\',\'approve\')" style="flex:1;padding:6px;background:var(--sw-green);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Approve</button>';
+            ch += '<button onclick="reviewCrewChargeAdjust(\'' + c.line_id + '\',' + c.line_total_ex + ')" style="flex:1;padding:6px;background:var(--sw-orange);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Adjust</button>';
+            ch += '<button onclick="reviewCrewCharge(\'' + c.line_id + '\',\'reject\')" style="flex:1;padding:6px;background:var(--sw-red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Reject</button>';
+            ch += '</div>';
+          } else {
+            ch += '<div style="margin-top:6px;font-size:11px;color:' + statusColor + ';font-weight:600">';
+            ch += c.acknowledgment_status === 'acknowledged' ? '&#10003; Approved' + (c.override_amount != null ? ' (adjusted to $' + Number(c.override_amount).toFixed(2) + ')' : '') : '&#10005; Rejected';
+            if (c.override_note) ch += ' — ' + esc(c.override_note);
+            ch += '</div>';
+          }
+          ch += '</div>';
+        });
+        if (approvedTotal > 0) ch += '<div style="text-align:right;font-size:12px;color:var(--sw-text-sec);padding:4px 0">Total approved against your WOs: <strong>$' + approvedTotal.toFixed(2) + '</strong></div>';
+        el.innerHTML = ch;
+      }).catch(function(err) {
+        var el = document.getElementById('invCrewCharges');
+        if (el) el.innerHTML = '<div style="font-size:12px;color:var(--sw-text-sec)">Could not load crew charges</div>';
+      });
+    }
   }
+
+  window.reviewCrewCharge = function(lineId, action) {
+    api('review_crew_charge', null, { line_id: lineId, action: action }).then(function() {
+      toast(action === 'approve' ? 'Approved' : 'Rejected');
+      // Re-render the crew section
+      renderInvoiceBuilder();
+    }).catch(function(err) {
+      toast('Failed: ' + friendlyError(err), true);
+    });
+  };
+
+  window.reviewCrewChargeAdjust = function(lineId, currentAmount) {
+    var newAmt = prompt('Adjust amount to (ex GST):', currentAmount);
+    if (newAmt === null) return;
+    var val = parseFloat(newAmt);
+    if (isNaN(val) || val < 0) { toast('Invalid amount', true); return; }
+    api('review_crew_charge', null, { line_id: lineId, action: 'adjust', override_amount: val }).then(function() {
+      toast('Adjusted to $' + val.toFixed(2));
+      renderInvoiceBuilder();
+    }).catch(function(err) {
+      toast('Failed: ' + friendlyError(err), true);
+    });
+  };
 
   window.saveDraftInvoice = function() {
     _syncRowsFromDOM();
