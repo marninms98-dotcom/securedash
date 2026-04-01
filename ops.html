@@ -5699,8 +5699,8 @@ function computeSubStage(j, status) {
       return j.days_in_stage > 7 ? 'Following Up' : 'Quote Sent';
     case 'accepted':
       if (!j.deposit_invoice_id) return 'Create Invoice';
-      if (!j.deposit_amount) return 'Awaiting Deposit';
-      return 'Deposit Received';
+      if (j.invoice_paid) return 'Deposit Received';
+      return 'Awaiting Deposit';
     case 'approvals':
       if (!j.council_count) return 'Not Started';
       if (j.council_status === 'complete') return 'Approved';
@@ -7865,9 +7865,10 @@ function renderMoneyView(data) {
   if (salesInvoices.length > 0) {
     html += '<div style="margin-top:8px;font-size:12px;font-weight:600;color:var(--sw-text-sec);">Invoices</div>';
     salesInvoices.forEach(function(inv) {
-      var statusColor = inv.status === 'PAID' ? 'var(--sw-green)' : inv.status === 'AUTHORISED' ? 'var(--sw-orange)' : 'var(--sw-text-sec)';
-      html += '<div class="jd-money-card"><div class="jd-money-card-head">';
-      html += '<span>' + (inv.invoice_number || 'Draft') + '</span>';
+      var statusColor = inv.status === 'PAID' ? 'var(--sw-green)' : inv.status === 'AUTHORISED' ? 'var(--sw-orange)' : inv.status === 'OVERDUE' ? 'var(--sw-red)' : 'var(--sw-text-sec)';
+      var xeroUrl = inv.xero_invoice_id ? 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' + inv.xero_invoice_id : '';
+      html += '<div class="jd-money-card" style="cursor:' + (xeroUrl ? 'pointer' : 'default') + ';" ' + (xeroUrl ? 'onclick="window.open(\'' + xeroUrl + '\',\'_blank\')"' : '') + '><div class="jd-money-card-head">';
+      html += '<span>' + (inv.invoice_number || 'Draft') + (xeroUrl ? ' &#8599;' : '') + '</span>';
       html += '<strong>' + fmt$(inv.total) + '</strong></div>';
       html += '<div class="jd-money-card-sub"><span style="color:' + statusColor + '">' + (inv.status || '') + '</span>';
       if (inv.due_date) html += ' &middot; Due ' + fmtDate(inv.due_date);
