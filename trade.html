@@ -9927,15 +9927,13 @@
     html += '<div class="inv-totals-row grand"><span>Total</span><span id="invTotal">$' + t.total.toFixed(2) + '</span></div>';
     html += '</div>';
 
-    // ── Action buttons ──
-    if (_invRows.length > 0 && t.total > 0) {
+    // ── Action buttons (always visible when rows exist) ──
+    if (_invRows.length > 0) {
       html += '<div style="display:flex;gap:8px;margin-top:16px">';
       html += '<button class="hours-submit-btn" onclick="saveDraftInvoice()" style="flex:1;background:var(--sw-mid);margin:0">Save Draft</button>';
-      html += '<button class="hours-submit-btn" id="invSubmitBtn" onclick="submitInvoiceFromBuilder()" style="flex:2;margin:0">Submit Invoice — $' + t.total.toFixed(2) + '</button>';
+      html += '<button class="hours-submit-btn" id="invSubmitBtn" onclick="submitInvoiceFromBuilder()" style="flex:2;margin:0">Submit Invoice' + (t.total > 0 ? ' — $' + t.total.toFixed(2) : '') + '</button>';
       html += '</div>';
       html += '<div style="text-align:center;font-size:11px;color:var(--sw-text-sec);margin-top:6px">Draft saves for later. Submit sends for processing.</div>';
-    } else if (_invRows.length > 0) {
-      html += '<button class="hours-submit-btn" onclick="saveDraftInvoice()" style="margin-top:16px;background:var(--sw-mid)">Save Draft</button>';
     } else {
       html += '<div style="text-align:center;padding:16px;font-size:13px;color:var(--sw-text-sec)">Add at least one row to create an invoice</div>';
     }
@@ -10058,6 +10056,7 @@
     if (errors.length > 0) { toast(errors[0], true); return; }
 
     var t = _calcInvTotals();
+    if (t.subtotal <= 0) { toast('Invoice total must be greater than $0', true); return; }
 
     showConfirm(
       'Submit Invoice',
@@ -10079,7 +10078,8 @@
       api('generate_trade_invoice', {}, {
         week_start: isExpense ? undefined : (_hoursWeekStart || undefined),
         extra_items: extraItems,
-        notes: _invNotes
+        notes: _invNotes,
+        gst_registered: _invGst
       }).then(function(result) {
         if (result.error) { toast(result.error, true); loadHoursView(); return; }
 
