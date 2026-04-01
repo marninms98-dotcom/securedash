@@ -8173,6 +8173,17 @@ function renderBuildView(data) {
     return;
   }
 
+  // Embedded scope tool preview (3D/2D render)
+  if (j.type !== 'miscellaneous' && j.type !== 'general') {
+    var scopeToolUrl = j.type === 'fencing'
+      ? 'https://marninms98-dotcom.github.io/fence-designer/'
+      : 'https://marninms98-dotcom.github.io/patio/';
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--sw-mid);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Scope Preview</div>';
+    html += '<iframe src="' + scopeToolUrl + '?jobId=' + j.id + '&mode=embedded&noAuth=true" style="width:100%;height:500px;border:1px solid var(--sw-border);border-radius:4px;" loading="lazy"></iframe>';
+    html += '</div>';
+  }
+
   // Scope summary
   if (j.scope_json) {
     html += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Scope Summary</div>';
