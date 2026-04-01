@@ -453,12 +453,17 @@ function renderClearDebtStats(data) {
   var html = '<div class="stat-card" style="grid-column:span 2;border-left:4px solid var(--sw-red);">';
   html += '<div class="stat-body"><div class="stat-label" style="display:flex;align-items:center;gap:6px;">TOTAL OVERDUE <button onclick="showClassificationGuide()" style="background:none;border:1px solid var(--sw-border);border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;color:var(--sw-text-sec);line-height:1;" title="Classification guide">?</button></div>';
   html += '<div class="stat-value" style="color:var(--sw-red);font-size:24px;">'+fmt$(data.total_outstanding)+'</div>';
-  // Xero sync timestamp
+  // Xero sync timestamp — use manual sync time if more recent
   var syncLine = '';
-  if (data.last_synced_at) {
-    var minsAgo = Math.floor((Date.now() - new Date(data.last_synced_at).getTime()) / 60000);
+  var syncRef = data.last_synced_at ? new Date(data.last_synced_at).getTime() : 0;
+  if (typeof _lastInvoiceSyncTime !== 'undefined' && _lastInvoiceSyncTime && _lastInvoiceSyncTime > syncRef) {
+    syncRef = _lastInvoiceSyncTime;
+  }
+  if (syncRef) {
+    var minsAgo = Math.floor((Date.now() - syncRef) / 60000);
     var syncColor = minsAgo > 30 ? 'var(--sw-orange)' : 'var(--sw-text-sec)';
-    syncLine = ' \u00B7 <span style="color:'+syncColor+';">Xero synced '+minsAgo+'m ago</span> <button onclick="event.stopPropagation();refreshXeroSync()" style="font-size:9px;background:none;border:1px solid var(--sw-border);border-radius:4px;padding:0 4px;cursor:pointer;color:var(--sw-text-sec);">\u21BB</button>';
+    var syncLabel = minsAgo < 1 ? 'just now' : minsAgo + 'm ago';
+    syncLine = ' \u00B7 <span style="color:'+syncColor+';">Xero synced '+syncLabel+'</span> <button onclick="event.stopPropagation();refreshXeroSync()" style="font-size:9px;background:none;border:1px solid var(--sw-border);border-radius:4px;padding:0 4px;cursor:pointer;color:var(--sw-text-sec);">\u21BB</button>';
   }
   html += '<div class="stat-sub">'+data.total_invoices+' invoices \u00B7 '+data.total_clients+' clients'+syncLine+'</div></div></div>';
   ['genuine_debt','blocked_by_us','in_dispute','unclassified','bad_debt'].forEach(function(key) {
@@ -1401,9 +1406,9 @@ async function refreshXeroSync() {
   showToast('Syncing with Xero...','info');
   try {
     await opsPost('trigger_xero_sync',{});
-    // Wait briefly for sync to process
-    await new Promise(function(r){setTimeout(r,3000);});
     showToast('Xero data refreshed','success');
+    // Reset the invoice tab timer too
+    if (typeof _lastInvoiceSyncTime !== 'undefined') _lastInvoiceSyncTime = Date.now();
     loadClearDebt();
   } catch(e) { showToast('Sync failed: '+e.message,'warning'); }
 }

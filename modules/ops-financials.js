@@ -64,6 +64,7 @@ async function loadInvoices() {
     if (dateTo) params.date_to = dateTo;
     var data = await opsFetch('list_invoices', params);
     _allInvoices = data.invoices || [];
+    if (!_lastInvoiceSyncTime) _lastInvoiceSyncTime = Date.now();
     renderInvoiceStats(data.summary);
     renderInvoiceTable(_allInvoices);
   } catch (e) {
@@ -71,12 +72,35 @@ async function loadInvoices() {
   }
 }
 
+var _lastInvoiceSyncTime = null;
+
 function renderInvoiceStats(summary) {
   var container = document.getElementById('invoiceStats');
+  // Sync age display
+  var syncHtml = '';
+  if (_lastInvoiceSyncTime) {
+    var minsAgo = Math.floor((Date.now() - _lastInvoiceSyncTime) / 60000);
+    var syncColor = minsAgo > 30 ? 'var(--sw-orange)' : 'var(--sw-text-sec)';
+    syncHtml = '<span style="color:' + syncColor + ';font-size:11px;">Xero synced ' + (minsAgo < 1 ? 'just now' : minsAgo + 'm ago') + '</span> ';
+  }
+  syncHtml += '<button onclick="refreshInvoiceSync()" style="font-size:10px;background:none;border:1px solid var(--sw-border);border-radius:4px;padding:1px 6px;cursor:pointer;color:var(--sw-text-sec);" title="Sync with Xero">&#8635; Sync</button>';
+
   container.innerHTML =
     '<div class="stat-card"><div class="stat-body"><div class="stat-label">Outstanding</div><div class="stat-value">' + fmt$(summary.outstanding) + '</div></div></div>' +
     '<div class="stat-card ' + (summary.overdue > 0 ? 'rag-red' : 'rag-green') + '"><div class="stat-body"><div class="stat-label">Overdue</div><div class="stat-value">' + fmt$(summary.overdue) + '</div></div></div>' +
-    '<div class="stat-card"><div class="stat-body"><div class="stat-label">Total Records</div><div class="stat-value">' + (summary.total || '-') + '</div></div></div>';
+    '<div class="stat-card"><div class="stat-body"><div class="stat-label">Total Records</div><div class="stat-value">' + (summary.total || '-') + '</div><div class="stat-sub">' + syncHtml + '</div></div></div>';
+}
+
+async function refreshInvoiceSync() {
+  showToast('Syncing with Xero...', 'info');
+  try {
+    await opsPost('trigger_xero_sync', {});
+    _lastInvoiceSyncTime = Date.now();
+    await loadInvoices();
+    showToast('Xero data refreshed', 'success');
+  } catch (e) {
+    showToast('Sync failed: ' + e.message, 'warning');
+  }
 }
 
 // ── Generic table sort ──
