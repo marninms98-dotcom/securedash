@@ -5698,23 +5698,27 @@ function computeSubStage(j, status) {
     case 'quoted':
       return j.days_in_stage > 7 ? 'Following Up' : 'Quote Sent';
     case 'accepted':
-      if (!j.deposit_invoice_id) return 'Create Invoice';
-      if (j.invoice_paid) return 'Deposit Received';
+      if (!j.deposit_invoice_id && !j.has_deposit_invoice) return 'Create Invoice';
+      if (j.deposit_paid) return 'Deposit Received';
       return 'Awaiting Deposit';
     case 'approvals':
       if (!j.council_count) return 'Not Started';
       if (j.council_status === 'complete') return 'Approved';
       return 'Council ' + (j.council_step || 'In Progress');
     case 'processing':
-      if (j.po_count === 0) return 'Order Materials';
-      if (j.assignment_count === 0) return 'Materials Ordered';
-      if (j.wo_count === 0) return 'Crew Assigned';
-      return 'Ready to Start';
+      var hasPOs = j.po_count > 0;
+      var hasCrew = j.assignment_count > 0;
+      var hasWO = j.wo_count > 0;
+      if (hasPOs && hasCrew && hasWO) return 'Ready to Start';
+      if (hasPOs && hasCrew) return 'Crew Assigned';
+      if (hasCrew) return 'Crew Assigned';
+      if (hasPOs) return 'Materials Ordered';
+      return 'Order Materials';
     case 'in_progress':
       return 'On Site';
     case 'complete':
-      if (!j.has_invoice) return 'Needs Invoice';
-      if (!j.invoice_paid) return 'Awaiting Payment';
+      if (!j.has_final_invoice) return 'Needs Invoice';
+      if (!j.final_paid) return 'Awaiting Payment';
       return 'Get Sign-off';
     default:
       return null;
@@ -5768,21 +5772,19 @@ function getNextAction(j) {
       }
       break;
     case 'processing':
-      if (sub === 'Order Materials') {
-        result.hint = 'Create purchase orders for materials';
-        result.actions.push({ label: 'Create PO', onclick: "closeQuickView();openPOModal('" + j.id + "')", primary: true });
-        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
-      } else if (sub === 'Materials Ordered') {
-        result.hint = 'Materials ordered \u2014 assign a crew';
-        result.actions.push({ label: 'Assign Crew', onclick: "closeQuickView();openJobDetail('" + j.id + "')", primary: true });
-        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
-      } else if (sub === 'Crew Assigned') {
-        result.hint = 'Crew assigned \u2014 create a work order';
-        result.actions.push({ label: 'Create Work Order', onclick: "closeQuickView();openCreateWOModal('" + j.id + "')", primary: true });
-        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
-      } else {
+      var pMissing = [];
+      if (j.po_count === 0) pMissing.push('POs');
+      if (j.assignment_count === 0) pMissing.push('crew');
+      if (j.wo_count === 0) pMissing.push('work order');
+      if (pMissing.length === 0) {
         result.hint = 'Everything ready \u2014 start the job';
         result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')", primary: true });
+      } else {
+        result.hint = 'Still need: ' + pMissing.join(', ');
+        if (j.po_count === 0) result.actions.push({ label: 'Create PO', onclick: "closeQuickView();openPOModal('" + j.id + "')", primary: true });
+        else if (j.assignment_count === 0) result.actions.push({ label: 'Assign Crew', onclick: "closeQuickView();openJobDetail('" + j.id + "')", primary: true });
+        else result.actions.push({ label: 'Create Work Order', onclick: "closeQuickView();openCreateWOModal('" + j.id + "')", primary: true });
+        result.actions.push({ label: 'Start Job', onclick: "closeQuickView();changeJobStatus('" + j.id + "','in_progress')" });
       }
       break;
     case 'in_progress':
