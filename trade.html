@@ -9756,18 +9756,8 @@
     }
     html += '</div>';
 
-    // ── Job suggestions datalist ──
-    html += '<datalist id="invJobList">';
-    if (_cachedMyJobs && _cachedMyJobs.length > 0) {
-      var seen = {};
-      _cachedMyJobs.forEach(function(a) {
-        var j = a.jobs || a;
-        var jn = j.job_number || '';
-        if (jn && !seen[jn]) { seen[jn] = true; html += '<option value="' + esc(jn) + '">' + esc(jn + ' — ' + (j.client_name || '')) + '</option>'; }
-      });
-    }
-    html += '<option value="— No job —">Miscellaneous / no job</option>';
-    html += '</datalist>';
+    // ── Job suggestions datalist (loaded async) ──
+    html += '<datalist id="invJobList"></datalist>';
 
     // ── Work Order Review (leads only) ──
     var isLead = _user && (_user.role === 'lead_installer' || _userTier >= 2);
@@ -9871,6 +9861,17 @@
     }
 
     container.innerHTML = html;
+
+    // Load all jobs for autocomplete
+    api('search_all_jobs').then(function(res) {
+      var dl = document.getElementById('invJobList');
+      if (!dl) return;
+      var h = '<option value="— No job —">Miscellaneous / no job</option>';
+      (res.jobs || []).forEach(function(j) {
+        h += '<option value="' + esc(j.job_number || '') + '">' + esc((j.job_number || '') + ' — ' + (j.client_name || '') + (j.site_suburb ? ' (' + j.site_suburb + ')' : '')) + '</option>';
+      });
+      dl.innerHTML = h;
+    }).catch(function() {});
 
     // Load crew charges async (leads only)
     if (isLead && !isExpense && _hoursWeekStart) {
