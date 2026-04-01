@@ -9986,6 +9986,25 @@
         var pdfData = { invoiceNumber: result.invoice_number, rows: validRows, notes: _invNotes, gst: _invGst, total: t };
         _lastInvoicePdfData = pdfData;
 
+        // Attach PDF to Xero bill (non-blocking)
+        if (result.xero_bill_id) {
+          try {
+            var pdfDoc = _generateInvoicePDF(pdfData);
+            if (pdfDoc) {
+              var pdfBase64 = pdfDoc.output('datauristring').split(',')[1]; // strip data:application/pdf;base64,
+              api('attach_invoice_pdf', null, {
+                xero_bill_id: result.xero_bill_id,
+                pdf_base64: pdfBase64,
+                filename: (result.invoice_number || 'invoice') + '.pdf'
+              }).then(function() {
+                console.log('[trade] PDF attached to Xero bill');
+              }).catch(function(e) {
+                console.warn('[trade] PDF attachment failed (non-blocking):', e.message);
+              });
+            }
+          } catch (e) { console.warn('[trade] PDF gen for Xero failed:', e); }
+        }
+
         // Show success
         var successHtml = '';
         successHtml += '<div style="text-align:center;padding:40px 20px">';
