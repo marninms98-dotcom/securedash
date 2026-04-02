@@ -2563,6 +2563,7 @@
   var _currentJobLoaded = null;  // last loaded jobId (cache key)
   var _reportLoadedForJob = null; // prevent report form reload when switching tabs
   var _reportDirty = false;       // unsaved changes in report form
+  var _invoiceBuilderOpen = false; // true when invoice builder is active
   var _opsApiBase = '';
   var _cachedMyJobs = [];    // flat array of all assignments for Camera/Schedule views
   var _isAdmin = false;       // set true when user role === 'admin'
@@ -3305,8 +3306,25 @@
     if (deepJobId) {
       openJob(deepJobId);
     } else {
-      showView('myJobs');
-      loadMyJobs();
+      // Restore last navigation state (survives iOS background kill / page reload)
+      var _restored = false;
+      try {
+        var saved = JSON.parse(sessionStorage.getItem('sw_trade_state') || 'null');
+        if (saved && (Date.now() - saved.ts) < 14400000) { // 4-hour expiry
+          if (saved.view === 'job' && saved.jobId) {
+            openJob(saved.jobId, saved.assignmentId);
+            _restored = true;
+          } else if (['hours','activity','schedule','profile','report'].indexOf(saved.view) !== -1) {
+            if (saved.jobId) { _currentJobId = saved.jobId; _currentAssignment = saved.assignmentId || null; }
+            showView(saved.view);
+            _restored = true;
+          }
+        }
+      } catch(e) {}
+      if (!_restored) {
+        showView('myJobs');
+        loadMyJobs();
+      }
     }
   }
 
@@ -3364,6 +3382,14 @@
     }
     _currentView = view;
     _lastViewChangeTime = Date.now();
+
+    // Persist navigation state so app can resume after background kill
+    try {
+      sessionStorage.setItem('sw_trade_state', JSON.stringify({
+        view: view, jobId: _currentJobId, assignmentId: _currentAssignment, ts: Date.now()
+      }));
+    } catch(e) {}
+
     document.querySelectorAll('.view').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.bottom-nav button').forEach(function(el) { el.classList.remove('active'); });
 
@@ -7532,6 +7558,76 @@
   };
 
   // ══════════════════════════════════════════════════
+  // SEARCHABLE JOB PICKER — used by camera views
+  // ══════════════════════════════════════════════════
+
+  function buildSearchableJobPicker(jobs, containerId, opts) {
+    opts = opts || {};
+    var fontSize = opts.compact ? '14px' : '16px';
+    var padding = opts.compact ? '10px 12px' : '12px 14px';
+    var h = '<div style="position:relative">';
+    h += '<input type="text" id="' + containerId + '_input" autocomplete="off" placeholder="Search by name or suburb\u2026" style="width:100%;padding:' + padding + ';border:1px solid var(--sw-border);border-radius:8px;font-size:' + fontSize + ';background:#fff;box-sizing:border-box">';
+    h += '<div id="' + containerId + '_dd" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#fff;border:1px solid var(--sw-border);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:100"></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function initSearchableJobPicker(jobs, containerId, onSelect) {
+    var input = document.getElementById(containerId + '_input');
+    var dd = document.getElementById(containerId + '_dd');
+    if (!input || !dd) return;
+
+    // Build items from assignments array (jobs is array of { jobs: {...} })
+    var items = jobs.map(function(a) {
+      var j = a.jobs || a;
+      return { id: j.id || '', name: j.client_name || 'Unknown', suburb: j.site_suburb || '' };
+    });
+
+    function render(filter) {
+      var q = (filter || '').toLowerCase();
+      var matches = items.filter(function(it) {
+        if (!q) return true;
+        return it.name.toLowerCase().indexOf(q) !== -1 || it.suburb.toLowerCase().indexOf(q) !== -1;
+      });
+      if (matches.length === 0) {
+        dd.innerHTML = '<div style="padding:12px;font-size:13px;color:var(--sw-text-sec)">No matching jobs</div>';
+      } else {
+        dd.innerHTML = matches.map(function(it) {
+          return '<div class="jp-opt" data-id="' + it.id + '" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--sw-light);font-size:14px">'
+            + '<strong>' + esc(it.name) + '</strong> <span style="color:var(--sw-text-sec)">\u2014 ' + esc(it.suburb) + '</span></div>';
+        }).join('');
+      }
+      dd.style.display = 'block';
+    }
+
+    input.addEventListener('input', function() { render(input.value); });
+    input.addEventListener('focus', function() { render(input.value); });
+
+    // Delay hiding so click events on options fire first
+    var blurTimer;
+    input.addEventListener('blur', function() { blurTimer = setTimeout(function() { dd.style.display = 'none'; }, 200); });
+
+    dd.addEventListener('click', function(e) {
+      clearTimeout(blurTimer);
+      var opt = e.target.closest('.jp-opt');
+      if (!opt) return;
+      var id = opt.dataset.id;
+      var item = items.find(function(it) { return it.id === id; });
+      if (item) {
+        input.value = item.name + ' \u2014 ' + item.suburb;
+        dd.style.display = 'none';
+        onSelect(id);
+      }
+    });
+
+    // Pre-fill if already selected
+    if (_cameraJobId) {
+      var sel = items.find(function(it) { return it.id === _cameraJobId; });
+      if (sel) input.value = sel.name + ' \u2014 ' + sel.suburb;
+    }
+  }
+
+  // ══════════════════════════════════════════════════
   // CAMERA VIEW — Quick Photo Capture
   // ══════════════════════════════════════════════════
 
@@ -7558,15 +7654,9 @@
     });
     html += '</div>';
 
-    // Job picker
+    // Job picker (searchable)
     html += '<div class="section-label">Select Job</div>';
-    html += '<select id="cameraJobSelect" style="width:100%;padding:12px 14px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px;margin-bottom:16px;background:#fff" onchange="_cameraJobId=this.value">';
-    html += '<option value="">Choose a job...</option>';
-    jobs.forEach(function(a) {
-      var job = a.jobs || {};
-      html += '<option value="' + (job.id || '') + '">' + esc(job.client_name || 'Unknown') + ' — ' + esc(job.site_suburb || '') + '</option>';
-    });
-    html += '</select>';
+    html += '<div style="margin-bottom:16px">' + buildSearchableJobPicker(jobs, 'camJobPick') + '</div>';
 
     // Caption
     html += '<input type="text" id="cameraCaption" placeholder="Caption (optional)" style="width:100%;padding:12px 14px;border:1px solid var(--sw-border);border-radius:8px;font-size:16px;margin-bottom:16px">';
@@ -7585,6 +7675,7 @@
     container.innerHTML = html;
     _cameraPhase = null;
     _cameraJobId = null;
+    initSearchableJobPicker(jobs, 'camJobPick', function(id) { _cameraJobId = id; });
   }
 
   window.selectCameraPhase = function(phase) {
@@ -7603,9 +7694,7 @@
 
   window.triggerCameraUpload = function() {
     if (!_cameraPhase) { toast('Select a photo category first', true); return; }
-    var jobSelect = document.getElementById('cameraJobSelect');
-    if (!jobSelect || !jobSelect.value) { toast('Select a job first', true); return; }
-    _cameraJobId = jobSelect.value;
+    if (!_cameraJobId) { toast('Select a job first', true); return; }
     document.getElementById('cameraFileInput').click();
   };
 
@@ -7769,14 +7858,8 @@
       html += '<button class="btn btn-secondary btn-small" data-phase="' + p.key + '" onclick="selectCameraPhase(\'' + p.key + '\')" style="flex:1;font-size:12px;padding:8px 4px">' + p.label + '</button>';
     });
     html += '</div>';
-    html += '<select id="cameraJobSelect" style="width:100%;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;margin-bottom:8px;background:#fff" onchange="_cameraJobId=this.value">';
-    html += '<option value="">Choose a job...</option>';
-    jobs.forEach(function(a) {
-      var job = a.jobs || {};
-      var selected = (_cameraJobId === job.id) ? ' selected' : '';
-      html += '<option value="' + (job.id || '') + '"' + selected + '>' + esc(job.client_name || 'Unknown') + ' \u2014 ' + esc(job.site_suburb || '') + '</option>';
-    });
-    html += '</select>';
+    html += buildSearchableJobPicker(jobs, 'camJobPickInline', { compact: true });
+    html += '<div style="height:8px"></div>';
     html += '<div class="upload-area" onclick="triggerCameraUpload()" style="min-height:80px;padding:16px">';
     html += '  <svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:var(--sw-mid)"><path d="M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0-6.4 0M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9z"/></svg>';
     html += '  <p style="font-size:13px;font-weight:600;margin-top:4px">Tap to take photo</p>';
@@ -7789,6 +7872,7 @@
     html += '</div>';
 
     container.innerHTML = html;
+    initSearchableJobPicker(jobs, 'camJobPickInline', function(id) { _cameraJobId = id; });
   }
 
   // ── Activity quick-action handlers ──
@@ -8931,6 +9015,24 @@
   }
 
   function loadHoursView() {
+    // If invoice builder was open (or saved in sessionStorage), restore it instead of reloading hours
+    if (_invoiceBuilderOpen) { renderInvoiceBuilder(); return; }
+    try {
+      var draft = JSON.parse(sessionStorage.getItem('sw_inv_draft') || 'null');
+      if (draft && draft.rows && draft.rows.length > 0) {
+        _invRows = draft.rows;
+        _invGst = draft.gst !== undefined ? draft.gst : true;
+        _invNotes = draft.notes || '';
+        _invoiceBuilderMode = draft.mode || 'weekly';
+        _hoursWeekStart = draft.weekStart || _hoursWeekStart;
+        _hoursWeekEnd = draft.weekEnd || _hoursWeekEnd;
+        _draftInvoiceId = draft.draftId || null;
+        _invoiceBuilderOpen = true;
+        renderInvoiceBuilder();
+        return;
+      }
+    } catch(e) {}
+
     if (!_hoursWeekEnd) _hoursWeekEnd = getWeekEndSunday(0);
     // Compute Monday from Sunday
     var sunDate = new Date(_hoursWeekEnd + 'T00:00:00');
@@ -9391,6 +9493,7 @@
       var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
       _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0 });
     }
+    _invoiceBuilderOpen = true;
     renderInvoiceBuilder();
   };
 
@@ -9424,6 +9527,7 @@
         var defRate = (_hoursData && _hoursData.rate) || _tradeRate || 0;
         _invRows.push({ date: new Date().toISOString().slice(0, 10), job_id: null, job_text: '', description: '', division: '', hours: 0, rate: defRate, amount: 0 });
       }
+      _invoiceBuilderOpen = true;
       renderInvoiceBuilder();
     }).catch(function(err) {
       toast('Failed to load draft: ' + friendlyError(err), true);
@@ -9574,6 +9678,21 @@
   var _knownJobNumbers = []; // populated from search_all_jobs
   var _invGst = true; // GST toggle state
 
+  // Persist invoice draft to sessionStorage (survives background kill)
+  function _saveInvDraft() {
+    try {
+      _syncRowsFromDOM();
+      sessionStorage.setItem('sw_inv_draft', JSON.stringify({
+        rows: _invRows, gst: _invGst, notes: _invNotes, mode: _invoiceBuilderMode,
+        weekStart: _hoursWeekStart, weekEnd: _hoursWeekEnd, draftId: _draftInvoiceId
+      }));
+    } catch(e) {}
+  }
+  window._clearInvDraft = function() {
+    _invoiceBuilderOpen = false;
+    try { sessionStorage.removeItem('sw_inv_draft'); } catch(e) {}
+  };
+
   function _syncRowsFromDOM() {
     _invRows.forEach(function(row, i) {
       // Only misc rows have a date input — weekly rows get date from day group
@@ -9619,6 +9738,7 @@
     if (ge) ge.textContent = _invGst ? '$' + t.gst.toFixed(2) : 'N/A';
     if (te) te.textContent = '$' + t.total.toFixed(2);
     if (be) be.textContent = 'Submit Invoice — $' + t.total.toFixed(2);
+    _saveInvDraft();
   }
 
   window.invRowChanged = function(idx) {
@@ -9800,7 +9920,7 @@
     // Back button
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
     html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">' + (isExpense ? 'Expense Invoice' : 'Invoice') + '</h2>';
-    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
+    html += '<button class="btn btn-secondary btn-small" onclick="_clearInvDraft();loadHoursView()">Back</button>';
     html += '</div>';
 
     if (_draftInvoiceId) {
@@ -9939,6 +10059,7 @@
     }
 
     container.innerHTML = html;
+    _saveInvDraft(); // persist draft to sessionStorage
 
     // Load all jobs for autocomplete
     api('search_all_jobs').then(function(res) {
@@ -10131,6 +10252,7 @@
         container.innerHTML = successHtml;
         _invRows = [];
         _invExtraLines = [];
+        _clearInvDraft();
       }).catch(function(err) {
         toast('Failed: ' + friendlyError(err), true);
         loadHoursView();
