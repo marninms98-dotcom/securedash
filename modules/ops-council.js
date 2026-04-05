@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════
 // COUNCIL & ENGINEERING APPROVALS TAB
-// 3-Layer iOS-style UI: List → Detail → Thread
+// 2-Layer UI: List → Detail (with unified conversation)
 // ════════════════════════════════════════════════════════════
 
 var _councilSubmissions = [];
@@ -410,7 +410,7 @@ function openCouncilDetail(subId) {
   }
 
   // ── Step timeline ──
-  html += '<div style="padding:0 16px 100px;">';
+  html += '<div style="padding:0 16px 16px;">';
   html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin:16px 0 10px;">All Steps</div>';
 
   steps.forEach(function(step, idx) {
@@ -433,7 +433,7 @@ function openCouncilDetail(subId) {
     // Connecting line color
     var lineColor = isComplete ? '#27AE60' : '#E0E0E0';
 
-    html += '<div onclick="openCouncilThread(\'' + sub.id + '\',' + idx + ')" style="display:flex;gap:12px;cursor:pointer;position:relative;">';
+    html += '<div onclick="filterCouncilEmails(' + idx + ')" style="display:flex;gap:12px;cursor:pointer;position:relative;">';
 
     // Left: circle + vertical line
     html += '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:28px;">';
@@ -462,8 +462,6 @@ function openCouncilDetail(subId) {
       html += '<span style="font-size:11px;color:var(--sw-text-sec);">&#128233; ' + stepEmails.length + '</span>';
     }
 
-    // Chevron
-    html += '<span style="font-size:16px;color:var(--sw-text-sec);">&#8250;</span>';
     html += '</div>';
 
     // Vendor + time info
@@ -496,6 +494,138 @@ function openCouncilDetail(subId) {
 
   html += '</div>'; // end timeline
 
+  // ── Unified Conversation ──
+  var allEmails = (sub.email_threads || []).sort(function(a, b) {
+    return new Date(a.created_at || a.sent_at || 0) - new Date(b.created_at || b.sent_at || 0);
+  });
+
+  // Build filter chips from unique email parties
+  var parties = {};
+  allEmails.forEach(function(em) {
+    var addr = em.direction === 'inbound' || em.direction === 'received' ? em.from_email : em.to_email;
+    if (addr && addr.indexOf('secureworks') === -1 && addr.indexOf('orders+') === -1) {
+      var domain = addr.split('@')[1] || '';
+      var label = domain.split('.')[0] || addr;
+      // Try to match to a step vendor
+      (sub.steps || []).forEach(function(s) {
+        if (s.vendor_email === addr && s.vendor) label = s.vendor;
+      });
+      if (!parties[addr]) parties[addr] = { label: label, addr: addr };
+    }
+  });
+  var partyList = Object.values(parties);
+
+  // Filter chips
+  html += '<div style="padding:12px 16px 8px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);">';
+  html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Conversation</div>';
+  html += '<div id="councilFilterChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+  html += '<button class="council-filter-chip active" onclick="filterCouncilEmails(-1)" data-filter="-1" style="padding:4px 12px;border-radius:100px;border:1px solid var(--sw-border);background:var(--sw-dark);color:#fff;font-size:11px;font-weight:600;cursor:pointer;">All (' + allEmails.length + ')</button>';
+  partyList.forEach(function(p) {
+    var count = allEmails.filter(function(em) { return em.from_email === p.addr || em.to_email === p.addr; }).length;
+    html += '<button class="council-filter-chip" onclick="filterCouncilEmails(-1,\'' + escapeHtml(p.addr) + '\')" data-filter="' + escapeHtml(p.addr) + '" style="padding:4px 12px;border-radius:100px;border:1px solid var(--sw-border);background:var(--sw-card,#fff);color:var(--sw-dark);font-size:11px;font-weight:500;cursor:pointer;">' + escapeHtml(p.label) + ' (' + count + ')</button>';
+  });
+  html += '</div></div>';
+
+  // Messages
+  html += '<div id="councilMessages" style="padding:16px;display:flex;flex-direction:column;gap:8px;">';
+
+  if (allEmails.length === 0) {
+    html += '<div style="text-align:center;padding:40px 20px;color:var(--sw-text-sec);font-size:13px;">';
+    html += '<div style="font-size:32px;margin-bottom:8px;">📧</div>';
+    html += 'No emails yet. Use the compose bar below to send the first message.';
+    html += '</div>';
+  } else {
+    allEmails.forEach(function(em) {
+      var isInbound = em.direction === 'inbound' || em.direction === 'received';
+      var ts = em.created_at || em.sent_at || em.received_at;
+      var align = isInbound ? 'flex-start' : 'flex-end';
+      var bubbleBg = isInbound ? '#F0ECE8' : '#FEF3EF';
+      var bubbleBorder = isInbound ? '12px 12px 12px 2px' : '12px 12px 2px 12px';
+
+      // Data attributes for filtering
+      var filterAddr = isInbound ? (em.from_email || '') : (em.to_email || '');
+      var stepIdx = em.council_step_index != null ? em.council_step_index : -1;
+      var stepName = stepIdx >= 0 && sub.steps[stepIdx] ? sub.steps[stepIdx].name : '';
+
+      html += '<div class="council-msg-item" data-addr="' + escapeHtml(filterAddr) + '" data-step="' + stepIdx + '" style="display:flex;flex-direction:column;align-items:' + align + ';max-width:82%;">';
+
+      // Step badge
+      if (stepName) {
+        html += '<div style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(41,60,70,0.06);color:var(--sw-text-sec);font-weight:500;margin-bottom:3px;">' + escapeHtml(stepName) + '</div>';
+      }
+
+      // AI classification pill (inbound only)
+      if (isInbound && em.ai_classification) {
+        var confColor = (em.ai_confidence && em.ai_confidence > 0.8) ? '#27AE60' : '#D97706';
+        html += '<div style="font-size:9px;padding:2px 8px;border-radius:8px;background:' + confColor + '15;color:' + confColor + ';font-weight:600;margin-bottom:3px;">' + escapeHtml(em.ai_classification) + '</div>';
+      }
+
+      // From/To/CC info
+      if (isInbound) {
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">From: ' + escapeHtml(em.from_email || '') + '</div>';
+      } else {
+        var toInfo = 'To: ' + escapeHtml(em.to_email || '');
+        var ccEmails = em.cc_emails || [];
+        if (Array.isArray(ccEmails) && ccEmails.length > 0) {
+          toInfo += ' · CC: ' + ccEmails.map(function(c) { return escapeHtml(c); }).join(', ');
+        }
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">' + toInfo + '</div>';
+      }
+
+      // Bubble
+      html += '<div style="background:' + bubbleBg + ';border-radius:' + bubbleBorder + ';padding:10px 14px;">';
+      if (em.subject) {
+        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-dark);margin-bottom:4px;">' + escapeHtml(em.subject) + '</div>';
+      }
+      var bodyText = em.body_text || '';
+      html += '<div style="font-size:13px;color:var(--sw-dark);line-height:1.5;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(bodyText) + '</div>';
+
+      // Attachments
+      var atts = em.attachments_json || em.attachments || [];
+      if (Array.isArray(atts) && atts.length > 0) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">';
+        atts.forEach(function(att) {
+          var name = att.filename || att.name || 'Document';
+          var url = att.storage_url || att.url || '';
+          html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(255,255,255,0.7);border:1px solid var(--sw-border,#E0E0E0);border-radius:8px;font-size:11px;color:var(--sw-dark);text-decoration:none;font-weight:600;">📎 ' + escapeHtml(name) + '</a>';
+        });
+        html += '</div>';
+      }
+
+      html += '</div>'; // end bubble
+
+      // Timestamp
+      var senderText = isInbound ? escapeHtml(em.from_email || '') : 'You';
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:3px;padding:0 4px;">' + senderText + ' · ' + councilRelativeTime(ts) + '</div>';
+
+      html += '</div>'; // end message container
+    });
+  }
+
+  html += '</div>'; // end messages
+
+  // ── Compose bar (inline in detail view) ──
+  html += '<div style="padding:12px 16px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);display:flex;flex-direction:column;gap:6px;">';
+  // To field
+  var lastInbound = null;
+  for (var li = allEmails.length - 1; li >= 0; li--) {
+    if (allEmails[li].direction === 'inbound' || allEmails[li].direction === 'received') { lastInbound = allEmails[li]; break; }
+  }
+  var defaultTo = lastInbound ? (lastInbound.from_email || '') : '';
+  var defaultCc = 'admin@secureworkswa.com.au';
+  if (lastInbound && Array.isArray(lastInbound.cc_emails) && lastInbound.cc_emails.length > 0) {
+    defaultCc = lastInbound.cc_emails.concat(['admin@secureworkswa.com.au']).filter(function(v, i, a) { return a.indexOf(v) === i; }).join(', ');
+  }
+  html += '<input type="text" id="councilDetailTo" placeholder="To: email..." value="' + escapeHtml(defaultTo) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
+  html += '<input type="text" id="councilDetailCc" placeholder="CC: (comma-separated)" value="' + escapeHtml(defaultCc) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
+  html += '<div style="display:flex;align-items:flex-end;gap:8px;">';
+  html += '<textarea id="councilDetailMsg" placeholder="Type a message..." rows="1" style="flex:1;padding:10px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:100px;line-height:1.4;" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>';
+  html += '<button onclick="sendCouncilDetailMessage(\'' + sub.id + '\')" style="width:40px;height:40px;border-radius:50%;background:var(--sw-orange,#F15A29);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>';
+  html += '</div>';
+  html += '<div style="text-align:center;"><button onclick="openCouncilEmailCompose(\'' + sub.id + '\',0)" style="background:none;border:none;color:var(--sw-text-sec);font-size:11px;cursor:pointer;text-decoration:underline;">Open full compose (with attachments)</button></div>';
+  html += '</div>';
+
   content.innerHTML = html;
 
   // Inject pulse animation if not already present
@@ -523,299 +653,94 @@ function closeCouncilDetail() {
 }
 
 // ────────────────────────────────────────────────────────────
-// LAYER 3: STEP CONVERSATION (THREAD) VIEW
+// UNIFIED CONVERSATION HELPERS
 // ────────────────────────────────────────────────────────────
 
-/**
- * Ensure the thread view container exists in the DOM.
- */
-function ensureCouncilThreadView() {
-  if (document.getElementById('councilThreadView')) return;
+// Filter council emails by party address or step index
+function filterCouncilEmails(stepIdx, partyAddr) {
+  var msgs = document.querySelectorAll('.council-msg-item');
+  var chips = document.querySelectorAll('.council-filter-chip');
 
-  var el = document.createElement('div');
-  el.id = 'councilThreadView';
-  el.style.cssText = 'position:fixed;inset:0;z-index:210;background:var(--sw-bg,#F5F3F0);' +
-    'display:flex;flex-direction:column;overflow:hidden;' +
-    'transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94);' +
-    'will-change:transform;';
-  el.innerHTML = '<div id="councilThreadContent" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>' +
-    '<div id="councilThreadCompose" style="flex-shrink:0;"></div>';
-  document.body.appendChild(el);
-}
-
-/**
- * Open the thread/conversation view for a specific step.
- */
-function openCouncilThread(subId, stepIdx) {
-  var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
-  if (!sub) return;
-  var steps = sub.steps || [];
-  var step = steps[stepIdx];
-  if (!step) return;
-
-  ensureCouncilThreadView();
-  var view = document.getElementById('councilThreadView');
-  var content = document.getElementById('councilThreadContent');
-  var composeBar = document.getElementById('councilThreadCompose');
-
-  var stepEmails = getStepEmails(sub, stepIdx);
-
-  var html = '';
-
-  // ── Header ──
-  html += '<div style="flex-shrink:0;padding:16px;background:var(--sw-card,#fff);border-bottom:1px solid var(--sw-border,#E0E0E0);">';
-  html += '<div style="display:flex;align-items:center;gap:8px;">';
-  html += '<button onclick="closeCouncilThread()" style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;font-size:14px;color:var(--sw-orange,#F15A29);font-weight:600;padding:0;">&#8249; ' + escapeHtml(step.name) + '</button>';
-  html += '<div style="flex:1;"></div>';
-  // Status pill
-  var statusColors = { complete: '#27AE60', in_progress: '#3498DB', blocked: '#E74C3C', pending: '#95A5A6' };
-  var statusColor = statusColors[step.status] || '#95A5A6';
-  html += '<span style="padding:3px 10px;border-radius:10px;background:' + statusColor + '20;color:' + statusColor + ';font-size:11px;font-weight:700;">' + escapeHtml(step.status.replace('_', ' ')) + '</span>';
-  html += '</div>';
-
-  // Step info
-  html += '<div style="margin-top:8px;font-size:18px;font-weight:700;color:var(--sw-dark);">' + escapeHtml(step.name) + '</div>';
-  if (step.vendor) {
-    html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(step.vendor) + (step.vendor_email ? ' &mdash; ' + escapeHtml(step.vendor_email) : '') + '</div>';
-  }
-  if (step.documents_received) {
-    html += '<div style="font-size:11px;color:var(--sw-green,#27AE60);margin-top:4px;">&#10003; Documents received</div>';
-  }
-  html += '</div>'; // end header
-
-  // ── Messages area ──
-  html += '<div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:8px;">';
-
-  if (stepEmails.length === 0) {
-    html += '<div style="text-align:center;padding:40px 20px;color:var(--sw-text-sec);font-size:13px;">';
-    html += '<div style="font-size:32px;margin-bottom:8px;">&#128233;</div>';
-    html += 'No emails for this step yet.<br>Send the first message below.';
-    html += '</div>';
-  } else {
-    stepEmails.forEach(function(em) {
-      var isInbound = em.direction === 'inbound' || em.direction === 'received';
-      var ts = em.created_at || em.sent_at || em.received_at;
-
-      // Bubble alignment and styling
-      var align = isInbound ? 'flex-start' : 'flex-end';
-      var bubbleBg = isInbound ? '#F0ECE8' : '#FEF3EF';
-      var bubbleBorder = isInbound ? '12px 12px 12px 2px' : '12px 12px 2px 12px';
-
-      html += '<div style="display:flex;flex-direction:column;align-items:' + align + ';max-width:82%;">';
-
-      // AI classification pill (inbound only)
-      if (isInbound && em.ai_classification) {
-        var confColor = (em.ai_confidence && em.ai_confidence > 0.8) ? '#27AE60' : '#D97706';
-        html += '<div style="font-size:9px;padding:2px 8px;border-radius:8px;background:' + confColor + '15;color:' + confColor + ';font-weight:600;margin-bottom:4px;">' +
-          escapeHtml(em.ai_classification) + (em.ai_confidence ? ' (' + Math.round(em.ai_confidence * 100) + '%)' : '') + '</div>';
-      }
-
-      // Recipient info above bubble
-      if (isInbound) {
-        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">From: ' + escapeHtml(em.from_email || 'Unknown') + '</div>';
-      } else {
-        var toInfo = 'To: ' + escapeHtml(em.to_email || step.vendor_email || '');
-        var ccEmails = em.cc_emails || [];
-        if (Array.isArray(ccEmails) && ccEmails.length > 0) {
-          toInfo += ' · CC: ' + ccEmails.map(function(c) { return escapeHtml(c); }).join(', ');
-        }
-        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">' + toInfo + '</div>';
-      }
-
-      // Bubble
-      html += '<div style="background:' + bubbleBg + ';border-radius:' + bubbleBorder + ';padding:10px 14px;position:relative;">';
-
-      // Subject (if present)
-      if (em.subject) {
-        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-dark);margin-bottom:4px;">' + escapeHtml(em.subject) + '</div>';
-      }
-
-      // Body
-      var bodyText = em.body_text || '';
-      html += '<div style="font-size:13px;color:var(--sw-dark);line-height:1.5;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(bodyText) + '</div>';
-
-      // Attachments
-      var atts = em.attachments_json || em.attachments || [];
-      if (Array.isArray(atts) && atts.length > 0) {
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">';
-        atts.forEach(function(att) {
-          var name = att.filename || att.name || 'Document';
-          var url = att.storage_url || att.url || '';
-          html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(255,255,255,0.7);border:1px solid var(--sw-border,#E0E0E0);border-radius:8px;font-size:11px;color:var(--sw-dark);text-decoration:none;font-weight:600;">&#128206; ' + escapeHtml(name) + '</a>';
-        });
-        html += '</div>';
-      }
-
-      html += '</div>'; // end bubble
-
-      // Timestamp + sender
-      var senderText = isInbound ? escapeHtml(em.from_email || '') : 'You';
-      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:3px;padding:0 4px;">' + senderText + ' &middot; ' + councilRelativeTime(ts) + '</div>';
-
-      html += '</div>'; // end message container
-    });
-  }
-
-  html += '</div>'; // end messages area
-
-  content.innerHTML = html;
-
-  // ── Compose bar ──
-  var stepKey = subId + '_' + stepIdx;
-  var hasExistingEmails = stepEmails.length > 0;
-
-  // Determine reply-all recipients from last inbound email
-  var lastInbound = null;
-  for (var ei = stepEmails.length - 1; ei >= 0; ei--) {
-    if (stepEmails[ei].direction === 'inbound' || stepEmails[ei].direction === 'received') {
-      lastInbound = stepEmails[ei]; break;
-    }
-  }
-  var defaultTo = step.vendor_email || '';
-  var defaultCc = 'admin@secureworkswa.com.au';
-  if (lastInbound) {
-    defaultTo = lastInbound.from_email || defaultTo;
-    // Reply-all: add original CC'd parties
-    var origCc = lastInbound.cc_emails || [];
-    if (Array.isArray(origCc) && origCc.length > 0) {
-      defaultCc = origCc.concat(['admin@secureworkswa.com.au']).filter(function(v, i, a) { return a.indexOf(v) === i; }).join(', ');
-    }
-  }
-
-  var composeHtml = '<div style="padding:10px 16px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);display:flex;flex-direction:column;gap:6px;">';
-
-  // To field (always visible)
-  composeHtml += '<input type="text" id="councilThreadTo_' + stepKey + '" placeholder="To: email..." value="' + escapeHtml(defaultTo) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
-  // CC field
-  composeHtml += '<input type="text" id="councilThreadCc_' + stepKey + '" placeholder="CC: (comma-separated)" value="' + escapeHtml(defaultCc) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
-
-  composeHtml += '<div style="display:flex;align-items:flex-end;gap:8px;">';
-  composeHtml += '<textarea id="councilThreadMsg_' + stepKey + '" placeholder="Type a message..." rows="1" style="flex:1;padding:10px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:100px;line-height:1.4;" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>';
-
-  // Send button
-  composeHtml += '<button onclick="sendCouncilThreadMessage(\'' + subId + '\',' + stepIdx + ')" style="width:40px;height:40px;border-radius:50%;background:var(--sw-orange,#F15A29);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>' +
-    '</button>';
-
-  composeHtml += '</div>';
-
-  // Full compose link
-  composeHtml += '<div style="text-align:center;">';
-  composeHtml += '<button onclick="openCouncilEmailCompose(\'' + subId + '\',' + stepIdx + ')" style="background:none;border:none;color:var(--sw-text-sec);font-size:11px;cursor:pointer;text-decoration:underline;">Open full compose</button>';
-  composeHtml += '</div>';
-
-  composeHtml += '</div>';
-  composeBar.innerHTML = composeHtml;
-
-  // Slide in
-  requestAnimationFrame(function() {
-    view.style.transform = 'translateX(0)';
+  // Update chip active states
+  chips.forEach(function(chip) {
+    var isAll = chip.getAttribute('data-filter') === '-1';
+    var isMatch = partyAddr ? chip.getAttribute('data-filter') === partyAddr : (stepIdx === -1 && isAll);
+    chip.style.background = isMatch ? 'var(--sw-dark,#293C46)' : 'var(--sw-card,#fff)';
+    chip.style.color = isMatch ? '#fff' : 'var(--sw-dark,#293C46)';
   });
 
-  // Scroll to bottom of messages
-  setTimeout(function() { content.scrollTop = content.scrollHeight; }, 50);
+  // Show/hide messages
+  msgs.forEach(function(msg) {
+    var show = true;
+    if (partyAddr) {
+      show = msg.getAttribute('data-addr') === partyAddr;
+    } else if (stepIdx >= 0) {
+      show = msg.getAttribute('data-step') === String(stepIdx);
+    }
+    msg.style.display = show ? '' : 'none';
+  });
 }
 
-/**
- * Close the thread view. Slides out to right.
- */
-function closeCouncilThread() {
-  var view = document.getElementById('councilThreadView');
-  if (!view) return;
-  view.style.transform = 'translateX(100%)';
-}
+// Send message from the unified detail compose bar
+async function sendCouncilDetailMessage(subId) {
+  var toEl = document.getElementById('councilDetailTo');
+  var ccEl = document.getElementById('councilDetailCc');
+  var msgEl = document.getElementById('councilDetailMsg');
 
-/**
- * Send a message from the thread compose bar.
- * Routes to reply or first email depending on existing thread.
- */
-async function sendCouncilThreadMessage(subId, stepIdx) {
-  var stepKey = subId + '_' + stepIdx;
-  var msgEl = document.getElementById('councilThreadMsg_' + stepKey);
-  if (!msgEl) return;
-
+  if (!msgEl || !toEl) return;
   var body = msgEl.value.trim();
+  var toEmail = toEl.value.trim();
+
+  if (!toEmail) { showToast('Enter recipient email', 'warning'); return; }
+  if (!toEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email', 'warning'); return; }
   if (!body) { showToast('Type a message first', 'warning'); return; }
+
+  var ccList = ccEl ? ccEl.value.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); }) : [];
 
   var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
   if (!sub) return;
 
-  var stepEmails = getStepEmails(sub, stepIdx);
+  // Determine step index from current step
+  var stepIdx = sub.current_step_index || 0;
 
-  // Get To and CC from compose fields
-  var toEl = document.getElementById('councilThreadTo_' + stepKey);
-  var ccEl = document.getElementById('councilThreadCc_' + stepKey);
-  var ccList = ccEl ? ccEl.value.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); }) : [];
+  // Check for existing thread to reply to
+  var allEmails = (sub.email_threads || []).sort(function(a, b) {
+    return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+  });
+  var lastEmail = allEmails.length > 0 ? allEmails[allEmails.length - 1] : null;
+  var inReplyTo = lastEmail ? (lastEmail.message_id || '') : '';
 
-  if (stepEmails.length > 0) {
-    // Reply to existing thread
-    var lastEmail = stepEmails[stepEmails.length - 1];
-    var lastIsInbound = lastEmail && (lastEmail.direction === 'inbound' || lastEmail.direction === 'received');
-    var replyTo = toEl ? toEl.value.trim() : (lastIsInbound ? (lastEmail.from_email || '') : (lastEmail.to_email || ''));
-    var inReplyTo = lastEmail ? (lastEmail.message_id || '') : '';
+  var subject = (allEmails.length > 0 ? 'Re: ' : '') + (sub.job_number || '') + ' — Council Approval — SecureWorks Group';
 
-    if (!replyTo) { showToast('Enter recipient email', 'warning'); return; }
+  msgEl.value = '';
+  msgEl.style.height = 'auto';
 
-    msgEl.value = '';
-    msgEl.style.height = 'auto';
+  try {
+    var payload = {
+      submission_id: subId,
+      step_index: stepIdx,
+      to_email: toEmail,
+      subject: subject,
+      body_text: body,
+    };
+    if (inReplyTo) payload.in_reply_to = inReplyTo;
+    if (ccList.length > 0) payload.cc = ccList;
 
-    try {
-      var step = (sub.steps || [])[stepIdx];
-      var subject = 'Re: ' + (sub.job_number || '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-      var payload = {
-        submission_id: subId,
-        step_index: stepIdx,
-        to_email: replyTo,
-        subject: subject,
-        body_text: body,
-        in_reply_to: inReplyTo
-      };
-      if (ccList.length > 0) payload.cc = ccList;
-      await opsPost('send_council_email', payload);
-      showToast('Email sent', 'success');
-      await loadApprovals();
-      // Re-open thread to show new message
-      openCouncilThread(subId, stepIdx);
-    } catch (e) {
-      showToast('Failed to send: ' + e.message, 'warning');
-    }
-  } else {
-    // First email — need recipient
-    var toEmail = toEl ? toEl.value.trim() : '';
-    if (!toEmail) { showToast('Enter recipient email', 'warning'); return; }
-    if (!toEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email', 'warning'); return; }
+    await opsPost('send_council_email', payload);
+    showToast('Email sent to ' + toEmail, 'success');
 
-    msgEl.value = '';
-    msgEl.style.height = 'auto';
-
-    try {
-      var step = (sub.steps || [])[stepIdx];
-      var subject = (sub.job_number || '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-      var payload = {
-        submission_id: subId,
-        step_index: stepIdx,
-        to_email: toEmail,
-        subject: subject,
-        body_text: body
-      };
-      if (ccList.length > 0) payload.cc = ccList;
-      await opsPost('send_council_email', payload);
-
-      // Save vendor_email on the step
+    // Save vendor email if step doesn't have one
+    var step = (sub.steps || [])[stepIdx];
+    if (step && !step.vendor_email) {
       try {
-        await opsPost('update_council_status', {
-          submission_id: subId,
-          step_index: stepIdx,
-          vendor_email: toEmail
-        });
+        await opsPost('update_council_status', { submission_id: subId, step_index: stepIdx, vendor_email: toEmail });
       } catch (e2) { /* non-critical */ }
-
-      showToast('Email sent to ' + toEmail, 'success');
-      await loadApprovals();
-      openCouncilThread(subId, stepIdx);
-    } catch (e) {
-      showToast('Failed to send: ' + e.message, 'warning');
     }
+
+    await loadApprovals();
+    openCouncilDetail(subId);
+  } catch (e) {
+    showToast('Failed to send: ' + e.message, 'warning');
   }
 }
 
