@@ -536,6 +536,77 @@
       font-size: 14px;
     }
 
+    /* ══════════════════════════════════════════════════
+       CREW REVIEW (Hours tab — Tier 2+)
+       ══════════════════════════════════════════════════ */
+    .crew-review-section {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--sw-border);
+    }
+    .crew-review-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--sw-text-sec);
+      margin-bottom: 10px;
+    }
+    .crew-job-group {
+      background: var(--sw-card);
+      border-radius: 10px;
+      box-shadow: var(--sw-shadow);
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .crew-job-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--sw-dark);
+      margin-bottom: 8px;
+    }
+    .crew-charge-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-top: 1px solid var(--sw-border);
+      font-size: 13px;
+    }
+    .crew-charge-row:first-of-type { border-top: none; }
+    .crew-charge-info { flex: 1; min-width: 0; }
+    .crew-charge-name { font-weight: 600; color: var(--sw-dark); }
+    .crew-charge-detail { font-size: 12px; color: var(--sw-text-sec); margin-top: 1px; }
+    .crew-charge-amount { font-weight: 700; color: var(--sw-dark); white-space: nowrap; }
+    .crew-actions { display: flex; gap: 6px; }
+    .crew-actions button {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .crew-btn-approve { background: #eafaf1; color: var(--sw-green); }
+    .crew-btn-approve:active { background: #c8f0d4; }
+    .crew-btn-reject { background: #fef3cd; color: #92400e; }
+    .crew-btn-reject:active { background: #fde68a; }
+    .crew-status {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 100px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .crew-status.approved { background: #eafaf1; color: var(--sw-green); }
+    .crew-status.acknowledged { background: #eafaf1; color: var(--sw-green); }
+    .crew-status.queried { background: #fef3cd; color: #92400e; }
+    .crew-status.rejected { background: #fdeaea; color: var(--sw-red); }
+
     /* Invoice builder */
     .inv-header { background: var(--sw-dark); color: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
     .inv-header-row { display: flex; justify-content: space-between; font-size: 12px; line-height: 1.6; color: rgba(255,255,255,0.7); }
@@ -563,6 +634,7 @@
     .inv-status.draft { background: rgba(107,114,128,0.1); color: #6B7280; }
     .inv-status.submitted, .inv-status.pending_ops_review { background: rgba(52,152,219,0.1); color: #3498DB; }
     .inv-status.acknowledged, .inv-status.approved { background: rgba(39,174,96,0.1); color: #27AE60; }
+    .inv-status.pushed_to_xero { background: rgba(52,152,219,0.1); color: #3498DB; }
     .inv-status.paid { background: rgba(39,174,96,0.15); color: #1B7A3D; }
     .inv-status.rejected { background: rgba(231,76,60,0.1); color: #E74C3C; }
 
@@ -2428,9 +2500,10 @@
     Calendar
     <span class="nav-badge" id="scheduleBadge" style="display:none">0</span>
   </button>
-  <button data-view="hours" onclick="showView('hours')">
+  <button data-view="hours" onclick="showView('hours')" style="position:relative">
     <svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
-    Financial
+    Pay
+    <span class="nav-badge" id="crewBadge" style="display:none">0</span>
   </button>
   <button data-view="profile" onclick="showView('profile')">
     <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -3296,6 +3369,15 @@
 
     // Sync queued phase updates
     scheduleSyncAfterAuth();
+
+    // Load crew review badge count for leads (non-blocking)
+    if (_userTier >= 2) {
+      api('crew_charges_on_my_jobs', { week_start: getWeekEndSunday(0) }).then(function(res) {
+        var pending = (res.charges || []).filter(function(c) { var s = (c.acknowledgment_status || 'pending').toLowerCase(); return s === 'pending' || s === 'submitted'; }).length;
+        var badge = document.getElementById('crewBadge');
+        if (badge && pending > 0) { badge.textContent = pending; badge.style.display = ''; }
+      }).catch(function() {});
+    }
 
     // Show PWA home screen onboarding for iOS users (delayed)
     setTimeout(checkPwaOnboarding, 2000);
@@ -5928,7 +6010,120 @@
       h += '</div>';
     }
 
+    // ── SECTION 6: Work Order Cost Breakdown + Invoice Status (async) ──
+    if (wo && wo.id) {
+      h += '<div class="detail-section" id="woJobCostBreakdown">';
+      h += '<h3>Cost Breakdown</h3>';
+      h += '<div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div>';
+      h += '</div>';
+    }
+
+    // ── SECTION 7: Crew Charges on This Job (Tier 2+ only, async) ──
+    if (_userTier >= 2) {
+      h += '<div class="detail-section" id="woJobCrewCharges">';
+      h += '<h3>Crew Charges</h3>';
+      h += '<div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div>';
+      h += '</div>';
+    }
+
     container.innerHTML = h;
+
+    // Async: load work order invoice status
+    if (wo && wo.id) {
+      api('my_work_orders').then(function(res) {
+        var el = document.getElementById('woJobCostBreakdown');
+        if (!el) return;
+        var orders = res.work_orders || [];
+        var match = null;
+        for (var i = 0; i < orders.length; i++) {
+          if (orders[i].id === wo.id || orders[i].job_id === job.id) { match = orders[i]; break; }
+        }
+        if (!match) {
+          el.innerHTML = '<h3>Cost Breakdown</h3><div style="font-size:13px;color:var(--sw-text-sec)">No invoiceable work order found</div>';
+          return;
+        }
+
+        var ch = '<h3>Cost Breakdown</h3>';
+
+        // Scope items with amounts
+        if (match.scope_items && match.scope_items.length > 0) {
+          match.scope_items.forEach(function(item) {
+            ch += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--sw-border);color:var(--sw-dark)">';
+            ch += '  <span style="flex:1;min-width:0">' + esc(item.description || item.name || '') + '</span>';
+            if (item.rate) ch += '  <span style="color:var(--sw-text-sec);margin:0 8px;white-space:nowrap">@ $' + Number(item.rate).toFixed(0) + '</span>';
+            ch += '  <span style="font-weight:600;white-space:nowrap">$' + Number(item.total || item.amount || 0).toFixed(2) + '</span>';
+            ch += '</div>';
+          });
+        }
+
+        // Totals
+        if (match.subtotal != null) {
+          ch += '<div style="margin-top:10px;text-align:right;font-size:13px">';
+          ch += '<div style="color:var(--sw-text-sec)">Subtotal: $' + Number(match.subtotal).toFixed(2) + '</div>';
+          ch += '<div style="color:var(--sw-text-sec)">GST: $' + Number(match.gst || 0).toFixed(2) + '</div>';
+          ch += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-top:2px">Total: $' + Number(match.total || 0).toFixed(2) + '</div>';
+          ch += '</div>';
+        }
+
+        // Invoice status / action
+        if (match.already_invoiced) {
+          ch += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(39,174,96,0.1);color:var(--sw-green);border-radius:8px;padding:10px;font-size:13px;font-weight:600;margin-top:12px">&#10003; Invoiced</div>';
+        } else if (match.can_invoice) {
+          ch += '<button id="woBtn' + match.id + '" onclick="invoiceWorkOrder(\'' + match.id + '\')" style="width:100%;padding:12px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font);margin-top:12px">Invoice This Work Order</button>';
+        } else {
+          ch += '<div style="font-size:12px;color:#92400e;margin-top:10px">Not ready — job not complete</div>';
+        }
+
+        el.innerHTML = ch;
+      }).catch(function() {
+        var el = document.getElementById('woJobCostBreakdown');
+        if (el) el.innerHTML = '<h3>Cost Breakdown</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load cost data</div>';
+      });
+    }
+
+    // Async: load crew charges for this job
+    if (_userTier >= 2) {
+      api('crew_charges_on_my_jobs', { week_start: getWeekEndSunday(-4) }).then(function(res) {
+        var el = document.getElementById('woJobCrewCharges');
+        if (!el) return;
+        var charges = (res.charges || []).filter(function(c) { return c.job_id === job.id; });
+        if (charges.length === 0) {
+          el.innerHTML = '<h3>Crew Charges</h3><div style="font-size:13px;color:var(--sw-text-sec)">No crew charges on this job</div>';
+          return;
+        }
+
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var ch = '<h3>Crew Charges</h3>';
+        charges.forEach(function(c) {
+          var dateLabel = '';
+          if (c.line_date) {
+            var d = new Date(c.line_date + 'T00:00:00');
+            dateLabel = d.getDate() + ' ' + months[d.getMonth()];
+          }
+          var status = (c.acknowledgment_status || 'pending').toLowerCase();
+          ch += '<div class="crew-charge-row">';
+          ch += '  <div class="crew-charge-info">';
+          ch += '    <div class="crew-charge-name">' + esc(c.trade_name || 'Crew') + '</div>';
+          ch += '    <div class="crew-charge-detail">' + esc(dateLabel) + ' · ' + Number(c.total_hours || 0).toFixed(1) + 'hrs</div>';
+          ch += '  </div>';
+          ch += '  <div class="crew-charge-amount">$' + Number(c.line_total_ex || 0).toFixed(2) + '</div>';
+
+          if (status === 'pending' || status === 'submitted') {
+            ch += '  <div class="crew-actions">';
+            ch += '    <button class="crew-btn-approve" onclick="reviewCrewCharge(\'' + c.line_id + '\', \'approve\')" title="Approve">&#10003;</button>';
+            ch += '    <button class="crew-btn-reject" onclick="reviewCrewCharge(\'' + c.line_id + '\', \'reject\')" title="Query">&#9888;</button>';
+            ch += '  </div>';
+          } else {
+            ch += '  <span class="crew-status ' + esc(status) + '">' + esc(status) + '</span>';
+          }
+          ch += '</div>';
+        });
+        el.innerHTML = ch;
+      }).catch(function() {
+        var el = document.getElementById('woJobCrewCharges');
+        if (el) el.innerHTML = '<h3>Crew Charges</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load crew charges</div>';
+      });
+    }
   }
 
   function renderJobTab_scope(data, phase, container) {
@@ -9099,6 +9294,13 @@
     html += '<div style="font-size:12px;color:var(--sw-text-sec)">Claim back out-of-pocket expenses</div></div>';
     html += '</button>';
 
+    // 4. My Work Orders
+    html += '<button onclick="openWorkOrderHub()" style="' + btnStyle + '">';
+    html += '<div style="' + iconStyle + ';background:rgba(76,106,124,0.1)"><span style="font-size:22px">&#128203;</span></div>';
+    html += '<div><div style="font-size:15px;font-weight:700;color:var(--sw-dark)">My Work Orders</div>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec)">View & invoice your work orders</div></div>';
+    html += '</button>';
+
     // Recent activity
     html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--sw-border)">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
@@ -9108,7 +9310,18 @@
     html += '<div id="hoursRecentActivity"><div style="font-size:12px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div></div>';
     html += '</div>';
 
+    // ── Crew Review placeholder (Tier 2+ only) ──
+    if (_userTier >= 2) {
+      html += '<div class="crew-review-section">';
+      html += '  <div class="crew-review-title">Crew on My Jobs</div>';
+      html += '  <div id="crewReviewSection"><div style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading crew charges...</div></div>';
+      html += '</div>';
+    }
+
     container.innerHTML = html;
+
+    // Load crew review data after DOM ready
+    if (_userTier >= 2) loadCrewReview();
 
     // Load recent invoices async
     api('my_trade_invoices').then(function(res) {
@@ -9206,6 +9419,85 @@
   };
 
   window.shiftWeek = shiftWeek;
+
+  // ══════════════════════════════════════════════════
+  // CREW REVIEW — charges on lead trade's jobs
+  // ══════════════════════════════════════════════════
+
+  function loadCrewReview() {
+    var el = document.getElementById('crewReviewSection');
+    if (!el) return;
+
+    var weekParam = _hoursWeekEnd || getWeekEndSunday(0);
+    api('crew_charges_on_my_jobs', { week_start: weekParam }).then(function(res) {
+      var charges = res.charges || [];
+
+      // Update nav badge with pending count
+      var pendingCount = charges.filter(function(c) { var s = (c.acknowledgment_status || 'pending').toLowerCase(); return s === 'pending' || s === 'submitted'; }).length;
+      var badge = document.getElementById('crewBadge');
+      if (badge) {
+        if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = ''; }
+        else { badge.style.display = 'none'; }
+      }
+
+      if (charges.length === 0) {
+        el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">No crew charges this week</div>';
+        return;
+      }
+
+      // Group by job
+      var groups = {};
+      charges.forEach(function(c) {
+        var key = c.job_number || c.job_id || 'unknown';
+        if (!groups[key]) groups[key] = { job_number: c.job_number, job_id: c.job_id, charges: [] };
+        groups[key].charges.push(c);
+      });
+
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var html = '';
+
+      Object.keys(groups).forEach(function(key) {
+        var g = groups[key];
+        html += '<div class="crew-job-group">';
+        html += '  <div class="crew-job-header">' + esc(g.job_number || 'Job') + '</div>';
+
+        g.charges.forEach(function(c) {
+          var dateLabel = '';
+          if (c.line_date) {
+            var d = new Date(c.line_date + 'T00:00:00');
+            dateLabel = d.getDate() + ' ' + months[d.getMonth()];
+          }
+          var status = (c.acknowledgment_status || 'pending').toLowerCase();
+          var amountStr = '$' + Number(c.line_total_ex || 0).toFixed(2);
+          var hoursStr = Number(c.total_hours || 0).toFixed(1) + 'hrs';
+
+          html += '<div class="crew-charge-row">';
+          html += '  <div class="crew-charge-info">';
+          html += '    <div class="crew-charge-name">' + esc(c.trade_name || 'Crew') + '</div>';
+          html += '    <div class="crew-charge-detail">' + esc(dateLabel) + ' · ' + esc(hoursStr) + '</div>';
+          html += '  </div>';
+          html += '  <div class="crew-charge-amount">' + amountStr + '</div>';
+
+          if (status === 'pending' || status === 'submitted') {
+            html += '  <div class="crew-actions">';
+            html += '    <button class="crew-btn-approve" onclick="reviewCrewCharge(\'' + c.line_id + '\', \'approve\')" title="Approve">&#10003;</button>';
+            html += '    <button class="crew-btn-reject" onclick="reviewCrewCharge(\'' + c.line_id + '\', \'reject\')" title="Query">&#9888;</button>';
+            html += '  </div>';
+          } else {
+            html += '  <span class="crew-status ' + esc(status) + '">' + esc(status) + '</span>';
+          }
+
+          html += '</div>';
+        });
+
+        html += '</div>';
+      });
+
+      el.innerHTML = html;
+    }).catch(function(err) {
+      el.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">' + friendlyError(err) + '</div>';
+    });
+  }
 
   // Recalculate totals when user edits the rate inline on the hours view
   window.recalcHoursTotals = function() {
@@ -9366,7 +9658,23 @@
       html += '</div>';
     }
 
+    // Work Orders button (all users)
+    html += '<div style="margin-top:12px">';
+    html += '<button class="btn btn-secondary" style="width:100%;font-size:13px" onclick="openWorkOrderHub()">&#128203; My Work Orders</button>';
+    html += '</div>';
+
+    // Crew review section (Tier 2+ — inline charges, not same as verification inbox)
+    if (_userTier >= 2) {
+      html += '<div class="crew-review-section">';
+      html += '  <div class="crew-review-title">Crew on My Jobs</div>';
+      html += '  <div id="crewReviewSection"><div style="text-align:center;padding:20px;color:var(--sw-text-sec);font-size:13px"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading crew charges...</div></div>';
+      html += '</div>';
+    }
+
     container.innerHTML = html;
+
+    // Load crew review after DOM ready
+    if (_userTier >= 2) loadCrewReview();
   }
 
   window.recalcPerMetre = function() {
@@ -10118,10 +10426,19 @@
   }
 
   window.reviewCrewCharge = function(lineId, action) {
-    api('review_crew_charge', null, { line_id: lineId, action: action }).then(function() {
+    var body = { line_id: lineId, action: action };
+    if (action === 'reject') {
+      var note = prompt('What\'s the issue?');
+      if (!note) return;
+      body.note = note;
+    }
+    api('review_crew_charge', null, body).then(function() {
       toast(action === 'approve' ? 'Approved' : 'Rejected');
-      // Re-render the crew section
+      // Re-render crew sections everywhere they appear
       renderInvoiceBuilder();
+      loadCrewReview();
+      // Also refresh job detail work order tab if visible
+      if (document.getElementById('woJobCrewCharges')) refreshJobTab('workorder');
     }).catch(function(err) {
       toast('Failed: ' + friendlyError(err), true);
     });
@@ -10737,6 +11054,107 @@
       container.innerHTML = '<div style="font-size:13px;color:var(--sw-text-sec)">Could not load invoices</div>';
     });
   }
+
+  // ══════════════════════════════════════════════════
+  // WORK ORDERS — sub-view in Financial Hub
+  // ══════════════════════════════════════════════════
+
+  window.openWorkOrderHub = function() {
+    var container = document.getElementById('hoursContent');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner"></div>Loading work orders...</div>';
+
+    api('my_work_orders').then(function(res) {
+      renderWorkOrderHub(res.work_orders || []);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="hours-no-data">Error: ' + friendlyError(err) + '</div>';
+    });
+  };
+
+  function renderWorkOrderHub(orders) {
+    var container = document.getElementById('hoursContent');
+    var html = '';
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    html += '<h2 style="font-size:18px;font-weight:700;color:var(--sw-dark);margin:0">My Work Orders</h2>';
+    html += '<button class="btn btn-secondary btn-small" onclick="loadHoursView()">Back</button>';
+    html += '</div>';
+
+    if (orders.length === 0) {
+      html += '<div class="hours-no-data">No work orders assigned</div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    orders.forEach(function(wo) {
+      var statusLabel = (wo.status || 'unknown').replace(/_/g, ' ');
+
+      html += '<div style="padding:16px;background:var(--sw-card);border-radius:12px;box-shadow:var(--sw-shadow);margin-bottom:10px">';
+
+      // Header: WO number + status
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      html += '  <span style="font-size:15px;font-weight:700;color:var(--sw-dark)">' + esc(wo.wo_number || 'WO') + '</span>';
+      html += '  <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:100px;' + (wo.status === 'complete' ? 'background:#eafaf1;color:var(--sw-green)' : 'background:#fef3cd;color:#92400e') + '">' + esc(statusLabel) + '</span>';
+      html += '</div>';
+
+      // Job + address
+      html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:10px">' + esc(wo.job_number || '') + (wo.site_address ? ' | ' + esc(wo.site_address) : '') + '</div>';
+
+      // Scope items
+      if (wo.scope_items && wo.scope_items.length > 0) {
+        wo.scope_items.forEach(function(item) {
+          html += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:var(--sw-dark)">';
+          html += '  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(item.description || item.name || '') + '</span>';
+          if (item.rate) html += '  <span style="color:var(--sw-text-sec);margin:0 8px;white-space:nowrap">@ $' + Number(item.rate).toFixed(0) + '</span>';
+          html += '  <span style="font-weight:600;white-space:nowrap">$' + Number(item.total || item.amount || 0).toFixed(2) + '</span>';
+          html += '</div>';
+        });
+      }
+
+      // Totals
+      if (wo.subtotal != null) {
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--sw-border);text-align:right;font-size:13px">';
+        html += '  <div style="color:var(--sw-text-sec)">Subtotal: $' + Number(wo.subtotal).toFixed(2) + '</div>';
+        html += '  <div style="color:var(--sw-text-sec)">GST: $' + Number(wo.gst || 0).toFixed(2) + '</div>';
+        html += '  <div style="font-size:15px;font-weight:700;color:var(--sw-dark);margin-top:2px">Total: $' + Number(wo.total || 0).toFixed(2) + '</div>';
+        html += '</div>';
+      }
+
+      // Action button or status indicator
+      if (wo.already_invoiced) {
+        html += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(39,174,96,0.1);color:var(--sw-green);border-radius:8px;padding:10px;font-size:13px;font-weight:600;margin-top:10px">&#10003; Invoiced</div>';
+      } else if (wo.can_invoice) {
+        html += '<button id="woBtn' + wo.id + '" onclick="invoiceWorkOrder(\'' + wo.id + '\')" style="width:100%;padding:12px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font);margin-top:10px">Invoice This Work Order</button>';
+      } else {
+        html += '<div style="font-size:12px;color:#92400e;margin-top:8px">Not ready — job not complete</div>';
+      }
+
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  window.invoiceWorkOrder = function(workOrderId) {
+    showConfirm('Submit Invoice', 'Submit invoice for this work order? It will be created as a DRAFT in Xero.', 'Submit').then(function(ok) {
+      if (!ok) return;
+
+      var btn = document.getElementById('woBtn' + workOrderId);
+      if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+      api('submit_work_order_invoice', null, { work_order_id: workOrderId }).then(function(result) {
+        if (result.success) {
+          toast('Invoice created: ' + (result.xero_bill_number || '') + ' — $' + Number(result.total || 0).toFixed(2));
+          openWorkOrderHub(); // Refresh to show invoiced state
+        } else {
+          toast('Invoice failed: ' + (result.error || 'Unknown error'), true);
+          if (btn) { btn.disabled = false; btn.textContent = 'Invoice This Work Order'; }
+        }
+      }).catch(function(err) {
+        toast(friendlyError(err), true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Invoice This Work Order'; }
+      });
+    });
+  };
 
   window.updateTradeRate = function() {
     var input = document.getElementById('inputTradeRate');

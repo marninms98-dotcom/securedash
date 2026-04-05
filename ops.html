@@ -6740,7 +6740,7 @@ function renderTradeBillTable(invoices) {
     if (inv.line_items && Array.isArray(inv.line_items)) {
       inv.line_items.forEach(function(li) { hours += (li.hours || 0); });
     }
-    var statusClass = inv.status === 'pushed' ? 'color:var(--sw-green)' : 'color:var(--sw-red)';
+    var statusClass = (inv.status === 'pushed' || inv.status === 'pushed_to_xero' || inv.status === 'paid') ? 'color:var(--sw-green)' : inv.status === 'draft' ? 'color:var(--sw-mid)' : 'color:var(--sw-red)';
     var billLink = inv.xero_bill_number || '—';
     if (inv.xero_invoice_id) {
       billLink = '<a href="https://go.xero.com/AccountsPayable/View.aspx?InvoiceID=' + inv.xero_invoice_id + '" target="_blank" style="color:var(--sw-blue);text-decoration:none">' + (inv.xero_bill_number || 'View') + ' &#8599;</a>';
