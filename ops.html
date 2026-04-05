@@ -1912,6 +1912,170 @@
       .jarvis-brand { font-size: 12px; }
       .crew-util-wrap { grid-template-columns: 1fr; }
     }
+
+    /* ══════════ COUNCIL APPROVALS ══════════ */
+
+    /* Summary strip */
+    .approval-summary { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .approval-summary-pill {
+      flex: 1; min-width: 70px; padding: 10px 12px; background: var(--sw-card);
+      box-shadow: 0 1px 3px rgba(41,60,70,0.08); cursor: pointer;
+      text-align: center; transition: outline 0.15s;
+    }
+    .approval-summary-pill.active { outline: 2px solid var(--sw-orange); }
+    .approval-summary-pill .pill-count { font-size: 20px; font-weight: 700; color: var(--sw-dark); }
+    .approval-summary-pill .pill-label { font-size: 10px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+    /* Approval list cards */
+    .approval-list { display: flex; flex-direction: column; gap: 2px; }
+    .approval-card {
+      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+      background: var(--sw-card); cursor: pointer; transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent; border-left: 3px solid var(--sw-border);
+    }
+    .approval-card:first-child { border-radius: 4px 4px 0 0; }
+    .approval-card:last-child { border-radius: 0 0 4px 4px; }
+    .approval-card:only-child { border-radius: 4px; }
+    .approval-card:active { background: #F0ECE8; }
+    .approval-card.urgency-blocked { border-left-color: #E74C3C; }
+    .approval-card.urgency-unread { border-left-color: var(--sw-orange); }
+    .approval-card.urgency-stalled { border-left-color: #F39C12; }
+    .approval-card.urgency-active { border-left-color: var(--sw-green); }
+    .approval-card.urgency-complete { border-left-color: var(--sw-border); opacity: 0.7; }
+    .approval-card-body { flex: 1; min-width: 0; }
+    .approval-card-title { font-size: 14px; font-weight: 600; color: var(--sw-dark); }
+    .approval-card-step { font-size: 12px; color: var(--sw-text-sec); margin-top: 2px; }
+    .approval-card-meta { font-size: 11px; color: var(--sw-text-sec); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+    .approval-card-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 100px; }
+    .approval-card-badge.unread { background: var(--sw-orange); color: #fff; }
+    .approval-card-badge.stalled { background: #F39C12; color: #fff; }
+    .approval-card-badge.blocked { background: #E74C3C; color: #fff; }
+    .approval-card-chevron { color: var(--sw-text-sec); font-size: 16px; flex-shrink: 0; }
+
+    /* Progress ring */
+    .approval-progress-ring { width: 40px; height: 40px; flex-shrink: 0; }
+    .approval-progress-ring svg { transform: rotate(-90deg); }
+    .approval-progress-ring .track { stroke: var(--sw-light, #EDF1F4); stroke-width: 3; fill: none; }
+    .approval-progress-ring .fill { stroke: var(--sw-orange); stroke-width: 3; fill: none; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+    .approval-card.urgency-blocked .fill { stroke: #E74C3C; }
+    .approval-card.urgency-complete .fill { stroke: var(--sw-green); }
+
+    /* Detail view — full-screen slide-in */
+    .council-detail-view {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: var(--sw-bg); flex-direction: column; overflow: hidden;
+    }
+    .council-detail-view.active { display: flex; }
+    .council-detail-header {
+      flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--sw-light, #EDF1F4);
+    }
+    .council-back { background: none; border: none; font-size: 14px; color: var(--sw-orange); cursor: pointer; font-weight: 500; padding: 4px 0; }
+    .council-detail-content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Hero progress bar */
+    .council-hero { padding: 24px 16px 20px; background: #fff; border-bottom: 1px solid var(--sw-light, #EDF1F4); }
+    .council-hero-bar { display: flex; gap: 3px; margin-bottom: 16px; }
+    .council-hero-segment { flex: 1; height: 6px; background: var(--sw-light, #EDF1F4); transition: background 0.4s ease; }
+    .council-hero-segment.complete { background: var(--sw-green); }
+    .council-hero-segment.active { background: var(--sw-orange); }
+    .council-hero-segment.blocked { background: #E74C3C; }
+    @keyframes pulse-segment { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .council-hero-segment.active { animation: pulse-segment 2s ease-in-out infinite; }
+    .council-hero-current { font-size: 20px; font-weight: 700; color: var(--sw-dark); }
+    .council-hero-meta { font-size: 13px; color: var(--sw-text-sec); margin-top: 4px; }
+
+    /* Step timeline */
+    .council-steps { padding: 8px 0; }
+    .council-step {
+      display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+      cursor: pointer; transition: background 0.1s; position: relative;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .council-step:active { background: #F0ECE8; }
+    .council-step::before {
+      content: ''; position: absolute; left: 27px; top: 0; width: 2px; height: 14px;
+      background: var(--sw-border);
+    }
+    .council-step:first-child::before { display: none; }
+    .council-step.complete::before { background: var(--sw-green); }
+    .council-step-indicator {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; margin-top: 1px;
+    }
+    .council-step-indicator.complete { background: var(--sw-green); color: #fff; }
+    .council-step-indicator.active { background: var(--sw-orange); color: #fff; box-shadow: 0 0 0 4px rgba(241,90,41,0.15); }
+    .council-step-indicator.blocked { background: #E74C3C; color: #fff; }
+    .council-step-indicator.pending { background: none; border: 2px solid var(--sw-border); color: var(--sw-text-sec); }
+    .council-step-body { flex: 1; min-width: 0; }
+    .council-step-name { font-size: 14px; font-weight: 600; color: var(--sw-dark); }
+    .council-step.complete .council-step-name { color: var(--sw-text-sec); }
+    .council-step-vendor { font-size: 12px; color: var(--sw-text-sec); margin-top: 2px; }
+    .council-step-badges { display: flex; gap: 6px; margin-top: 6px; }
+    .council-step-badge { font-size: 10px; padding: 2px 8px; border-radius: 100px; font-weight: 500; }
+    .council-step-badge.unread { background: rgba(241,90,41,0.1); color: var(--sw-orange); }
+    .council-step-badge.docs { background: rgba(41,60,70,0.06); color: var(--sw-mid, #4C6A7C); }
+    .council-step-action { margin-top: 10px; }
+
+    /* Thread view — slides over detail */
+    .council-thread-view {
+      display: none; position: fixed; inset: 0; z-index: 210;
+      background: var(--sw-bg); flex-direction: column; overflow: hidden;
+    }
+    .council-thread-view.active { display: flex; }
+    .council-thread-content { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+
+    /* Message bubbles */
+    .council-messages { display: flex; flex-direction: column; gap: 8px; }
+    .council-message { max-width: 82%; padding: 10px 14px; font-size: 14px; line-height: 1.45; word-wrap: break-word; }
+    .council-message.outbound { align-self: flex-end; background: #FEF3EF; color: var(--sw-dark); border-radius: 16px 16px 4px 16px; }
+    .council-message.inbound { align-self: flex-start; background: #F0ECE8; color: var(--sw-dark); border-radius: 16px 16px 16px 4px; }
+    .council-message-meta { font-size: 10px; color: var(--sw-text-sec); margin-top: 4px; }
+    .council-message.outbound .council-message-meta { text-align: right; }
+    .council-message-subject { font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--sw-mid, #4C6A7C); }
+    .council-message-attachment {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+      background: rgba(41,60,70,0.06); font-size: 12px; font-weight: 500;
+      margin-top: 6px; cursor: pointer; text-decoration: none; color: var(--sw-mid, #4C6A7C);
+    }
+    .council-ai-pill {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 100px; margin-bottom: 4px; display: inline-block;
+    }
+    .council-date-sep { text-align: center; font-size: 10px; color: var(--sw-text-sec); padding: 12px 0 4px; letter-spacing: 0.3px; }
+
+    /* Compose bar */
+    .council-compose-bar {
+      flex-shrink: 0; display: flex; align-items: flex-end; gap: 8px;
+      padding: 10px 16px; background: #fff; border-top: 1px solid var(--sw-light, #EDF1F4);
+      padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+    .council-compose-input {
+      flex: 1; padding: 10px 14px; border: 1px solid var(--sw-border); border-radius: 20px;
+      font-size: 14px; font-family: inherit; resize: none; max-height: 120px; line-height: 1.4;
+      outline: none; transition: border-color 0.15s;
+    }
+    .council-compose-input:focus { border-color: var(--sw-orange); }
+    .council-compose-send {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--sw-orange);
+      border: none; color: #fff; font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      transition: transform 0.1s, background 0.15s;
+    }
+    .council-compose-send:active { transform: scale(0.9); }
+    .council-compose-send:disabled { background: var(--sw-border); }
+
+    /* Empty state */
+    .council-empty { text-align: center; padding: 60px 20px; color: var(--sw-text-sec); }
+    .council-empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+    @media (max-width: 768px) {
+      .approval-summary { gap: 6px; }
+      .approval-summary-pill { padding: 8px 6px; }
+      .approval-summary-pill .pill-count { font-size: 16px; }
+      .council-hero-current { font-size: 17px; }
+    }
   </style>
 </head>
 <body>
@@ -2315,11 +2479,15 @@
     <div id="viewApprovals" class="view">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
         <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0;">Council Approvals <span id="approvalsCount" style="font-weight:400;color:var(--sw-text-sec);font-size:13px;"></span></h3>
+        <button class="btn btn-sm btn-primary" onclick="openCouncilStartModalFromApprovals()">+ New</button>
       </div>
-      <div id="approvalsKanban" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;"></div>
+      <div id="approvalsSummary" class="approval-summary"></div>
+      <div id="approvalsList" class="approval-list"></div>
     </div>
 
   </div><!-- /container -->
+
+  <!-- Council views are created dynamically by ops-council.js on first open -->
 
   <!-- Mobile Nav -->
   <div class="mobile-nav">
