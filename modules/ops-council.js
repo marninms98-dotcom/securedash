@@ -388,8 +388,21 @@ function openCouncilDetail(subId) {
     html += '<div style="padding:16px;background:var(--sw-card,#fff);margin:12px 16px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
     html += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Current Step</div>';
     html += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);">' + escapeHtml(currentStep.name) + '</div>';
+    // Days in step
+    if (currentStep.started_at) {
+      var heroDs = Math.floor((Date.now() - new Date(currentStep.started_at).getTime()) / 86400000);
+      if (heroDs > 0) {
+        var heroDsColor = heroDs > 7 ? '#E74C3C' : heroDs > 3 ? '#D97706' : 'var(--sw-text-sec)';
+        html += '<div style="font-size:12px;color:' + heroDsColor + ';margin-top:2px;font-weight:' + (heroDs > 7 ? '700' : '400') + ';">' + heroDs + ' days in this step</div>';
+      }
+    }
+    // Vendor info or setter
     if (currentStep.vendor) {
-      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(currentStep.vendor) + (currentStep.vendor_email ? ' &mdash; ' + escapeHtml(currentStep.vendor_email) : '') + '</div>';
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px;">' + escapeHtml(currentStep.vendor) + (currentStep.vendor_email ? ' &mdash; ' + escapeHtml(currentStep.vendor_email) : '') + '</div>';
+    } else {
+      html += '<div id="councilVendorSet_' + sub.current_step_index + '" style="margin-top:6px;">';
+      html += '<button onclick="toggleCouncilVendorEditor(\'' + sub.id + '\',' + sub.current_step_index + ')" style="background:none;border:1px dashed var(--sw-border);padding:6px 12px;border-radius:6px;font-size:11px;color:var(--sw-text-sec);cursor:pointer;">+ Set vendor &amp; email for this step</button>';
+      html += '</div>';
     }
     // Advance button
     html += '<button onclick="openCouncilAdvanceModal(\'' + sub.id + '\',' + sub.current_step_index + ')" style="margin-top:12px;padding:10px 20px;background:var(--sw-green,#27AE60);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Complete &amp; Advance &#10003;</button>';
@@ -455,7 +468,13 @@ function openCouncilDetail(subId) {
 
     // Vendor + time info
     if (step.vendor) {
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(step.vendor) + '</div>';
+      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(step.vendor) + (step.vendor_email ? ' — ' + escapeHtml(step.vendor_email) : '') + '</div>';
+    } else if (!isComplete) {
+      html += '<div style="margin-top:2px;"><button onclick="event.stopPropagation();toggleCouncilVendorEditor(\'' + sub.id + '\',' + idx + ')" style="background:none;border:none;padding:0;font-size:10px;color:var(--sw-orange,#F15A29);cursor:pointer;text-decoration:underline;">+ Set vendor</button></div>';
+    }
+    // Skip button for pending future steps
+    if (isPending && idx > sub.current_step_index) {
+      html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();skipCouncilStep(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(step.name).replace(/'/g, "\\'") + '\')" style="background:none;border:none;padding:0;font-size:10px;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">Skip this step</button></div>';
     }
     if (step.started_at && !isComplete) {
       var daysIn = Math.floor((Date.now() - new Date(step.started_at).getTime()) / 86400000);
@@ -591,6 +610,18 @@ function openCouncilThread(subId, stepIdx) {
           escapeHtml(em.ai_classification) + (em.ai_confidence ? ' (' + Math.round(em.ai_confidence * 100) + '%)' : '') + '</div>';
       }
 
+      // Recipient info above bubble
+      if (isInbound) {
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">From: ' + escapeHtml(em.from_email || 'Unknown') + '</div>';
+      } else {
+        var toInfo = 'To: ' + escapeHtml(em.to_email || step.vendor_email || '');
+        var ccEmails = em.cc_emails || [];
+        if (Array.isArray(ccEmails) && ccEmails.length > 0) {
+          toInfo += ' · CC: ' + ccEmails.map(function(c) { return escapeHtml(c); }).join(', ');
+        }
+        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">' + toInfo + '</div>';
+      }
+
       // Bubble
       html += '<div style="background:' + bubbleBg + ';border-radius:' + bubbleBorder + ';padding:10px 14px;position:relative;">';
 
@@ -633,12 +664,30 @@ function openCouncilThread(subId, stepIdx) {
   var stepKey = subId + '_' + stepIdx;
   var hasExistingEmails = stepEmails.length > 0;
 
-  var composeHtml = '<div style="padding:10px 16px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);display:flex;flex-direction:column;gap:8px;">';
-
-  // If no emails yet, show recipient field
-  if (!hasExistingEmails) {
-    composeHtml += '<input type="email" id="councilThreadTo_' + stepKey + '" placeholder="Recipient email..." value="' + escapeHtml(step.vendor_email || '') + '" style="padding:10px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
+  // Determine reply-all recipients from last inbound email
+  var lastInbound = null;
+  for (var ei = stepEmails.length - 1; ei >= 0; ei--) {
+    if (stepEmails[ei].direction === 'inbound' || stepEmails[ei].direction === 'received') {
+      lastInbound = stepEmails[ei]; break;
+    }
   }
+  var defaultTo = step.vendor_email || '';
+  var defaultCc = 'admin@secureworkswa.com.au';
+  if (lastInbound) {
+    defaultTo = lastInbound.from_email || defaultTo;
+    // Reply-all: add original CC'd parties
+    var origCc = lastInbound.cc_emails || [];
+    if (Array.isArray(origCc) && origCc.length > 0) {
+      defaultCc = origCc.concat(['admin@secureworkswa.com.au']).filter(function(v, i, a) { return a.indexOf(v) === i; }).join(', ');
+    }
+  }
+
+  var composeHtml = '<div style="padding:10px 16px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);display:flex;flex-direction:column;gap:6px;">';
+
+  // To field (always visible)
+  composeHtml += '<input type="text" id="councilThreadTo_' + stepKey + '" placeholder="To: email..." value="' + escapeHtml(defaultTo) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
+  // CC field
+  composeHtml += '<input type="text" id="councilThreadCc_' + stepKey + '" placeholder="CC: (comma-separated)" value="' + escapeHtml(defaultCc) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
 
   composeHtml += '<div style="display:flex;align-items:flex-end;gap:8px;">';
   composeHtml += '<textarea id="councilThreadMsg_' + stepKey + '" placeholder="Type a message..." rows="1" style="flex:1;padding:10px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:100px;line-height:1.4;" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>';
@@ -693,12 +742,19 @@ async function sendCouncilThreadMessage(subId, stepIdx) {
 
   var stepEmails = getStepEmails(sub, stepIdx);
 
+  // Get To and CC from compose fields
+  var toEl = document.getElementById('councilThreadTo_' + stepKey);
+  var ccEl = document.getElementById('councilThreadCc_' + stepKey);
+  var ccList = ccEl ? ccEl.value.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); }) : [];
+
   if (stepEmails.length > 0) {
     // Reply to existing thread
     var lastEmail = stepEmails[stepEmails.length - 1];
     var lastIsInbound = lastEmail && (lastEmail.direction === 'inbound' || lastEmail.direction === 'received');
-    var replyTo = lastIsInbound ? (lastEmail.from_email || '') : (lastEmail.to_email || '');
+    var replyTo = toEl ? toEl.value.trim() : (lastIsInbound ? (lastEmail.from_email || '') : (lastEmail.to_email || ''));
     var inReplyTo = lastEmail ? (lastEmail.message_id || '') : '';
+
+    if (!replyTo) { showToast('Enter recipient email', 'warning'); return; }
 
     msgEl.value = '';
     msgEl.style.height = 'auto';
@@ -706,14 +762,16 @@ async function sendCouncilThreadMessage(subId, stepIdx) {
     try {
       var step = (sub.steps || [])[stepIdx];
       var subject = 'Re: ' + (sub.job_number || '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-      await opsPost('send_council_email', {
+      var payload = {
         submission_id: subId,
         step_index: stepIdx,
         to_email: replyTo,
         subject: subject,
         body_text: body,
         in_reply_to: inReplyTo
-      });
+      };
+      if (ccList.length > 0) payload.cc = ccList;
+      await opsPost('send_council_email', payload);
       showToast('Email sent', 'success');
       await loadApprovals();
       // Re-open thread to show new message
@@ -723,7 +781,6 @@ async function sendCouncilThreadMessage(subId, stepIdx) {
     }
   } else {
     // First email — need recipient
-    var toEl = document.getElementById('councilThreadTo_' + stepKey);
     var toEmail = toEl ? toEl.value.trim() : '';
     if (!toEmail) { showToast('Enter recipient email', 'warning'); return; }
     if (!toEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email', 'warning'); return; }
@@ -734,13 +791,15 @@ async function sendCouncilThreadMessage(subId, stepIdx) {
     try {
       var step = (sub.steps || [])[stepIdx];
       var subject = (sub.job_number || '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-      await opsPost('send_council_email', {
+      var payload = {
         submission_id: subId,
         step_index: stepIdx,
         to_email: toEmail,
         subject: subject,
         body_text: body
-      });
+      };
+      if (ccList.length > 0) payload.cc = ccList;
+      await opsPost('send_council_email', payload);
 
       // Save vendor_email on the step
       try {
@@ -906,4 +965,68 @@ function openCouncilStartModalFromApprovals() {
   if (isNaN(idx) || idx < 0 || idx >= patioJobs.length) { alert('Invalid selection.'); return; }
 
   openCouncilStartModal(patioJobs[idx].id);
+}
+
+// ────────────────────────────────────────────────────────────
+// VENDOR EDITOR (inline on step timeline)
+// ────────────────────────────────────────────────────────────
+
+function toggleCouncilVendorEditor(subId, stepIdx) {
+  var el = document.getElementById('councilVendorSet_' + stepIdx);
+  if (!el) return;
+  var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
+  var step = sub && sub.steps ? sub.steps[stepIdx] : null;
+
+  el.innerHTML = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">' +
+    '<input type="text" id="councilVendorName_' + stepIdx + '" placeholder="Vendor name (e.g. PS Engineering)" value="' + escapeHtml((step && step.vendor) || '') + '" style="padding:6px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;">' +
+    '<input type="email" id="councilVendorEmail_' + stepIdx + '" placeholder="Vendor email" value="' + escapeHtml((step && step.vendor_email) || '') + '" style="padding:6px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;">' +
+    '<div style="display:flex;gap:6px;">' +
+    '<button onclick="saveCouncilVendor(\'' + subId + '\',' + stepIdx + ')" style="padding:4px 12px;background:var(--sw-orange,#F15A29);color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;">Save</button>' +
+    '<button onclick="openCouncilDetail(\'' + subId + '\')" style="padding:4px 12px;background:var(--sw-border);color:var(--sw-dark);border:none;border-radius:4px;font-size:11px;cursor:pointer;">Cancel</button>' +
+    '</div></div>';
+}
+
+async function saveCouncilVendor(subId, stepIdx) {
+  var nameEl = document.getElementById('councilVendorName_' + stepIdx);
+  var emailEl = document.getElementById('councilVendorEmail_' + stepIdx);
+  var vendor = nameEl ? nameEl.value.trim() : '';
+  var vendorEmail = emailEl ? emailEl.value.trim() : '';
+
+  if (!vendor) { showToast('Enter vendor name', 'warning'); return; }
+
+  try {
+    await opsPost('update_council_status', {
+      submission_id: subId,
+      step_index: stepIdx,
+      vendor: vendor,
+      vendor_email: vendorEmail
+    });
+    showToast('Vendor saved: ' + vendor, 'success');
+    await loadApprovals();
+    openCouncilDetail(subId);
+  } catch (e) {
+    showToast('Failed to save vendor: ' + e.message, 'warning');
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// SKIP STEP
+// ────────────────────────────────────────────────────────────
+
+async function skipCouncilStep(subId, stepIdx, stepName) {
+  if (!confirm('Skip "' + stepName + '"? This will mark it as complete and move to the next step.')) return;
+
+  try {
+    await opsPost('update_council_status', {
+      submission_id: subId,
+      step_index: stepIdx,
+      status: 'complete',
+      notes: 'Skipped'
+    });
+    showToast('Skipped: ' + stepName, 'success');
+    await loadApprovals();
+    openCouncilDetail(subId);
+  } catch (e) {
+    showToast('Failed to skip step: ' + e.message, 'warning');
+  }
 }
