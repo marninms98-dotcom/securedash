@@ -1930,6 +1930,7 @@
         <button onclick="showView('financials')" data-view="financials">Financials</button>
         <button onclick="showView('materials')" data-view="materials">Materials</button>
         <button onclick="showView('inbox')" data-view="inbox">Inbox <span id="inboxBadge" class="nav-badge" style="display:none;"></span></button>
+        <button onclick="showView('approvals')" data-view="approvals">Approvals</button>
       </div>
       <!-- Persistent search bar -->
       <div style="margin-left:16px;position:relative;flex-shrink:0">
@@ -2311,6 +2312,13 @@
       <div id="inboxList"></div>
     </div>
 
+    <div id="viewApprovals" class="view">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0;">Council Approvals <span id="approvalsCount" style="font-weight:400;color:var(--sw-text-sec);font-size:13px;"></span></h3>
+      </div>
+      <div id="approvalsKanban" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;"></div>
+    </div>
+
   </div><!-- /container -->
 
   <!-- Mobile Nav -->
@@ -2321,6 +2329,7 @@
     <button onclick="showView('financials')" data-view="financials"><span class="nav-icon">&#128176;</span>Money</button>
     <button onclick="showView('materials')" data-view="materials"><span class="nav-icon">&#128230;</span>Materials</button>
     <button onclick="showView('inbox')" data-view="inbox"><span class="nav-icon">&#128172;</span>Inbox<span id="inboxBadgeMobile" class="nav-badge" style="display:none;"></span></button>
+    <button onclick="showView('approvals')" data-view="approvals"><span class="nav-icon">&#127963;</span>Approvals</button>
   </div>
 
   <!-- ══════════ FULL JOB DETAIL VIEW ══════════ -->
@@ -3103,11 +3112,70 @@
   </div>
 </div>
 
+<!-- Council Start Modal -->
+<div class="modal-overlay" id="councilStartModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">Start Council Approval</div>
+    <input type="hidden" id="councilJobId">
+    <div id="councilJobInfo" style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;"></div>
+    <div class="form-group">
+      <label class="form-label">Approval Type</label>
+      <select class="form-input" id="councilType" onchange="updateCouncilDefaultSteps()">
+        <option value="full_building_permit">Full Building Permit</option>
+        <option value="engineering_only">Engineering Only</option>
+        <option value="cdc_only">CDC Only</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Steps</label>
+      <div id="councilStepsList" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" class="form-input" id="councilNewStepName" placeholder="Add custom step" style="flex:1;">
+        <button class="btn btn-secondary btn-sm" onclick="addCouncilStep()">+ Add</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('councilStartModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCouncilStart()">Start Process</button>
+    </div>
+  </div>
+</div>
+
+<!-- Council Advance Modal -->
+<div class="modal-overlay" id="councilAdvanceModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">Complete Step</div>
+    <input type="hidden" id="councilAdvanceSubId">
+    <input type="hidden" id="councilAdvanceStepIdx">
+    <div id="councilAdvanceInfo" style="font-size:13px;color:var(--sw-text-sec);margin-bottom:12px;"></div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-input" id="councilAdvanceNotes" rows="3" placeholder="Optional notes..."></textarea>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="councilAdvanceSMS" checked onchange="toggleCouncilSMSPreview()"> Send SMS update to client
+      </label>
+      <textarea class="form-input" id="councilAdvanceSMSPreview" rows="2" style="margin-top:6px;font-size:12px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('councilAdvanceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmCouncilAdvance()">Complete &amp; Advance</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ JAVASCRIPT ══════════ -->
 <script>
 // ════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════
+
+// Council modal alias — called from quick view
+function openCouncilModal(jobId) {
+  if (typeof openCouncilStartModal === 'function') openCouncilStartModal(jobId);
+}
 
 var cloud = null;
 // Demo mode removed — all data from live API
@@ -3809,6 +3877,7 @@ function showView(view) {
   if (view === 'financials') loadFinancials();
   if (view === 'materials') loadMaterials();
   if (view === 'inbox') loadInbox();
+  if (view === 'approvals' && typeof loadApprovals === 'function') loadApprovals();
   // Update Jarvis bar context
   setTimeout(updateJarvisSummary, 500);
 }
