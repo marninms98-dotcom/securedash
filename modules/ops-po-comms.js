@@ -1652,7 +1652,11 @@ function openPOEmailCompose(poId) {
   document.getElementById('poComposeFiles').value = '';
   document.getElementById('poComposeFileList').textContent = '';
   var ccEl = document.getElementById('poComposeCc');
-  if (ccEl) ccEl.value = '';
+  if (ccEl) {
+    var jobType = (po.job_type || po.type || '').toLowerCase();
+    var ccDefault = (jobType === 'fencing') ? 'fencing@secureworkswa.com.au' : 'patios@secureworkswa.com.au';
+    ccEl.value = ccDefault + ', admin@secureworkswa.com.au';
+  }
   window._councilComposeContext = null; // Clear council context for PO sends
 
   applyPOEmailTemplate('new_order');
@@ -1822,6 +1826,7 @@ async function sendPOEmail() {
       body: JSON.stringify({
         po_id: poId,
         to_email: to,
+        cc: ccList.length > 0 ? ccList : undefined,
         subject: subject,
         body_text: body,
         body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
