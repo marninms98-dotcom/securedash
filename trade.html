@@ -9712,8 +9712,19 @@
       grandTotal += metres * rate;
     });
 
-    var totalStr = '$' + (grandTotal * 1.1).toFixed(2);
-    showConfirm('Submit Invoice', 'Submit ' + totalStr + ' (inc GST) for this week?', 'Submit').then(function(ok) {
+    var gst = grandTotal * 0.1;
+    var totalInc = grandTotal + gst;
+    var summary = '';
+    items.forEach(function(it) {
+      if (it.metres > 0) {
+        var jobLabel = document.getElementById('pmMetres_' + it.job_id);
+        var card = jobLabel ? jobLabel.closest('[style*="background"]') : null;
+        var jobName = card ? (card.querySelector('[style*="font-weight:700"]') || {}).textContent || it.job_id : it.job_id;
+        summary += jobName + ': ' + it.metres.toFixed(1) + 'm = $' + it.total.toFixed(2) + '\n';
+      }
+    });
+    summary += '\nSubtotal: $' + grandTotal.toFixed(2) + '\nGST: $' + gst.toFixed(2) + '\nTotal: $' + totalInc.toFixed(2);
+    showConfirm('Submit Invoice', summary, 'Submit').then(function(ok) {
       if (!ok) return;
       api('submit_trade_invoice', null, {
         week_ending: _hoursWeekEnd,
@@ -9725,6 +9736,11 @@
         toast('Invoice submitted' + (res.xero_bill_number ? ' — ' + res.xero_bill_number : ''));
         loadHoursView();
       }).catch(function(err) {
+        if (!navigator.onLine) {
+          queueOfflineAction('submit_trade_invoice', { week_ending: _hoursWeekEnd, invoice_type: 'per_metre', rate_per_metre: rate, items: items, notes: 'Per-metre invoice' });
+          toast('Offline — invoice queued, will submit when back online');
+          return;
+        }
         toast(friendlyError(err), true);
       });
     });
@@ -10555,7 +10571,7 @@
         } else if (result.xero_bill_id) {
           successHtml += '<div style="font-size:12px;color:var(--sw-green);margin-bottom:8px">&#10003; Sent to Xero as draft bill</div>';
         } else {
-          successHtml += '<div style="font-size:12px;color:var(--sw-text-sec);margin-bottom:8px">Saved — Xero sync pending</div>';
+          successHtml += '<div style="font-size:12px;color:var(--sw-yellow);margin-bottom:8px">&#9888; Saved locally — could not push to Xero. Admin will sync manually.</div>';
         }
         var displayTotal = result.total_inc != null ? Number(result.total_inc).toFixed(2) : t.total.toFixed(2);
         successHtml += '<div style="font-size:24px;font-weight:700;color:var(--sw-dark);margin:12px 0">$' + displayTotal + '</div>';
@@ -10571,7 +10587,15 @@
         _invExtraLines = [];
         _clearInvDraft();
       }).catch(function(err) {
-        toast('Failed: ' + friendlyError(err), true);
+        if (!navigator.onLine) {
+          queueOfflineAction('generate_trade_invoice', {
+            week_start: isExpense ? undefined : (_hoursWeekStart || undefined),
+            extra_items: extraItems, notes: _invNotes, gst_registered: _invGst
+          });
+          toast('Offline — invoice queued, will submit when back online');
+        } else {
+          toast('Failed: ' + friendlyError(err), true);
+        }
         loadHoursView();
       });
     });
@@ -10776,7 +10800,9 @@
 
       api('generate_trade_invoice', {}, { week_start: weekStart }).then(function(result) {
         if (result.error) { toast(result.error, true); return; }
-        toast('Invoice generated — ' + result.total_hours + 'h, $' + Number(result.total_inc).toLocaleString());
+        var msg = 'Invoice generated — ' + result.total_hours + 'h, $' + Number(result.total_inc).toLocaleString();
+        if (result.xero_warning) msg += ' (Xero sync pending)';
+        toast(msg);
         loadHoursView(); // Refresh to show submitted state
       }).catch(function(err) {
         toast('Failed: ' + (err.message || err), true);
@@ -11150,8 +11176,14 @@
           if (btn) { btn.disabled = false; btn.textContent = 'Invoice This Work Order'; }
         }
       }).catch(function(err) {
-        toast(friendlyError(err), true);
-        if (btn) { btn.disabled = false; btn.textContent = 'Invoice This Work Order'; }
+        if (!navigator.onLine) {
+          queueOfflineAction('submit_work_order_invoice', { work_order_id: workOrderId });
+          toast('Offline — invoice queued, will submit when back online');
+          if (btn) { btn.disabled = true; btn.textContent = 'Queued (offline)'; }
+        } else {
+          toast(friendlyError(err), true);
+          if (btn) { btn.disabled = false; btn.textContent = 'Invoice This Work Order'; }
+        }
       });
     });
   };
