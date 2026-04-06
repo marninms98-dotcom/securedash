@@ -12619,7 +12619,7 @@ function initApp() {
   // AUDIT FIX: reuse cloud.js Supabase client instead of creating a second one
   // (duplicate clients cause GoTrueClient auth lock contention warnings)
   try {
-    var _supabase = (cloud && cloud.sb) || window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+    var _supabase = (cloud && cloud.supabase) || window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
     _supabase.channel('alerts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ai_alerts' }, function(payload) {
       updateJarvisSummary();
       if (payload.new && payload.new.severity === 'red') {
