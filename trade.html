@@ -5782,221 +5782,39 @@
   function renderJobTab_workorder(data, phase, container) {
     var job = data.job;
     var scope = job.scope_json || {};
+    var scopeJob = scope.job || {};
     var config = scope.config || scope || {};
-    var pricing = job.pricing_json || {};
-    var lineItems = pricing.line_items || [];
     var wo = data.workOrder;
     var type = (job.type || 'patio').toLowerCase();
     var h = '';
 
-    // ── SECTION 1: Build Spec Header ──
+    // ── 1. HEADER — job type badge + address ──
     var typeLabel = type === 'fencing' ? 'Fencing' : type === 'decking' ? 'Decking' : 'Patio';
-    h += '<div style="background:var(--sw-dark);color:#fff;border-radius:var(--sw-radius);padding:16px;margin-bottom:12px">';
+    h += '<div style="background:var(--sw-dark);color:#fff;padding:16px;margin-bottom:12px">';
     h += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
     h += '<div>';
     h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;opacity:0.6;margin-bottom:4px">Work Order</div>';
     h += '<div style="font-size:20px;font-weight:800">' + typeLabel + ' Install</div>';
     h += '</div>';
-    if (job.job_number) h += '<div style="font-size:14px;font-weight:700;background:rgba(255,255,255,0.15);padding:4px 10px;border-radius:6px">' + esc(job.job_number) + '</div>';
+    if (job.job_number) h += '<div style="font-size:14px;font-weight:700;background:rgba(255,255,255,0.15);padding:4px 10px">' + esc(job.job_number) + '</div>';
     h += '</div>';
     var addr = [job.site_address, job.site_suburb].filter(Boolean).join(', ');
     if (addr) h += '<div style="font-size:13px;opacity:0.7;margin-top:6px">' + esc(addr) + '</div>';
     h += '</div>';
 
-    // ── SECTION 2: What You're Building ──
-    h += '<div class="detail-section">';
-    h += '<h3>What You\'re Building</h3>';
-
-    if (type === 'fencing') {
-      // Fencing build spec
-      var specRows = [];
-      if (config.material) specRows.push(['Panel Type', humanise('material', config.material)]);
-      if (config.height) specRows.push(['Height', config.height + 'mm']);
-      if (config.totalLength || config.length) specRows.push(['Total Length', (config.totalLength || config.length) + 'm']);
-      if (config.colour || config.color) specRows.push(['Colour', config.colour || config.color]);
-      // Gate details
-      var gates = config.gates || config.gateCount || 0;
-      if (typeof gates === 'object' && Array.isArray(gates)) {
-        specRows.push(['Gates', gates.length + ' gate' + (gates.length > 1 ? 's' : '')]);
-        gates.forEach(function(g, i) {
-          specRows.push(['Gate ' + (i + 1), (g.width || '?') + 'mm ' + (g.type || 'swing')]);
-        });
-      } else if (gates > 0) {
-        specRows.push(['Gates', gates + ' gate' + (gates > 1 ? 's' : '')]);
-      }
-      // Per-boundary runs
-      if (scope.job && scope.job.runs && scope.job.runs.length > 0) {
-        scope.job.runs.forEach(function(run) {
-          var label = run.label || run.boundary || ('Run ' + (run.runNumber || ''));
-          var len = run.totalLength || run.lengthM || run.length || 0;
-          specRows.push([label, Math.round(len) + 'm']);
-        });
-      }
-      if (config.plinths) specRows.push(['Plinths', 'Yes']);
-      if (config.retaining) specRows.push(['Retaining', config.retaining]);
-
-    } else {
-      // Patio / Decking build spec
-      var specRows = [];
-      if (config.roofStyle) specRows.push(['Roof Style', humanise('roofStyle', config.roofStyle)]);
-      if (config.length && config.projection) specRows.push(['Dimensions', config.length + 'm \u00d7 ' + config.projection + 'm']);
-      if (config.connection) specRows.push(['Connection', humanise('connection', config.connection)]);
-      if (config.fasciaHeight) specRows.push(['Fascia Height', config.fasciaHeight + 'mm']);
-      if (config.posts) specRows.push(['Posts', config.posts + ' \u00d7 ' + (config.postSize || '90\u00d790') + (config.postFix ? ' (' + config.postFix + ')' : '')]);
-      if (config.roofing) specRows.push(['Roofing', humanise('roofing', config.roofing)]);
-      if (config.sheetColor) specRows.push(['Sheet Colour', config.sheetColor]);
-      if (config.steelColor) specRows.push(['Steel Colour', config.steelColor]);
-      if (config.pitch) specRows.push(['Pitch', config.pitch + '\u00b0']);
-      if (config.ceilingFinish) specRows.push(['Ceiling', humanise('ceilingFinish', config.ceilingFinish)]);
-      if (config.trusses) specRows.push(['Trusses', config.trusses + ' \u00d7 ' + (config.trussSteel || '') + ' ' + (config.trussBase || '')]);
-      if (config.rafters) specRows.push(['Rafters', config.rafters + ' \u00d7 ' + (config.rafterSize || '')]);
-      if (config.purlinSize) specRows.push(['Purlins', config.purlinSize]);
-      if (config.infill) specRows.push(['Infill', humanise('infill', config.infill)]);
-      if (config.lShape && config.lShape !== 'none') specRows.push(['L-Shape', config.lShape + (config.returnLength ? ' \u2014 ' + config.returnLength + 'mm return' : '')]);
-      if (config.wraparound && config.wraparound !== 'none') specRows.push(['Wraparound', config.wraparound]);
-    }
-
-    if (specRows.length > 0) {
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--sw-border);border-radius:8px;overflow:hidden">';
-      specRows.forEach(function(row) {
-        h += '<div style="padding:10px 12px;background:var(--sw-card)">';
-        h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-text-sec);margin-bottom:2px">' + esc(row[0]) + '</div>';
-        h += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + esc(String(row[1])) + '</div>';
-        h += '</div>';
-      });
-      if (specRows.length % 2 !== 0) h += '<div style="background:var(--sw-card)"></div>';
-      h += '</div>';
-    } else {
-      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No scope data available for this job</div>';
-    }
-
-    // Installer notes
-    var installerNotes = (scope.notes && scope.notes.noteWorkOrder) ? scope.notes.noteWorkOrder.trim() : '';
-    if (installerNotes) {
-      h += '<div style="margin-top:12px;padding:12px 14px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px">';
-      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#F57F17;margin-bottom:4px">Installer Notes</div>';
-      h += '<div style="font-size:13px;color:#5D4037;line-height:1.5;white-space:pre-wrap">' + esc(installerNotes) + '</div>';
-      h += '</div>';
-    }
-    h += '</div>';
-
-    // ── SECTION 3: Materials List ──
-    if (lineItems.length > 0) {
-      h += '<div class="detail-section">';
-      h += '<h3>Materials</h3>';
-
-      // Group by category
-      var groups = {};
-      var groupOrder = ['steel', 'roofing', 'gutters', 'flashings', 'accessories', 'fixings', 'labour', 'other'];
-      lineItems.forEach(function(li) {
-        var cat = (li.category || 'other').toLowerCase();
-        if (!groups[cat]) groups[cat] = [];
-        groups[cat].push(li);
-      });
-
-      var catLabels = {
-        steel: 'Steel', roofing: 'Roofing', gutters: 'Gutters & Downpipes',
-        flashings: 'Flashings', accessories: 'Accessories', fixings: 'Fixings',
-        labour: 'Labour', other: 'Other'
-      };
-
-      var totalSell = 0;
-      var labourCost = 0;
-
-      groupOrder.forEach(function(cat) {
-        var items = groups[cat];
-        if (!items || items.length === 0) return;
-
-        h += '<div style="margin-bottom:12px">';
-        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-mid);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--sw-border)">' + (catLabels[cat] || cat) + '</div>';
-
-        items.forEach(function(li) {
-          var qty = li.quantity || 0;
-          var sell = li.total_sell || li.sell_price || 0;
-          totalSell += Number(sell) || 0;
-          if (cat === 'labour') labourCost += Number(sell) || 0;
-
-          h += '<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04)">';
-          h += '<span style="flex:1;font-size:13px;color:var(--sw-text)">' + esc(li.description || '?') + '</span>';
-          h += '<span style="font-size:13px;font-weight:600;color:var(--sw-mid);min-width:40px;text-align:right">';
-          if (qty > 0) h += '\u00d7' + qty;
-          h += '</span>';
-          if (canSeeFullPricing()) {
-            h += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);min-width:70px;text-align:right">$' + Number(sell).toFixed(0) + '</span>';
-          }
-          h += '</div>';
-        });
-        h += '</div>';
-      });
-
-      // Ungrouped categories
-      Object.keys(groups).forEach(function(cat) {
-        if (groupOrder.indexOf(cat) === -1) {
-          var items = groups[cat];
-          h += '<div style="margin-bottom:12px">';
-          h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-mid);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--sw-border)">' + esc(cat) + '</div>';
-          items.forEach(function(li) {
-            var qty = li.quantity || 0;
-            var sell = li.total_sell || li.sell_price || 0;
-            totalSell += Number(sell) || 0;
-            h += '<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04)">';
-            h += '<span style="flex:1;font-size:13px;color:var(--sw-text)">' + esc(li.description || '?') + '</span>';
-            h += '<span style="font-size:13px;font-weight:600;color:var(--sw-mid);min-width:40px;text-align:right">';
-            if (qty > 0) h += '\u00d7' + qty;
-            h += '</span>';
-            if (canSeeFullPricing()) {
-              h += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark);min-width:70px;text-align:right">$' + Number(sell).toFixed(0) + '</span>';
-            }
-            h += '</div>';
-          });
-          h += '</div>';
-        }
-      });
-
-      h += '</div>';
-
-      // ── SECTION 4: Pricing Summary (Tier 3 only) ──
-      if (canSeeFullPricing()) {
-        var gst = Math.round(totalSell * 0.1);
-        var totalInc = totalSell + gst;
-        h += '<div class="detail-section" style="background:var(--sw-dark);color:#fff">';
-        h += '<h3 style="color:rgba(255,255,255,0.5)">Pricing Summary</h3>';
-        h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2">';
-        h += '<span>Materials + Labour (ex GST)</span><span style="font-weight:600">$' + Number(totalSell).toLocaleString() + '</span></div>';
-        if (labourCost > 0) {
-          h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2;opacity:0.7">';
-          h += '<span>Labour portion</span><span>$' + Number(labourCost).toLocaleString() + '</span></div>';
-        }
-        h += '<div style="display:flex;justify-content:space-between;font-size:13px;line-height:2;opacity:0.7">';
-        h += '<span>GST</span><span>$' + gst.toLocaleString() + '</span></div>';
-        h += '<div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;line-height:2;border-top:1px solid rgba(255,255,255,0.15);margin-top:4px;padding-top:4px">';
-        h += '<span>Invoice Amount</span><span>$' + totalInc.toLocaleString() + '</span></div>';
-        if (pricing.deposit) {
-          h += '<div style="display:flex;justify-content:space-between;font-size:12px;line-height:2;opacity:0.5">';
-          h += '<span>Deposit (' + (pricing.deposit.percent || 20) + '%)</span><span>$' + Number(pricing.deposit.total_deposit_inc_gst || 0).toLocaleString() + '</span></div>';
-        }
-        h += '</div>';
-      }
-    } else {
-      h += '<div class="detail-section">';
-      h += '<h3>Materials</h3>';
-      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No materials list available yet</div>';
-      h += '</div>';
-    }
-
-    // ── SECTION 5: Crew Work Order (scope_items as formatted table) ──
+    // ── 2. CREW WORK ORDER — scope_items table ──
     if (wo && wo.scope_items && Array.isArray(wo.scope_items) && wo.scope_items.length > 0) {
-      h += '<div class="detail-section">';
+      h += '<div class="detail-section" style="background:#F8F6F3;padding:14px 16px">';
       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-      h += '<h3 style="margin:0">Crew Work Order</h3>';
-      h += '<span style="font-size:11px;color:var(--sw-text-sec)">' + esc(wo.wo_number || '') + '</span>';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark)">Crew Work Order</div>';
+      if (wo.wo_number) h += '<span style="font-size:11px;font-weight:700;color:var(--sw-text-sec);background:var(--sw-border);padding:2px 8px">' + esc(wo.wo_number) + '</span>';
       h += '</div>';
       h += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
       h += '<tr style="border-bottom:2px solid var(--sw-dark);text-align:left">';
-      h += '<th style="padding:8px 4px;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Item</th>';
-      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Qty</th>';
-      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Rate</th>';
-      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Total</th>';
+      h += '<th style="padding:8px 4px;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase;letter-spacing:0.3px">Item</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase;letter-spacing:0.3px">Qty</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase;letter-spacing:0.3px">Rate</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase;letter-spacing:0.3px">Total</th>';
       h += '</tr>';
       var woTotal = 0;
       wo.scope_items.forEach(function(item) {
@@ -6015,66 +5833,235 @@
       });
       if (woTotal > 0) {
         h += '<tr style="border-top:2px solid var(--sw-dark)">';
-        h += '<td colspan="3" style="padding:10px 4px;font-weight:700;font-size:14px;color:var(--sw-dark)">CREW PAYMENT</td>';
-        h += '<td style="padding:10px 4px;text-align:right;font-weight:800;font-size:18px;color:var(--sw-orange)">$' + Number(woTotal).toLocaleString() + '</td>';
+        h += '<td colspan="3" style="padding:12px 4px;font-weight:700;font-size:14px;color:var(--sw-dark)">CREW PAYMENT</td>';
+        h += '<td style="padding:12px 4px;text-align:right;font-weight:800;font-size:18px;color:var(--sw-orange)">$' + Number(woTotal).toLocaleString() + '</td>';
         h += '</tr>';
       }
       h += '</table>';
       h += '</div>';
+    } else {
+      h += '<div class="detail-section" style="background:#F8F6F3;padding:14px 16px">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:8px">Crew Work Order</div>';
+      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No work order assigned yet</div>';
+      h += '</div>';
     }
 
-    // ── SECTION 5b: Special Instructions (highlighted callout) ──
+    // ── 3. INSTRUCTIONS callout ──
     if (wo && wo.special_instructions) {
       h += '<div class="detail-section" style="background:var(--sw-light);border-left:4px solid var(--sw-orange);padding:14px 16px">';
-      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--sw-orange);margin-bottom:8px">Instructions</div>';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-orange);margin-bottom:8px">Instructions</div>';
       h += '<div style="font-size:14px;line-height:1.6;color:var(--sw-text);white-space:pre-wrap">' + esc(wo.special_instructions) + '</div>';
       if (wo.estimated_hours) {
         h += '<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">';
-        h += '<span style="font-size:13px;color:var(--sw-text-sec)">Estimated Hours</span>';
-        h += '<span style="font-size:16px;font-weight:700;color:var(--sw-dark)">' + wo.estimated_hours + 'h</span>';
+        h += '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-text-sec)">Estimated Hours</span>';
+        h += '<span style="font-size:18px;font-weight:700;color:var(--sw-dark)">' + wo.estimated_hours + 'h</span>';
         h += '</div>';
       }
       h += '</div>';
     }
 
-    // ── SECTION 5c: Materials Pickup List (from POs, not pricing) ──
+    // Installer notes from scope (fallback if no WO instructions)
+    var installerNotes = (scope.notes && scope.notes.noteWorkOrder) ? scope.notes.noteWorkOrder.trim() : '';
+    if (installerNotes && !(wo && wo.special_instructions)) {
+      h += '<div class="detail-section" style="background:var(--sw-light);border-left:4px solid var(--sw-orange);padding:14px 16px">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-orange);margin-bottom:8px">Installer Notes</div>';
+      h += '<div style="font-size:14px;line-height:1.6;color:var(--sw-text);white-space:pre-wrap">' + esc(installerNotes) + '</div>';
+      h += '</div>';
+    }
+
+    // ── 4. WHAT YOU'RE BUILDING — per-run cards + colour/profile/removal/gates ──
+    h += '<div class="detail-section">';
+    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">What You\'re Building</div>';
+
+    if (type === 'fencing') {
+      // Colour + Profile summary row
+      var colour = scopeJob.colour || config.colour || config.color || '';
+      var profile = scopeJob.profile || config.material || '';
+      if (colour || profile) {
+        h += '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+        if (profile) {
+          h += '<div style="background:var(--sw-dark);color:#fff;padding:6px 12px;font-size:13px;font-weight:700">' + esc(profile) + '</div>';
+        }
+        if (colour) {
+          h += '<div style="background:var(--sw-border);color:var(--sw-dark);padding:6px 12px;font-size:13px;font-weight:600">' + esc(colour) + '</div>';
+        }
+        h += '</div>';
+      }
+
+      // Per-run cards
+      var runs = scopeJob.runs || config.runs || [];
+      if (runs.length > 0) {
+        runs.forEach(function(run, idx) {
+          var label = run.label || run.boundary || ('Run ' + (run.runNumber || (idx + 1)));
+          var len = run.totalLength || run.lengthM || run.length || 0;
+          var panels = run.panelCount || run.panels || '';
+          var ht = run.height || config.height || '';
+          var retMin = run.retainingMin || run.retaining_min || '';
+          var retMax = run.retainingMax || run.retaining_max || '';
+          var retDetail = '';
+          if (retMin && retMax) retDetail = retMin + '-' + retMax + 'mm';
+          else if (retMin || retMax) retDetail = (retMin || retMax) + 'mm';
+          else if (run.retaining) retDetail = run.retaining;
+
+          h += '<div style="background:#F8F6F3;border-left:3px solid var(--sw-dark);padding:10px 12px;margin-bottom:6px">';
+          h += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:4px">' + esc(label) + '</div>';
+          h += '<div style="font-size:13px;color:var(--sw-text);display:flex;flex-wrap:wrap;gap:4px 16px">';
+          if (len) h += '<span>' + Math.round(len) + 'm</span>';
+          if (panels) h += '<span>' + panels + ' panels</span>';
+          if (ht) h += '<span>' + ht + 'mm</span>';
+          if (retDetail) h += '<span style="color:var(--sw-orange);font-weight:600">Ret: ' + esc(retDetail) + '</span>';
+          h += '</div>';
+          h += '</div>';
+        });
+      } else {
+        // Fallback: simple spec grid
+        var specRows = [];
+        if (config.material) specRows.push(['Panel Type', humanise('material', config.material)]);
+        if (config.height) specRows.push(['Height', config.height + 'mm']);
+        if (config.totalLength || config.length) specRows.push(['Total Length', (config.totalLength || config.length) + 'm']);
+        if (specRows.length > 0) {
+          h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--sw-border);overflow:hidden">';
+          specRows.forEach(function(row) {
+            h += '<div style="padding:10px 12px;background:var(--sw-card)">';
+            h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-text-sec);margin-bottom:2px">' + esc(row[0]) + '</div>';
+            h += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + esc(String(row[1])) + '</div>';
+            h += '</div>';
+          });
+          if (specRows.length % 2 !== 0) h += '<div style="background:var(--sw-card)"></div>';
+          h += '</div>';
+        }
+      }
+
+      // Removal info
+      var removal = scopeJob.removal || {};
+      if (removal.type || removal.length) {
+        h += '<div style="background:#F8F6F3;border-left:3px solid var(--sw-mid);padding:10px 12px;margin-top:8px">';
+        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-mid);margin-bottom:4px">Removal</div>';
+        h += '<div style="font-size:13px;color:var(--sw-text);display:flex;flex-wrap:wrap;gap:4px 16px">';
+        if (removal.type) h += '<span>' + esc(removal.type) + '</span>';
+        if (removal.length) h += '<span>' + removal.length + 'm</span>';
+        if (removal.access) h += '<span>Access: ' + esc(removal.access) + '</span>';
+        if (removal.disposal) h += '<span>Disposal: ' + esc(removal.disposal) + '</span>';
+        h += '</div>';
+        h += '</div>';
+      }
+
+      // Gates
+      var gates = scopeJob.gates || config.gates || [];
+      if (Array.isArray(gates) && gates.length > 0) {
+        h += '<div style="margin-top:8px">';
+        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-dark);margin-bottom:6px">Gates</div>';
+        gates.forEach(function(g, i) {
+          h += '<div style="background:#F8F6F3;padding:8px 12px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">';
+          h += '<span style="font-size:13px;font-weight:600;color:var(--sw-dark)">Gate ' + (i + 1) + '</span>';
+          h += '<span style="font-size:13px;color:var(--sw-text)">' + (g.width || '?') + 'mm ' + esc(g.type || g.style || 'swing') + '</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      } else if (typeof gates === 'number' && gates > 0) {
+        h += '<div style="background:#F8F6F3;padding:8px 12px;margin-top:8px;font-size:13px;color:var(--sw-text)">';
+        h += '<span style="font-weight:600;color:var(--sw-dark)">Gates:</span> ' + gates;
+        h += '</div>';
+      }
+
+    } else {
+      // Patio / Decking build spec — grid layout
+      var specRows = [];
+      if (config.roofStyle) specRows.push(['Roof Style', humanise('roofStyle', config.roofStyle)]);
+      if (config.length && config.projection) specRows.push(['Dimensions', config.length + 'm \u00d7 ' + config.projection + 'm']);
+      if (config.connection) specRows.push(['Connection', humanise('connection', config.connection)]);
+      if (config.fasciaHeight) specRows.push(['Fascia Height', config.fasciaHeight + 'mm']);
+      if (config.posts) specRows.push(['Posts', config.posts + ' \u00d7 ' + (config.postSize || '90\u00d790') + (config.postFix ? ' (' + config.postFix + ')' : '')]);
+      if (config.roofing) specRows.push(['Roofing', humanise('roofing', config.roofing)]);
+      if (config.sheetColor) specRows.push(['Sheet Colour', config.sheetColor]);
+      if (config.steelColor) specRows.push(['Steel Colour', config.steelColor]);
+      if (config.pitch) specRows.push(['Pitch', config.pitch + '\u00b0']);
+      if (config.ceilingFinish) specRows.push(['Ceiling', humanise('ceilingFinish', config.ceilingFinish)]);
+      if (config.trusses) specRows.push(['Trusses', config.trusses + ' \u00d7 ' + (config.trussSteel || '') + ' ' + (config.trussBase || '')]);
+      if (config.rafters) specRows.push(['Rafters', config.rafters + ' \u00d7 ' + (config.rafterSize || '')]);
+      if (config.purlinSize) specRows.push(['Purlins', config.purlinSize]);
+      if (config.infill) specRows.push(['Infill', humanise('infill', config.infill)]);
+      if (config.lShape && config.lShape !== 'none') specRows.push(['L-Shape', config.lShape + (config.returnLength ? ' \u2014 ' + config.returnLength + 'mm return' : '')]);
+      if (config.wraparound && config.wraparound !== 'none') specRows.push(['Wraparound', config.wraparound]);
+
+      if (specRows.length > 0) {
+        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--sw-border);overflow:hidden">';
+        specRows.forEach(function(row) {
+          h += '<div style="padding:10px 12px;background:var(--sw-card)">';
+          h += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-text-sec);margin-bottom:2px">' + esc(row[0]) + '</div>';
+          h += '<div style="font-size:14px;font-weight:600;color:var(--sw-dark)">' + esc(String(row[1])) + '</div>';
+          h += '</div>';
+        });
+        if (specRows.length % 2 !== 0) h += '<div style="background:var(--sw-card)"></div>';
+        h += '</div>';
+      } else {
+        h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No scope data available for this job</div>';
+      }
+    }
+    h += '</div>';
+
+    // ── 5. MATERIALS PICKUP — from purchaseOrders ──
     var pos = data.purchaseOrders || [];
     if (pos.length > 0) {
       h += '<div class="detail-section">';
-      h += '<h3>Materials Pickup</h3>';
-      pos.forEach(function(po) {
-        h += '<div style="padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:8px">';
-        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-        h += '<span style="font-weight:700;color:var(--sw-dark)">' + esc(po.supplier_name || '') + '</span>';
-        h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:' + (po.status === 'confirmed' ? 'var(--sw-green)' : 'var(--sw-amber)') + ';color:#fff;text-transform:uppercase">' + esc(po.status || '') + '</span>';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Materials Pickup</div>';
+      pos.forEach(function(po, poIdx) {
+        var statusColor = (po.status === 'confirmed') ? 'var(--sw-green)' : 'var(--sw-amber)';
+        h += '<div style="background:#F8F6F3;padding:12px;margin-bottom:8px">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        h += '<span style="font-weight:700;font-size:14px;color:var(--sw-dark)">' + esc(po.supplier_name || '') + '</span>';
+        h += '<span style="font-size:11px;font-weight:700;padding:2px 8px;background:' + statusColor + ';color:#fff;text-transform:uppercase;letter-spacing:0.3px">' + esc((po.status || 'pending').toUpperCase()) + '</span>';
         h += '</div>';
         if (po.line_items && Array.isArray(po.line_items)) {
           po.line_items.forEach(function(li) {
             var desc = li.description || '';
             if (/post\s*cap/i.test(desc)) return;
-            h += '<div style="padding:4px 0;font-size:13px;color:var(--sw-text);display:flex;justify-content:space-between">';
+            h += '<div style="padding:4px 0;font-size:13px;color:var(--sw-text);display:flex;justify-content:space-between;border-bottom:1px solid rgba(0,0,0,0.04)">';
             h += '<span>' + esc(desc) + '</span>';
             if (li.quantity) h += '<span style="font-weight:600;color:var(--sw-dark)">x' + li.quantity + '</span>';
             h += '</div>';
           });
         }
+        h += '<button onclick="generatePOPdf(_woPoCache[' + poIdx + '], \'' + esc(job.job_number || '') + '\')" style="display:block;width:100%;margin-top:10px;padding:12px;background:var(--sw-orange);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font);min-height:44px">Download PO PDF</button>';
         h += '</div>';
       });
       h += '</div>';
+      // Cache POs for the onclick handler
+      window._woPoCache = pos;
     }
 
-    // ── SECTION 6: Work Order Cost Breakdown + Invoice Status (async) ──
+    // ── 6. SCOPE PHOTOS — grid of thumbnails ──
+    var media = data.media || [];
+    var scopePhotos = media.filter(function(m) { return m.phase === 'scope'; });
+    if (scopePhotos.length > 0) {
+      h += '<div class="detail-section">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Scope Photos <span style="font-weight:400;color:var(--sw-text-sec)">' + scopePhotos.length + '</span></div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">';
+      scopePhotos.forEach(function(p) {
+        var src = p.thumbnail_url || p.storage_url;
+        h += '<img src="' + esc(src) + '" alt="' + esc(p.label || 'Scope') + '" onclick="openLightbox(\'' + esc(p.storage_url) + '\')" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer">';
+      });
+      h += '</div>';
+      h += '</div>';
+    } else {
+      h += '<div class="detail-section">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Scope Photos</div>';
+      h += '<div style="padding:16px;text-align:center;color:var(--sw-text-sec);font-size:13px">No scope photos available</div>';
+      h += '</div>';
+    }
+
+    // ── 7. COST BREAKDOWN — async ──
     if (wo && wo.id) {
       h += '<div class="detail-section" id="woJobCostBreakdown">';
-      h += '<h3>Cost Breakdown</h3>';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Cost Breakdown</div>';
       h += '<div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div>';
       h += '</div>';
     }
 
-    // ── SECTION 7: Crew Charges on This Job (Tier 2+ only, async) ──
+    // ── 8. CREW CHARGES — async, Tier 2+ ──
     if (_userTier >= 2) {
       h += '<div class="detail-section" id="woJobCrewCharges">';
-      h += '<h3>Crew Charges</h3>';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Crew Charges</div>';
       h += '<div style="font-size:13px;color:var(--sw-text-sec)"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></div>Loading...</div>';
       h += '</div>';
     }
@@ -6092,13 +6079,12 @@
           if (orders[i].id === wo.id || orders[i].job_id === job.id) { match = orders[i]; break; }
         }
         if (!match) {
-          el.innerHTML = '<h3>Cost Breakdown</h3><div style="font-size:13px;color:var(--sw-text-sec)">No invoiceable work order found</div>';
+          el.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Cost Breakdown</div><div style="font-size:13px;color:var(--sw-text-sec)">No invoiceable work order found</div>';
           return;
         }
 
-        var ch = '<h3>Cost Breakdown</h3>';
+        var ch = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Cost Breakdown</div>';
 
-        // Scope items with amounts
         if (match.scope_items && match.scope_items.length > 0) {
           match.scope_items.forEach(function(item) {
             ch += '<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--sw-border);color:var(--sw-dark)">';
@@ -6109,28 +6095,26 @@
           });
         }
 
-        // Totals
         if (match.subtotal != null) {
           ch += '<div style="margin-top:10px;text-align:right;font-size:13px">';
           ch += '<div style="color:var(--sw-text-sec)">Subtotal: $' + Number(match.subtotal).toFixed(2) + '</div>';
           ch += '<div style="color:var(--sw-text-sec)">GST: $' + Number(match.gst || 0).toFixed(2) + '</div>';
-          ch += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-top:2px">Total: $' + Number(match.total || 0).toFixed(2) + '</div>';
+          ch += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark);margin-top:2px">Total: $' + Number(match.total || 0).toFixed(2) + '</div>';
           ch += '</div>';
         }
 
-        // Invoice status / action
         if (match.already_invoiced) {
-          ch += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(39,174,96,0.1);color:var(--sw-green);border-radius:8px;padding:10px;font-size:13px;font-weight:600;margin-top:12px">&#10003; Invoiced</div>';
+          ch += '<div style="display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(39,174,96,0.1);color:var(--sw-green);padding:10px;font-size:13px;font-weight:600;margin-top:12px">&#10003; Invoiced</div>';
         } else if (match.can_invoice) {
-          ch += '<button id="woBtn' + match.id + '" onclick="invoiceWorkOrder(\'' + match.id + '\')" style="width:100%;padding:12px;background:var(--sw-orange);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font);margin-top:12px">Invoice This Work Order</button>';
+          ch += '<button id="woBtn' + match.id + '" onclick="invoiceWorkOrder(\'' + match.id + '\')" style="width:100%;padding:12px;background:var(--sw-orange);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sw-font);margin-top:12px;min-height:44px">Invoice This Work Order</button>';
         } else {
-          ch += '<div style="font-size:12px;color:#92400e;margin-top:10px">Not ready — job not complete</div>';
+          ch += '<div style="font-size:12px;color:#92400e;margin-top:10px">Not ready -- job not complete</div>';
         }
 
         el.innerHTML = ch;
       }).catch(function() {
         var el = document.getElementById('woJobCostBreakdown');
-        if (el) el.innerHTML = '<h3>Cost Breakdown</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load cost data</div>';
+        if (el) el.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Cost Breakdown</div><div style="font-size:13px;color:var(--sw-text-sec)">Could not load cost data</div>';
       });
     }
 
@@ -6141,12 +6125,12 @@
         if (!el) return;
         var charges = (res.charges || []).filter(function(c) { return c.job_id === job.id; });
         if (charges.length === 0) {
-          el.innerHTML = '<h3>Crew Charges</h3><div style="font-size:13px;color:var(--sw-text-sec)">No crew charges on this job</div>';
+          el.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Crew Charges</div><div style="font-size:13px;color:var(--sw-text-sec)">No crew charges on this job</div>';
           return;
         }
 
         var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var ch = '<h3>Crew Charges</h3>';
+        var ch = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Crew Charges</div>';
         charges.forEach(function(c) {
           var dateLabel = '';
           if (c.line_date) {
@@ -6174,7 +6158,7 @@
         el.innerHTML = ch;
       }).catch(function() {
         var el = document.getElementById('woJobCrewCharges');
-        if (el) el.innerHTML = '<h3>Crew Charges</h3><div style="font-size:13px;color:var(--sw-text-sec)">Could not load crew charges</div>';
+        if (el) el.innerHTML = '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--sw-dark);margin-bottom:10px">Crew Charges</div><div style="font-size:13px;color:var(--sw-text-sec)">Could not load crew charges</div>';
       });
     }
   }
@@ -10668,6 +10652,69 @@
       pdf.save(fileName);
     }
   };
+
+  function generatePOPdf(po, jobNumber) {
+    var jsPDF = window.jspdf ? window.jspdf.jsPDF : null;
+    if (!jsPDF) { toast('PDF library not loaded -- try refreshing', true); return; }
+    if (!po) { toast('No PO data available', true); return; }
+
+    var doc = new jsPDF('p', 'mm', 'a4');
+
+    // Header band
+    doc.setFillColor(41, 60, 70); // --sw-dark
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PURCHASE ORDER', 14, 22);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(po.po_number || '', 14, 30);
+    doc.setFontSize(11);
+    doc.text('Job: ' + (jobNumber || ''), 196, 22, { align: 'right' });
+
+    // Supplier
+    doc.setTextColor(41, 60, 70);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Supplier: ' + (po.supplier_name || ''), 14, 52);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Status: ' + (po.status || '').toUpperCase(), 14, 59);
+    if (po.delivery_date) doc.text('Delivery: ' + po.delivery_date, 14, 66);
+
+    // Line items table header
+    var y = 78;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(41, 60, 70);
+    doc.text('Description', 14, y);
+    doc.text('Qty', 180, y, { align: 'right' });
+    doc.setDrawColor(41, 60, 70);
+    doc.setLineWidth(0.5);
+    doc.line(14, y + 2, 196, y + 2);
+    y += 8;
+
+    // Line items
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    (po.line_items || []).forEach(function(li) {
+      if (/post\s*cap/i.test(li.description || '')) return;
+      var desc = (li.description || '').substring(0, 80);
+      doc.text(desc, 14, y);
+      doc.text('x' + (li.quantity || ''), 180, y, { align: 'right' });
+      y += 7;
+      if (y > 270) { doc.addPage(); y = 20; }
+    });
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('SecureWorks Group Pty Ltd', 14, 285);
+    doc.text('Generated ' + new Date().toLocaleDateString('en-AU'), 196, 285, { align: 'right' });
+
+    doc.save((po.po_number || 'PO') + '_' + (jobNumber || 'job') + '.pdf');
+  }
 
   function _generateInvoicePDF(data) {
     var jsPDF = window.jspdf ? window.jspdf.jsPDF : null;
