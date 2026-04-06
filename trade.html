@@ -5984,29 +5984,82 @@
       h += '</div>';
     }
 
-    // ── SECTION 5: Special Instructions (from work_orders table) ──
-    if (wo) {
+    // ── SECTION 5: Crew Work Order (scope_items as formatted table) ──
+    if (wo && wo.scope_items && Array.isArray(wo.scope_items) && wo.scope_items.length > 0) {
       h += '<div class="detail-section">';
-      h += '<h3>Special Instructions</h3>';
-      if (wo.special_instructions) {
-        h += '<div style="font-size:14px;line-height:1.6;color:var(--sw-text);white-space:pre-wrap">' + esc(wo.special_instructions) + '</div>';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+      h += '<h3 style="margin:0">Crew Work Order</h3>';
+      h += '<span style="font-size:11px;color:var(--sw-text-sec)">' + esc(wo.wo_number || '') + '</span>';
+      h += '</div>';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+      h += '<tr style="border-bottom:2px solid var(--sw-dark);text-align:left">';
+      h += '<th style="padding:8px 4px;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Item</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Qty</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Rate</th>';
+      h += '<th style="padding:8px 4px;text-align:right;color:var(--sw-text-sec);font-size:11px;text-transform:uppercase">Total</th>';
+      h += '</tr>';
+      var woTotal = 0;
+      wo.scope_items.forEach(function(item) {
+        if (typeof item === 'string') {
+          h += '<tr style="border-bottom:1px solid var(--sw-border)"><td colspan="4" style="padding:8px 4px">' + esc(item) + '</td></tr>';
+        } else {
+          var lineTotal = item.total || (item.qty && item.rate ? item.qty * item.rate : 0);
+          woTotal += lineTotal;
+          h += '<tr style="border-bottom:1px solid var(--sw-border)">';
+          h += '<td style="padding:8px 4px;color:var(--sw-text)">' + esc(item.item || item.description || item.name || '') + '</td>';
+          h += '<td style="padding:8px 4px;text-align:right;color:var(--sw-text)">' + (item.qty || '') + (item.unit ? ' ' + esc(item.unit) : '') + '</td>';
+          h += '<td style="padding:8px 4px;text-align:right;color:var(--sw-text)">' + (item.rate ? '$' + Number(item.rate).toLocaleString() : '') + '</td>';
+          h += '<td style="padding:8px 4px;text-align:right;font-weight:700;color:var(--sw-text)">' + (lineTotal ? '$' + Number(lineTotal).toLocaleString() : '') + '</td>';
+          h += '</tr>';
+        }
+      });
+      if (woTotal > 0) {
+        h += '<tr style="border-top:2px solid var(--sw-dark)">';
+        h += '<td colspan="3" style="padding:10px 4px;font-weight:700;font-size:14px;color:var(--sw-dark)">CREW PAYMENT</td>';
+        h += '<td style="padding:10px 4px;text-align:right;font-weight:800;font-size:18px;color:var(--sw-orange)">$' + Number(woTotal).toLocaleString() + '</td>';
+        h += '</tr>';
       }
+      h += '</table>';
+      h += '</div>';
+    }
+
+    // ── SECTION 5b: Special Instructions (highlighted callout) ──
+    if (wo && wo.special_instructions) {
+      h += '<div class="detail-section" style="background:var(--sw-light);border-left:4px solid var(--sw-orange);padding:14px 16px">';
+      h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--sw-orange);margin-bottom:8px">Instructions</div>';
+      h += '<div style="font-size:14px;line-height:1.6;color:var(--sw-text);white-space:pre-wrap">' + esc(wo.special_instructions) + '</div>';
       if (wo.estimated_hours) {
-        h += '<div style="margin-top:10px;padding:10px 12px;background:var(--sw-light);border-radius:8px;display:flex;justify-content:space-between;align-items:center">';
+        h += '<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">';
         h += '<span style="font-size:13px;color:var(--sw-text-sec)">Estimated Hours</span>';
         h += '<span style="font-size:16px;font-weight:700;color:var(--sw-dark)">' + wo.estimated_hours + 'h</span>';
         h += '</div>';
       }
-      if (wo.scope_items && Array.isArray(wo.scope_items) && wo.scope_items.length > 0) {
-        h += '<div style="margin-top:10px">';
-        h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--sw-text-sec);margin-bottom:6px">Scope Items</div>';
-        wo.scope_items.forEach(function(item) {
-          h += '<div style="padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:13px;color:var(--sw-text)">';
-          h += typeof item === 'string' ? esc(item) : esc(item.description || item.name || JSON.stringify(item));
-          h += '</div>';
-        });
+      h += '</div>';
+    }
+
+    // ── SECTION 5c: Materials Pickup List (from POs, not pricing) ──
+    var pos = data.purchaseOrders || [];
+    if (pos.length > 0) {
+      h += '<div class="detail-section">';
+      h += '<h3>Materials Pickup</h3>';
+      pos.forEach(function(po) {
+        h += '<div style="padding:10px 12px;background:var(--sw-light);border-radius:8px;margin-bottom:8px">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        h += '<span style="font-weight:700;color:var(--sw-dark)">' + esc(po.supplier_name || '') + '</span>';
+        h += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:' + (po.status === 'confirmed' ? 'var(--sw-green)' : 'var(--sw-amber)') + ';color:#fff;text-transform:uppercase">' + esc(po.status || '') + '</span>';
         h += '</div>';
-      }
+        if (po.line_items && Array.isArray(po.line_items)) {
+          po.line_items.forEach(function(li) {
+            var desc = li.description || '';
+            if (/post\s*cap/i.test(desc)) return;
+            h += '<div style="padding:4px 0;font-size:13px;color:var(--sw-text);display:flex;justify-content:space-between">';
+            h += '<span>' + esc(desc) + '</span>';
+            if (li.quantity) h += '<span style="font-weight:600;color:var(--sw-dark)">x' + li.quantity + '</span>';
+            h += '</div>';
+          });
+        }
+        h += '</div>';
+      });
       h += '</div>';
     }
 
