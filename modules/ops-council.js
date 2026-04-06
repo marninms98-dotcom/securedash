@@ -936,6 +936,7 @@ function openCouncilEmailCompose(submissionId, stepIndex) {
   document.getElementById('poComposePoId').value = '';
   document.getElementById('poComposeJobId').value = sub.job_id || '';
   document.getElementById('poComposeAttachPDF').checked = false;
+  document.getElementById('poComposeAttachPDF').parentElement.style.display = 'none';  // Hide PO-specific option
   document.getElementById('poComposeTemplate').value = 'custom';
   document.getElementById('poComposeFiles').value = '';
   document.getElementById('poComposeFileList').textContent = '';

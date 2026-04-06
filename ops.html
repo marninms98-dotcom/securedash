@@ -12421,6 +12421,34 @@ async function sendPOEmail() {
   if (!subject) { showToast('Subject is required', 'warning'); return; }
   if (!body) { showToast('Email body is required', 'warning'); return; }
 
+  // ── Council email routing — hijack if council context is set ──
+  var councilCtx = window._councilComposeContext || null;
+  window._councilComposeContext = null;
+  if (councilCtx && councilCtx.submission_id) {
+    try {
+      var ccEl = document.getElementById('poComposeCc');
+      var ccList = ccEl ? ccEl.value.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); }) : [];
+      var councilPayload = {
+        submission_id: councilCtx.submission_id,
+        step_index: councilCtx.step_index,
+        to_email: to,
+        subject: subject,
+        body_text: body,
+        body_html: '<pre style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;">' + body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>',
+      };
+      if (ccList.length > 0) councilPayload.cc = ccList;
+      await opsPost('send_council_email', councilPayload);
+      showToast('Council email sent to ' + to, 'success');
+      closeModal('poEmailComposeModal');
+      if (typeof loadApprovals === 'function') loadApprovals();
+      if (typeof selectApproval === 'function' && councilCtx.submission_id) selectApproval(councilCtx.submission_id);
+      return;
+    } catch (e) {
+      showToast('Failed to send council email: ' + e.message, 'warning');
+      return;
+    }
+  }
+
   // Try to save supplier email if it was manually entered
   if (supplierName && to) {
     var existingSup = _suppliers.find(function(s) { return s.name === supplierName; });
