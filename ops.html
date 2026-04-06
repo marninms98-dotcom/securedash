@@ -1913,35 +1913,53 @@
       .crew-util-wrap { grid-template-columns: 1fr; }
     }
 
-    /* ══════════ COUNCIL APPROVALS ══════════ */
+    /* ══════════ COUNCIL APPROVALS — SPLIT PANE ══════════ */
 
-    /* Summary strip */
-    .approval-summary { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .approvals-layout { display: flex; height: 100%; overflow: hidden; }
+
+    /* Left: List Panel */
+    .approvals-list-panel {
+      width: 340px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid var(--sw-border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .approvals-list-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--sw-border); }
+    .approvals-list-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .approvals-list-title { font-size: 15px; font-weight: 700; }
+    .approvals-list-items { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Summary pills */
+    .approval-summary { display: flex; gap: 6px; }
     .approval-summary-pill {
       flex: 1; min-width: 70px; padding: 10px 12px; background: var(--sw-card);
       box-shadow: 0 1px 3px rgba(41,60,70,0.08); cursor: pointer;
       text-align: center; transition: outline 0.15s;
     }
-    .approval-summary-pill.active { outline: 2px solid var(--sw-orange); }
-    .approval-summary-pill .pill-count { font-size: 20px; font-weight: 700; color: var(--sw-dark); }
-    .approval-summary-pill .pill-label { font-size: 10px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .approval-summary-pill.active { outline: 2px solid var(--sw-dark); background: var(--sw-dark); }
+    .approval-summary-pill.active .pill-count { color: #fff; }
+    .approval-summary-pill.active .pill-label { color: rgba(255,255,255,0.7); }
+    .approval-summary-pill .pill-count { font-size: 16px; font-weight: 700; color: var(--sw-dark); }
+    .approval-summary-pill .pill-label { font-size: 8px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; }
 
-    /* Approval list cards */
-    .approval-list { display: flex; flex-direction: column; gap: 2px; }
+    /* Right: Detail Panel */
+    .approvals-detail-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    .approvals-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; }
+
+    /* List card */
     .approval-card {
-      display: flex; align-items: center; gap: 14px; padding: 14px 16px;
-      background: var(--sw-card); cursor: pointer; transition: background 0.15s;
-      -webkit-tap-highlight-color: transparent; border-left: 3px solid var(--sw-border);
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      cursor: pointer; border-bottom: 1px solid var(--sw-light);
+      border-left: 3px solid transparent; transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
     }
-    .approval-card:first-child { border-radius: 4px 4px 0 0; }
-    .approval-card:last-child { border-radius: 0 0 4px 4px; }
-    .approval-card:only-child { border-radius: 4px; }
-    .approval-card:active { background: #F0ECE8; }
-    .approval-card.urgency-blocked { border-left-color: #E74C3C; }
-    .approval-card.urgency-unread { border-left-color: var(--sw-orange); }
-    .approval-card.urgency-stalled { border-left-color: #F39C12; }
-    .approval-card.urgency-active { border-left-color: var(--sw-green); }
-    .approval-card.urgency-complete { border-left-color: var(--sw-border); opacity: 0.7; }
+    .approval-card:hover { background: var(--sw-bg); }
+    .approval-card.active { background: var(--sw-orange-tint); border-left-color: var(--sw-orange); }
+    .approval-card.urgency-ok { border-left-color: var(--sw-green); }
+    .approval-card.urgency-stalled { border-left-color: #E67E22; }
+    .approval-card.urgency-blocked { border-left-color: var(--sw-red); }
+    .approval-card:first-child { border-radius: 0; }
+    .approval-card.urgency-complete { opacity: 0.6; }
+    .approval-card.urgency-complete { opacity: 0.6; }
     .approval-card-body { flex: 1; min-width: 0; }
     .approval-card-title { font-size: 14px; font-weight: 600; color: var(--sw-dark); }
     .approval-card-step { font-size: 12px; color: var(--sw-text-sec); margin-top: 2px; }
@@ -2070,11 +2088,15 @@
     .council-empty { text-align: center; padding: 60px 20px; color: var(--sw-text-sec); }
     .council-empty-icon { font-size: 40px; margin-bottom: 12px; }
 
+    /* Pulse animation for active segments */
+    @keyframes councilSegPulse { 0%,100% { opacity:1; } 50% { opacity:0.55; } }
+
     @media (max-width: 768px) {
-      .approval-summary { gap: 6px; }
-      .approval-summary-pill { padding: 8px 6px; }
-      .approval-summary-pill .pill-count { font-size: 16px; }
-      .council-hero-current { font-size: 17px; }
+      .approvals-layout { flex-direction: column; }
+      .approvals-list-panel { width: 100%; height: auto; max-height: 200px; border-right: none; border-bottom: 1px solid var(--sw-border); }
+      .approval-summary { gap: 4px; }
+      .approval-summary-pill { padding: 6px 4px; }
+      .approval-summary-pill .pill-count { font-size: 14px; }
     }
   </style>
 </head>
@@ -2476,18 +2498,23 @@
       <div id="inboxList"></div>
     </div>
 
-    <div id="viewApprovals" class="view">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-        <h3 style="font-size:16px;font-weight:700;color:var(--sw-dark);margin:0;">Council Approvals <span id="approvalsCount" style="font-weight:400;color:var(--sw-text-sec);font-size:13px;"></span></h3>
-        <button class="btn btn-sm btn-primary" onclick="openCouncilStartModalFromApprovals()">+ New</button>
+    <div id="viewApprovals" class="view" style="height:calc(100vh - 56px);overflow:hidden;">
+      <div class="approvals-layout">
+        <div class="approvals-list-panel" id="approvalsListPanel">
+          <!-- Rendered by ops-council.js: header + summary pills + card list -->
+        </div>
+        <div class="approvals-detail-panel" id="approvalsDetailPanel">
+          <div class="approvals-empty-state">
+            <div style="font-size:36px;opacity:0.3;margin-bottom:12px;">🏛️</div>
+            <div style="font-size:13px;color:var(--sw-text-sec);">Select a submission to view details</div>
+          </div>
+        </div>
       </div>
-      <div id="approvalsSummary" class="approval-summary"></div>
-      <div id="approvalsList" class="approval-list"></div>
     </div>
 
   </div><!-- /container -->
 
-  <!-- Council views are created dynamically by ops-council.js on first open -->
+  <!-- Council detail renders inline in #approvalsDetailPanel (split-pane) -->
 
   <!-- Mobile Nav -->
   <div class="mobile-nav">

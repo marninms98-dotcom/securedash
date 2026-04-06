@@ -1,41 +1,52 @@
 // ════════════════════════════════════════════════════════════
-// COUNCIL & ENGINEERING APPROVALS TAB
-// 2-Layer UI: List → Detail (with unified conversation)
+// COUNCIL & ENGINEERING APPROVALS — DESKTOP SPLIT-PANE
+// Layout: #approvalsListPanel (340px) | #approvalsDetailPanel (flex:1)
+// No full-screen overlays. Everything renders inline.
 // ════════════════════════════════════════════════════════════
 
 var _councilSubmissions = [];
-var _councilFilter = null; // null = show all, or 'not_started'|'in_progress'|'blocked'|'complete'
-var _councilDetailSubId = null; // currently open detail view
+var _councilFilter = null;        // null = all, 'active'|'blocked'|'complete'
+var _councilDetailSubId = null;   // currently selected submission ID
+var _councilActivePartyFilter = null; // email address filter for conversation
+var _councilActiveStepFilter = -1;    // step index filter (-1 = all)
 
 // ────────────────────────────────────────────────────────────
-// DATA LOADING
+// 1. DATA LOADING
 // ────────────────────────────────────────────────────────────
 
+/**
+ * Fetch all council submissions and render the list panel.
+ * Entry point called when the Approvals tab activates.
+ */
 async function loadApprovals() {
-  var summaryEl = document.getElementById('approvalsSummary');
-  var listEl = document.getElementById('approvalsList');
-  var countEl = document.getElementById('approvalsCount');
   try {
     var resp = await opsFetch('list_council_submissions');
     _councilSubmissions = (resp.submissions || []).map(function(sub) {
-      // Normalize joined job data to top level for card rendering
+      // Normalize joined job data to top level
       if (sub.jobs) {
         sub.client_name = sub.client_name || sub.jobs.client_name;
         sub.job_number = sub.job_number || sub.jobs.job_number;
         sub.suburb = sub.suburb || sub.jobs.suburb;
+        sub.type = sub.type || sub.jobs.type;
       }
       return sub;
     });
-    if (countEl) countEl.textContent = _councilSubmissions.length + ' submission' + (_councilSubmissions.length !== 1 ? 's' : '');
-    renderApprovalsList();
+    renderListPanel();
+
+    // If we had a detail open, refresh it too
+    if (_councilDetailSubId) {
+      var still = _councilSubmissions.find(function(s) { return s.id === _councilDetailSubId; });
+      if (still) selectApproval(_councilDetailSubId);
+    }
   } catch (e) {
     console.error('loadApprovals error:', e);
-    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--sw-text-sec);">Failed to load council submissions.</div>';
+    var lp = document.getElementById('approvalsListPanel');
+    if (lp) lp.innerHTML = '<div style="text-align:center;padding:40px;color:#8FA4B2;">Failed to load council submissions.</div>';
   }
 }
 
 // ────────────────────────────────────────────────────────────
-// HELPERS
+// HELPERS (kept from previous version)
 // ────────────────────────────────────────────────────────────
 
 /**
@@ -47,73 +58,60 @@ function computeUrgency(sub) {
   var currentStep = steps[sub.current_step_index] || steps[0];
   var emails = sub.email_threads || [];
 
-  // Days in current step
   var daysInStep = 0;
   if (currentStep && currentStep.started_at && sub.overall_status !== 'complete') {
     daysInStep = Math.floor((Date.now() - new Date(currentStep.started_at).getTime()) / 86400000);
   }
 
-  // Unread inbound emails
   var unreadCount = emails.filter(function(em) {
     return (em.direction === 'inbound' || em.direction === 'received') && !em.read_at;
   }).length;
 
-  // Tier assignment (priority order)
   var tier, score;
   if (sub.overall_status === 'complete') {
-    tier = 'complete';
-    score = 0;
+    tier = 'complete'; score = 0;
   } else if (sub.overall_status === 'blocked' || (currentStep && currentStep.status === 'blocked')) {
-    tier = 'blocked';
-    score = 500 + daysInStep;
+    tier = 'blocked'; score = 500 + daysInStep;
   } else if (unreadCount > 0) {
-    tier = 'unread';
-    score = 400 + unreadCount;
+    tier = 'unread'; score = 400 + unreadCount;
   } else if (daysInStep > 7) {
-    tier = 'stalled';
-    score = 300 + daysInStep;
+    tier = 'stalled'; score = 300 + daysInStep;
   } else {
-    tier = 'active';
-    score = 200 - daysInStep; // newer = lower priority within active
+    tier = 'active'; score = 200 - daysInStep;
   }
 
   return { tier: tier, score: score, daysInStep: daysInStep, unreadCount: unreadCount };
 }
 
 /**
- * SVG circular progress ring.
- * @param {number} completed - completed step count
- * @param {number} total - total step count
- * @param {string} status - overall_status for color
- * @returns {string} SVG markup
+ * SVG circular progress ring for list cards.
  */
 function renderProgressRingSVG(completed, total, status) {
-  var size = 40;
-  var strokeWidth = 3.5;
-  var radius = (size - strokeWidth) / 2;
-  var circumference = 2 * Math.PI * radius;
+  var size = 36;
+  var sw = 3;
+  var r = (size - sw) / 2;
+  var circ = 2 * Math.PI * r;
   var progress = total > 0 ? completed / total : 0;
-  var dashOffset = circumference * (1 - progress);
+  var offset = circ * (1 - progress);
 
-  var strokeColor = status === 'complete' ? '#27AE60' :
-                    status === 'blocked' ? '#E74C3C' :
-                    progress > 0 ? '#3498DB' : '#CCC';
+  var color = status === 'complete' ? '#27AE60' :
+              status === 'blocked' ? '#E74C3C' :
+              progress > 0 ? '#F15A29' : '#CCC';
 
-  var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  var pct = total > 0 ? Math.round(progress * 100) : 0;
 
-  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="flex-shrink:0;">' +
-    '<circle cx="' + (size / 2) + '" cy="' + (size / 2) + '" r="' + radius + '" fill="none" stroke="#E8E8E8" stroke-width="' + strokeWidth + '"/>' +
-    '<circle cx="' + (size / 2) + '" cy="' + (size / 2) + '" r="' + radius + '" fill="none" stroke="' + strokeColor + '" stroke-width="' + strokeWidth + '" ' +
-      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + dashOffset + '" ' +
-      'stroke-linecap="round" transform="rotate(-90 ' + (size / 2) + ' ' + (size / 2) + ')"/>' +
-    '<text x="' + (size / 2) + '" y="' + (size / 2) + '" text-anchor="middle" dominant-baseline="central" ' +
-      'font-size="10" font-weight="700" fill="' + strokeColor + '">' + pct + '%</text>' +
-    '</svg>';
+  return '<div style="width:36px;height:36px;flex-shrink:0;position:relative;">' +
+    '<svg width="36" height="36" style="transform:rotate(-90deg);">' +
+      '<circle cx="18" cy="18" r="' + r + '" stroke="#EDF1F4" stroke-width="' + sw + '" fill="none"/>' +
+      '<circle cx="18" cy="18" r="' + r + '" stroke="' + color + '" stroke-width="' + sw + '" fill="none" ' +
+        'stroke-dasharray="' + circ + '" stroke-dashoffset="' + offset + '" stroke-linecap="round"/>' +
+    '</svg>' +
+    '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#293C46;">' + pct + '%</div>' +
+  '</div>';
 }
 
 /**
- * Relative time string: "2m", "3h", "5d", etc.
- * Falls back to date if > 5 weeks.
+ * Relative time string: "now", "2m", "3h", "5d", etc.
  */
 function councilRelativeTime(dateStr) {
   if (!dateStr) return '';
@@ -143,24 +141,87 @@ function getStepEmails(sub, stepIdx) {
   });
 }
 
+/**
+ * Format a date for date separators in conversation.
+ */
+function councilFormatDate(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr);
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (msgDay.getTime() === today.getTime()) return 'Today';
+  var yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  if (msgDay.getTime() === yesterday.getTime()) return 'Yesterday';
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Format timestamp for message bubbles.
+ */
+function councilFormatTime(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr);
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var time = d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true });
+  if (msgDay.getTime() === today.getTime()) return 'Today, ' + time;
+  var dayStr = d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  return dayStr + ', ' + time;
+}
+
 // ────────────────────────────────────────────────────────────
-// LAYER 1: APPROVAL LIST
+// 2. LIST PANEL
 // ────────────────────────────────────────────────────────────
 
 /**
- * Render the stat pills at the top + the card list.
+ * Render the left list panel: header, summary pills, card list.
+ * Targets #approvalsListPanel.
  */
-function renderApprovalsList() {
-  var summaryEl = document.getElementById('approvalsSummary');
-  var listEl = document.getElementById('approvalsList');
-  if (!listEl) return;
+function renderListPanel() {
+  var panel = document.getElementById('approvalsListPanel');
+  if (!panel) return;
+
+  // Count submissions by category
+  var counts = { active: 0, blocked: 0, complete: 0 };
+  _councilSubmissions.forEach(function(sub) {
+    if (sub.overall_status === 'complete') counts.complete++;
+    else if (sub.overall_status === 'blocked') counts.blocked++;
+    else counts.active++; // not_started + in_progress both count as active
+  });
+
+  // ── Header ──
+  var html = '<div style="padding:16px 16px 12px;border-bottom:1px solid #D4DEE4;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+  html += '<span style="font-size:16px;font-weight:700;color:#293C46;">Approvals</span>';
+  html += '<button onclick="openCouncilStartModalFromApprovals()" style="padding:5px 14px;background:#F15A29;color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer;">+ New</button>';
+  html += '</div>';
 
   // ── Summary pills ──
-  if (summaryEl) summaryEl.innerHTML = renderApprovalsSummary();
+  html += '<div style="display:flex;gap:6px;">';
+  var pills = [
+    { key: 'active', label: 'Active', count: counts.active },
+    { key: 'blocked', label: 'Blocked', count: counts.blocked },
+    { key: 'complete', label: 'Done', count: counts.complete }
+  ];
+  pills.forEach(function(p) {
+    var isActive = _councilFilter === p.key;
+    var bg = isActive ? '#293C46' : '#fff';
+    var fg = isActive ? '#fff' : '#293C46';
+    var border = isActive ? '#293C46' : '#D4DEE4';
+    html += '<div onclick="toggleCouncilFilter(\'' + p.key + '\')" style="flex:1;text-align:center;padding:6px 4px;border:1px solid ' + border + ';background:' + bg + ';color:' + fg + ';cursor:pointer;transition:all 0.15s;">';
+    html += '<div style="font-size:16px;font-weight:700;">' + p.count + '</div>';
+    html += '<div style="font-size:8px;text-transform:uppercase;letter-spacing:0.5px;opacity:0.7;">' + p.label + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '</div>'; // end header
 
-  var html = '';
+  // ── Card list ──
+  html += '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;">';
 
-  // ── Sort submissions by urgency ──
+  // Sort by urgency
   var sorted = _councilSubmissions.slice().map(function(sub) {
     sub._urgency = computeUrgency(sub);
     return sub;
@@ -169,344 +230,287 @@ function renderApprovalsList() {
   // Apply filter
   if (_councilFilter) {
     sorted = sorted.filter(function(sub) {
+      if (_councilFilter === 'active') return sub.overall_status !== 'complete' && sub.overall_status !== 'blocked';
       return sub.overall_status === _councilFilter;
     });
   }
 
-  // Sort: highest score first (blocked > unread > stalled > active > complete)
   sorted.sort(function(a, b) { return b._urgency.score - a._urgency.score; });
 
   if (sorted.length === 0) {
-    html += '<div style="text-align:center;padding:40px;color:var(--sw-text-sec);font-size:13px;">';
-    html += _councilFilter ? 'No ' + _councilFilter.replace('_', ' ') + ' submissions.' : 'No council submissions yet.';
+    html += '<div style="text-align:center;padding:40px;color:#8FA4B2;font-size:13px;">';
+    html += _councilFilter ? 'No ' + _councilFilter + ' submissions.' : 'No council submissions yet.';
     html += '</div>';
-    listEl.innerHTML = html;
-    return;
+  } else {
+    sorted.forEach(function(sub) {
+      var u = sub._urgency;
+      var steps = sub.steps || [];
+      var totalSteps = steps.length;
+      var completedSteps = steps.filter(function(s) { return s.status === 'complete'; }).length;
+      var currentStep = steps[sub.current_step_index] || steps[0];
+      var currentStepName = currentStep ? currentStep.name : 'Unknown';
+      var isSelected = sub.id === _councilDetailSubId;
+      var emailCount = (sub.email_threads || []).length;
+
+      // Card urgency border
+      var urgencyClass = u.tier === 'blocked' || u.tier === 'stalled' ? 'urgency-stalled' : 'urgency-ok';
+      if (sub.overall_status === 'complete') urgencyClass = '';
+
+      // Left border color
+      var leftBorder = isSelected ? '#F15A29' : 'transparent';
+      var cardBg = isSelected ? '#FEF3EF' : 'transparent';
+
+      html += '<div onclick="selectApproval(\'' + sub.id + '\')" data-sub-id="' + sub.id + '" style="' +
+        'display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;' +
+        'border-bottom:1px solid #EDF1F4;border-left:3px solid ' + leftBorder + ';' +
+        'background:' + cardBg + ';transition:background 0.1s;" ' +
+        'onmouseenter="if(this.getAttribute(\'data-sub-id\')!==\'' + (_councilDetailSubId || '') + '\')this.style.background=\'#F8F6F3\'" ' +
+        'onmouseleave="if(this.getAttribute(\'data-sub-id\')!==\'' + (_councilDetailSubId || '') + '\')this.style.background=\'transparent\'">';
+
+      // Progress ring
+      html += renderProgressRingSVG(completedSteps, totalSteps, sub.overall_status);
+
+      // Card info
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-size:13px;font-weight:600;color:#293C46;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+        escapeHtml(sub.job_number || '') + ' — ' + escapeHtml(sub.client_name || '') + '</div>';
+      html += '<div style="font-size:11px;color:#8FA4B2;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+        'Step ' + (sub.current_step_index + 1) + '/' + totalSteps + ': ' + escapeHtml(currentStepName) + '</div>';
+      html += '<div style="font-size:10px;color:#8FA4B2;margin-top:3px;display:flex;gap:8px;">';
+      if (u.daysInStep > 0 && u.tier !== 'complete') {
+        var badgeBg = u.daysInStep > 7 ? 'rgba(231,76,60,0.1)' : u.daysInStep > 3 ? 'rgba(241,90,41,0.1)' : 'rgba(149,165,166,0.15)';
+        var badgeColor = u.daysInStep > 7 ? '#E74C3C' : u.daysInStep > 3 ? '#F15A29' : '#8FA4B2';
+        html += '<span style="font-size:9px;padding:1px 6px;border-radius:100px;font-weight:600;background:' + badgeBg + ';color:' + badgeColor + ';">' + u.daysInStep + 'd</span>';
+      }
+      if (emailCount > 0) html += '<span>' + emailCount + ' email' + (emailCount !== 1 ? 's' : '') + '</span>';
+      html += '</div>';
+      html += '</div>';
+
+      html += '</div>'; // end card
+    });
   }
 
-  // ── Card list ──
-  html += '<div style="display:flex;flex-direction:column;gap:10px;">';
-  sorted.forEach(function(sub) {
-    html += renderApprovalCard(sub);
-  });
-  html += '</div>';
-
-  listEl.innerHTML = html;
+  html += '</div>'; // end list-items
+  panel.innerHTML = html;
 }
 
 /**
- * Render the 4 stat pills: Not Started, In Progress, Blocked, Complete.
- */
-function renderApprovalsSummary() {
-  var counts = { not_started: 0, in_progress: 0, blocked: 0, complete: 0 };
-  _councilSubmissions.forEach(function(sub) {
-    if (counts.hasOwnProperty(sub.overall_status)) counts[sub.overall_status]++;
-  });
-
-  var pills = [
-    { key: 'not_started', label: 'Not Started', color: '#95A5A6', bg: '#95A5A620' },
-    { key: 'in_progress', label: 'In Progress', color: '#3498DB', bg: '#3498DB20' },
-    { key: 'blocked', label: 'Blocked', color: '#E74C3C', bg: '#E74C3C20' },
-    { key: 'complete', label: 'Complete', color: '#27AE60', bg: '#27AE6020' }
-  ];
-
-  var html = '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">';
-  pills.forEach(function(p) {
-    var isActive = _councilFilter === p.key;
-    var border = isActive ? '2px solid ' + p.color : '2px solid transparent';
-    html += '<button onclick="toggleCouncilFilter(\'' + p.key + '\')" style="' +
-      'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:12px;' +
-      'background:' + p.bg + ';border:' + border + ';cursor:pointer;font-size:12px;font-weight:600;' +
-      'color:' + p.color + ';transition:all 0.2s;">' +
-      '<span style="font-size:18px;font-weight:700;line-height:1;">' + counts[p.key] + '</span>' +
-      p.label +
-      '</button>';
-  });
-  html += '</div>';
-  return html;
-}
-
-/**
- * Toggle filter by status pill tap.
+ * Toggle filter by pill click.
  */
 function toggleCouncilFilter(status) {
   _councilFilter = (_councilFilter === status) ? null : status;
-  renderApprovalsList();
+  renderListPanel();
 }
 
+// ────────────────────────────────────────────────────────────
+// 3. SELECT APPROVAL (detail panel)
+// ────────────────────────────────────────────────────────────
+
 /**
- * Render a single approval card for the list.
+ * Called on card click. Highlights card in list, renders detail panel.
  */
-function renderApprovalCard(sub) {
-  var u = sub._urgency || computeUrgency(sub);
+function selectApproval(subId) {
+  var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
+  if (!sub) return;
+
+  _councilDetailSubId = subId;
+  _councilActivePartyFilter = null;
+  _councilActiveStepFilter = -1;
+
+  // Re-render list to update highlight
+  renderListPanel();
+
+  // Render detail panel
+  var panel = document.getElementById('approvalsDetailPanel');
+  if (!panel) return;
+
   var steps = sub.steps || [];
   var totalSteps = steps.length;
   var completedSteps = steps.filter(function(s) { return s.status === 'complete'; }).length;
+
+  var html = '';
+
+  // ── Detail header ──
+  html += '<div style="padding:14px 20px;background:#fff;border-bottom:1px solid #D4DEE4;display:flex;align-items:center;gap:16px;flex-shrink:0;">';
+  html += '<div style="flex:1;">';
+  html += '<div style="font-size:17px;font-weight:700;color:#293C46;">' + escapeHtml(sub.job_number || '') + ' — ' + escapeHtml(sub.client_name || '') + '</div>';
+  html += '<div style="font-size:12px;color:#8FA4B2;margin-top:2px;">' +
+    escapeHtml(sub.suburb || '') + (sub.type ? ' · ' + escapeHtml(sub.type) : '') +
+    ' · ' + completedSteps + ' of ' + totalSteps + ' steps complete</div>';
+  html += '</div>';
+  if (sub.job_id) {
+    html += '<button onclick="openJobQuickView(\'' + sub.job_id + '\')" style="font-size:11px;padding:5px 14px;border:1px solid #D4DEE4;background:#fff;color:#4C6A7C;cursor:pointer;font-weight:500;">View Job</button>';
+  }
+  html += '</div>';
+
+  // ── Detail content: sidebar + conversation ──
+  html += '<div style="flex:1;display:flex;overflow:hidden;">';
+  html += renderDetailSidebar(sub);
+  html += renderConversation(sub);
+  html += '</div>';
+
+  panel.innerHTML = html;
+
+  // Inject pulse keyframes if not present
+  if (!document.getElementById('councilPulseStyle')) {
+    var style = document.createElement('style');
+    style.id = 'councilPulseStyle';
+    style.textContent = '@keyframes seg-pulse { 0%,100% { opacity:1; } 50% { opacity:0.55; } }';
+    document.head.appendChild(style);
+  }
+
+  // Scroll conversation to bottom
+  var msgContainer = document.getElementById('councilMessages');
+  if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
+}
+
+// ────────────────────────────────────────────────────────────
+// 4. DETAIL SIDEBAR (progress + steps)
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Render the left sidebar of the detail panel (280px).
+ * Contains: segmented progress bar, current step hero, advance button, step timeline.
+ */
+function renderDetailSidebar(sub) {
+  var steps = sub.steps || [];
   var currentStep = steps[sub.current_step_index] || steps[0];
-  var currentStepName = currentStep ? currentStep.name : 'Unknown';
+  var isComplete = sub.overall_status === 'complete';
 
-  // Border color by urgency tier
-  var borderColors = {
-    blocked: '#E74C3C',
-    unread: '#F39C12',
-    stalled: '#D97706',
-    active: '#27AE60',
-    complete: '#95A5A6'
-  };
-  var borderColor = borderColors[u.tier] || '#E0E0E0';
+  var html = '<div style="width:280px;flex-shrink:0;background:#fff;border-right:1px solid #EDF1F4;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;">';
 
-  // Days badge color
-  var daysBadgeBg = u.daysInStep > 7 ? '#E74C3C' : u.daysInStep > 3 ? '#D97706' : '#95A5A6';
-  var daysBadgeColor = u.daysInStep > 3 ? '#fff' : '#fff';
-
-  var html = '<div onclick="openCouncilDetail(\'' + sub.id + '\')" style="' +
-    'display:flex;align-items:center;gap:12px;padding:14px 16px;' +
-    'background:var(--sw-card,#fff);border-radius:12px;border-left:4px solid ' + borderColor + ';' +
-    'box-shadow:0 1px 3px rgba(0,0,0,0.06);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;' +
-    '" onmousedown="this.style.transform=\'scale(0.98)\'" onmouseup="this.style.transform=\'\'" onmouseleave="this.style.transform=\'\'">';
-
-  // Progress ring (left)
-  html += renderProgressRingSVG(completedSteps, totalSteps, sub.overall_status);
-
-  // Middle content
-  html += '<div style="flex:1;min-width:0;">';
-
-  // Job number + client name
-  html += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
-    escapeHtml(sub.job_number || '') + ' ' + escapeHtml(sub.client_name || '') + '</div>';
-
-  // Current step
-  html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">';
-  html += 'Step ' + (sub.current_step_index + 1) + '/' + totalSteps + ': ' + escapeHtml(currentStepName);
+  // ── Segmented progress bar ──
+  html += '<div style="margin-bottom:16px;">';
+  html += '<div style="display:flex;gap:2px;margin-bottom:8px;">';
+  steps.forEach(function(step, idx) {
+    var cls = '';
+    if (step.status === 'complete') {
+      html += '<div style="flex:1;height:4px;background:#27AE60;"></div>';
+    } else if (idx === sub.current_step_index && !isComplete) {
+      html += '<div style="flex:1;height:4px;background:#F15A29;animation:seg-pulse 2s ease-in-out infinite;"></div>';
+    } else {
+      html += '<div style="flex:1;height:4px;background:#EDF1F4;"></div>';
+    }
+  });
   html += '</div>';
 
-  // Unread badge (if any)
-  if (u.unreadCount > 0) {
-    html += '<div style="margin-top:4px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#3498DB;color:#fff;font-size:10px;font-weight:700;">' + u.unreadCount + ' unread</span></div>';
+  // ── Current step hero ──
+  if (currentStep && !isComplete) {
+    html += '<div style="font-size:9px;color:#F15A29;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Current Step</div>';
+    html += '<div style="font-size:16px;font-weight:700;color:#293C46;margin-top:2px;">' + escapeHtml(currentStep.name) + '</div>';
+
+    if (currentStep.vendor) {
+      html += '<div style="font-size:11px;color:#8FA4B2;margin-top:3px;">' + escapeHtml(currentStep.vendor);
+      if (currentStep.vendor_email) {
+        html += ' — <span onclick="prefillComposeTo(\'' + escapeHtml(currentStep.vendor_email) + '\')" style="cursor:pointer;color:#F15A29;text-decoration:underline;">' + escapeHtml(currentStep.vendor_email) + '</span>';
+      }
+      html += '</div>';
+    }
+
+    if (currentStep.started_at) {
+      var daysIn = Math.floor((Date.now() - new Date(currentStep.started_at).getTime()) / 86400000);
+      if (daysIn > 0) {
+        var daysColor = daysIn > 7 ? '#E74C3C' : daysIn > 3 ? '#D97706' : '#8FA4B2';
+        html += '<div style="font-size:11px;margin-top:2px;color:' + daysColor + ';font-weight:' + (daysIn > 3 ? '600' : '400') + ';">' + daysIn + ' days in this step</div>';
+      }
+    }
+
+    // Advance button
+    html += '<button onclick="openCouncilAdvanceModal(\'' + sub.id + '\',' + sub.current_step_index + ')" style="margin-top:10px;padding:7px 16px;background:#27AE60;color:#fff;border:none;font-size:12px;font-weight:600;cursor:pointer;width:100%;">Complete &amp; Advance &#10003;</button>';
+  } else if (isComplete) {
+    html += '<div style="font-size:9px;color:#27AE60;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Complete</div>';
+    html += '<div style="font-size:14px;font-weight:600;color:#293C46;margin-top:2px;">All steps done</div>';
   }
 
-  html += '</div>'; // end middle
+  html += '</div>'; // end progress section
 
-  // Right side: days badge + chevron
-  html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">';
-  if (u.daysInStep > 0 && u.tier !== 'complete') {
-    html += '<span style="display:inline-block;padding:3px 8px;border-radius:10px;background:' + daysBadgeBg + ';color:' + daysBadgeColor + ';font-size:11px;font-weight:700;white-space:nowrap;">' + u.daysInStep + 'd</span>';
-  }
-  // Chevron
-  html += '<span style="font-size:18px;color:var(--sw-text-sec);line-height:1;">&#8250;</span>';
-  html += '</div>';
+  // ── Step timeline ──
+  html += '<div style="font-size:10px;font-weight:700;color:#4C6A7C;text-transform:uppercase;letter-spacing:0.5px;margin:20px 0 8px;padding-top:12px;border-top:1px solid #EDF1F4;">All Steps</div>';
 
-  html += '</div>'; // end card
+  steps.forEach(function(step, idx) {
+    var isDone = step.status === 'complete';
+    var isActive = idx === sub.current_step_index && !isComplete;
+    var isPending = !isDone && !isActive;
+
+    // Step row
+    html += '<div onclick="filterCouncilEmails(' + idx + ')" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;" onmouseenter="this.querySelector(\'.ss-name-el\').style.color=\'#F15A29\'" onmouseleave="this.querySelector(\'.ss-name-el\').style.color=\'' + (isDone ? '#8FA4B2' : isActive ? '#293C46' : '#293C46') + '\'">';
+
+    // Dot
+    if (isDone) {
+      html += '<div style="width:18px;height:18px;border-radius:50%;background:#27AE60;color:#fff;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;">&#10003;</div>';
+    } else if (isActive) {
+      html += '<div style="width:18px;height:18px;border-radius:50%;background:#F15A29;color:#fff;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;">' + (idx + 1) + '</div>';
+    } else {
+      html += '<div style="width:18px;height:18px;border-radius:50%;border:1.5px solid #D4DEE4;color:#8FA4B2;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0;">' + (idx + 1) + '</div>';
+    }
+
+    // Name
+    var nameStyle = 'font-size:12px;flex:1;';
+    if (isDone) nameStyle += 'color:#8FA4B2;text-decoration:line-through;';
+    else if (isActive) nameStyle += 'font-weight:700;color:#293C46;';
+    else nameStyle += 'color:#293C46;';
+    html += '<span class="ss-name-el" style="' + nameStyle + '">' + escapeHtml(step.name) + '</span>';
+
+    // Badge
+    if (isDone) {
+      html += '<span style="font-size:9px;padding:1px 6px;border-radius:100px;font-weight:600;background:rgba(39,174,96,0.1);color:#27AE60;">Done</span>';
+    } else if (isActive && step.started_at) {
+      var stepDays = Math.floor((Date.now() - new Date(step.started_at).getTime()) / 86400000);
+      if (stepDays > 0) {
+        html += '<span style="font-size:9px;padding:1px 6px;border-radius:100px;font-weight:600;background:rgba(241,90,41,0.1);color:#F15A29;">' + stepDays + 'd</span>';
+      }
+    }
+
+    html += '</div>'; // end step row
+
+    // Vendor info line below step
+    if (step.vendor) {
+      html += '<div style="font-size:10px;color:#8FA4B2;margin-left:26px;margin-top:-2px;margin-bottom:4px;">' +
+        escapeHtml(step.vendor);
+      if (step.vendor_email) {
+        html += ' — <span onclick="event.stopPropagation();prefillComposeTo(\'' + escapeHtml(step.vendor_email) + '\')" style="cursor:pointer;color:#F15A29;text-decoration:underline;">' + escapeHtml(step.vendor_email) + '</span>';
+      }
+      html += '</div>';
+    }
+
+    // Actions for pending steps: set vendor / skip
+    if (isPending && !isDone) {
+      html += '<div style="margin-left:26px;margin-bottom:4px;" id="councilVendorSet_' + idx + '">';
+      if (!step.vendor) {
+        html += '<button onclick="event.stopPropagation();toggleCouncilVendorEditor(\'' + sub.id + '\',' + idx + ')" style="font-size:10px;color:#F15A29;cursor:pointer;background:none;border:none;text-decoration:underline;">+ Set vendor</button>';
+      }
+      if (idx > sub.current_step_index) {
+        html += '<button onclick="event.stopPropagation();skipCouncilStep(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(step.name).replace(/'/g, "\\'") + '\')" style="font-size:10px;color:#8FA4B2;cursor:pointer;background:none;border:none;text-decoration:underline;margin-left:6px;">Skip</button>';
+      }
+      html += '</div>';
+    }
+  });
+
+  html += '</div>'; // end sidebar
   return html;
 }
 
 // ────────────────────────────────────────────────────────────
-// LAYER 2: COUNCIL DETAIL VIEW
+// 5. CONVERSATION PANEL
 // ────────────────────────────────────────────────────────────
 
 /**
- * Ensure the detail view container exists in the DOM.
- * Created once, reused thereafter.
+ * Render the conversation area: filter chips, message bubbles, compose bar.
+ * Returns HTML string for the right side of detail content.
  */
-function ensureCouncilDetailView() {
-  if (document.getElementById('councilDetailView')) return;
-
-  var el = document.createElement('div');
-  el.id = 'councilDetailView';
-  el.style.cssText = 'position:fixed;inset:0;z-index:200;background:var(--sw-bg,#F5F3F0);' +
-    'display:flex;flex-direction:column;overflow:hidden;' +
-    'transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94);' +
-    'will-change:transform;';
-  el.innerHTML = '<div id="councilDetailContent" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>';
-  document.body.appendChild(el);
-}
-
-/**
- * Open the detail view for a submission. Slides in from right.
- */
-function openCouncilDetail(subId) {
-  var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
-  if (!sub) return;
-  _councilDetailSubId = subId;
-
-  ensureCouncilDetailView();
-  var view = document.getElementById('councilDetailView');
-  var content = document.getElementById('councilDetailContent');
-
-  var steps = sub.steps || [];
-  var totalSteps = steps.length;
-  var completedSteps = steps.filter(function(s) { return s.status === 'complete'; }).length;
-  var currentStep = steps[sub.current_step_index] || steps[0];
-
-  var html = '';
-
-  // ── Header with back button ──
-  html += '<div style="flex-shrink:0;padding:16px 16px 12px;background:var(--sw-card,#fff);border-bottom:1px solid var(--sw-border,#E0E0E0);">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">';
-  html += '<button onclick="closeCouncilDetail()" style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;font-size:14px;color:var(--sw-orange,#F15A29);font-weight:600;padding:0;">&#8249; Approvals</button>';
-  html += '<div style="flex:1;"></div>';
-  // Action menu
-  if (sub.job_id) {
-    html += '<button onclick="openJobQuickView(\'' + sub.job_id + '\')" style="font-size:11px;padding:4px 10px;border:1px solid var(--sw-border);border-radius:6px;background:var(--sw-card,#fff);cursor:pointer;color:var(--sw-text-sec);">View Job</button>';
-  }
-  html += '</div>';
-
-  // Job title
-  html += '<div style="font-size:18px;font-weight:700;color:var(--sw-dark);">' + escapeHtml(sub.job_number || '') + ' — ' + escapeHtml(sub.client_name || '') + '</div>';
-  if (sub.suburb) {
-    html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(sub.suburb) + '</div>';
-  }
-
-  // ── Segmented progress bar ──
-  html += '<div style="display:flex;gap:3px;margin-top:14px;">';
-  steps.forEach(function(step, idx) {
-    var segColor, animation;
-    if (step.status === 'complete') {
-      segColor = '#27AE60';
-      animation = '';
-    } else if (step.status === 'blocked') {
-      segColor = '#E74C3C';
-      animation = '';
-    } else if (idx === sub.current_step_index) {
-      segColor = '#F39C12';
-      animation = 'animation:councilPulse 2s ease-in-out infinite;';
-    } else {
-      segColor = '#E0E0E0';
-      animation = '';
-    }
-    html += '<div style="flex:1;height:6px;border-radius:3px;background:' + segColor + ';' + animation + '"></div>';
-  });
-  html += '</div>';
-
-  // Progress text
-  html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:6px;">' + completedSteps + ' of ' + totalSteps + ' steps complete</div>';
-
-  html += '</div>'; // end header
-
-  // ── Current step hero ──
-  if (currentStep && sub.overall_status !== 'complete') {
-    html += '<div style="padding:16px;background:var(--sw-card,#fff);margin:12px 16px;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Current Step</div>';
-    html += '<div style="font-size:20px;font-weight:700;color:var(--sw-dark);">' + escapeHtml(currentStep.name) + '</div>';
-    // Days in step
-    if (currentStep.started_at) {
-      var heroDs = Math.floor((Date.now() - new Date(currentStep.started_at).getTime()) / 86400000);
-      if (heroDs > 0) {
-        var heroDsColor = heroDs > 7 ? '#E74C3C' : heroDs > 3 ? '#D97706' : 'var(--sw-text-sec)';
-        html += '<div style="font-size:12px;color:' + heroDsColor + ';margin-top:2px;font-weight:' + (heroDs > 7 ? '700' : '400') + ';">' + heroDs + ' days in this step</div>';
-      }
-    }
-    // Vendor info or setter
-    if (currentStep.vendor) {
-      html += '<div style="font-size:12px;color:var(--sw-text-sec);margin-top:4px;">' + escapeHtml(currentStep.vendor) + (currentStep.vendor_email ? ' &mdash; ' + escapeHtml(currentStep.vendor_email) : '') + '</div>';
-    } else {
-      html += '<div id="councilVendorSet_' + sub.current_step_index + '" style="margin-top:6px;">';
-      html += '<button onclick="toggleCouncilVendorEditor(\'' + sub.id + '\',' + sub.current_step_index + ')" style="background:none;border:1px dashed var(--sw-border);padding:6px 12px;border-radius:6px;font-size:11px;color:var(--sw-text-sec);cursor:pointer;">+ Set vendor &amp; email for this step</button>';
-      html += '</div>';
-    }
-    // Advance button
-    html += '<button onclick="openCouncilAdvanceModal(\'' + sub.id + '\',' + sub.current_step_index + ')" style="margin-top:12px;padding:10px 20px;background:var(--sw-green,#27AE60);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Complete &amp; Advance &#10003;</button>';
-    html += '</div>';
-  }
-
-  // ── Step timeline ──
-  html += '<div style="padding:0 16px 16px;">';
-  html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin:16px 0 10px;">All Steps</div>';
-
-  steps.forEach(function(step, idx) {
-    var isComplete = step.status === 'complete';
-    var isActive = idx === sub.current_step_index && sub.overall_status !== 'complete';
-    var isBlocked = step.status === 'blocked';
-    var isPending = !isComplete && !isActive && !isBlocked;
-    var isLast = idx === steps.length - 1;
-
-    // Count emails for badge
-    var stepEmails = getStepEmails(sub, idx);
-    var stepUnread = stepEmails.filter(function(em) { return (em.direction === 'inbound' || em.direction === 'received') && !em.read_at; }).length;
-
-    // Circle indicator color
-    var circleColor = isComplete ? '#27AE60' : isBlocked ? '#E74C3C' : isActive ? '#F39C12' : '#CCC';
-    var circleIcon = isComplete ? '&#10003;' : isBlocked ? '!' : isActive ? '&#9679;' : (idx + 1);
-    var circleBg = isComplete ? '#27AE60' : isBlocked ? '#E74C3C' : isActive ? '#F39C12' : '#E8E8E8';
-    var circleFg = (isComplete || isBlocked || isActive) ? '#fff' : '#999';
-
-    // Connecting line color
-    var lineColor = isComplete ? '#27AE60' : '#E0E0E0';
-
-    html += '<div onclick="filterCouncilEmails(' + idx + ')" style="display:flex;gap:12px;cursor:pointer;position:relative;">';
-
-    // Left: circle + vertical line
-    html += '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:28px;">';
-    // Circle
-    html += '<div style="width:28px;height:28px;border-radius:50%;background:' + circleBg + ';color:' + circleFg + ';' +
-      'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;' +
-      (isActive ? 'box-shadow:0 0 0 3px ' + circleBg + '40;' : '') + '">' + circleIcon + '</div>';
-    // Vertical line (not on last step)
-    if (!isLast) {
-      html += '<div style="flex:1;width:2px;background:' + lineColor + ';min-height:16px;margin:4px 0;"></div>';
-    }
-    html += '</div>';
-
-    // Right: step content
-    html += '<div style="flex:1;padding-bottom:' + (isLast ? '0' : '16px') + ';min-width:0;">';
-
-    // Step name row
-    html += '<div style="display:flex;align-items:center;gap:8px;min-height:28px;">';
-    html += '<div style="flex:1;font-size:14px;font-weight:' + (isActive ? '700' : '600') + ';color:' + (isComplete ? 'var(--sw-text-sec)' : 'var(--sw-dark)') + ';' +
-      (isComplete ? 'text-decoration:line-through;' : '') + '">' + escapeHtml(step.name) + '</div>';
-
-    // Unread badge
-    if (stepUnread > 0) {
-      html += '<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:#3498DB;color:#fff;font-size:10px;font-weight:700;">' + stepUnread + '</span>';
-    } else if (stepEmails.length > 0) {
-      html += '<span style="font-size:11px;color:var(--sw-text-sec);">&#128233; ' + stepEmails.length + '</span>';
-    }
-
-    html += '</div>';
-
-    // Vendor + time info
-    if (step.vendor) {
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + escapeHtml(step.vendor) + (step.vendor_email ? ' — ' + escapeHtml(step.vendor_email) : '') + '</div>';
-    } else if (!isComplete) {
-      html += '<div style="margin-top:2px;"><button onclick="event.stopPropagation();toggleCouncilVendorEditor(\'' + sub.id + '\',' + idx + ')" style="background:none;border:none;padding:0;font-size:10px;color:var(--sw-orange,#F15A29);cursor:pointer;text-decoration:underline;">+ Set vendor</button></div>';
-    }
-    // Skip button for pending future steps
-    if (isPending && idx > sub.current_step_index) {
-      html += '<div style="margin-top:4px;"><button onclick="event.stopPropagation();skipCouncilStep(\'' + sub.id + '\',' + idx + ',\'' + escapeHtml(step.name).replace(/'/g, "\\'") + '\')" style="background:none;border:none;padding:0;font-size:10px;color:var(--sw-text-sec);cursor:pointer;text-decoration:underline;">Skip this step</button></div>';
-    }
-    if (step.started_at && !isComplete) {
-      var daysIn = Math.floor((Date.now() - new Date(step.started_at).getTime()) / 86400000);
-      if (daysIn > 0) {
-        var daysColor = daysIn > 7 ? '#E74C3C' : daysIn > 3 ? '#D97706' : 'var(--sw-text-sec)';
-        html += '<div style="font-size:11px;color:' + daysColor + ';margin-top:2px;font-weight:' + (daysIn > 7 ? '700' : '400') + ';">' + daysIn + ' days in this step</div>';
-      }
-    }
-    if (step.completed_at) {
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">Completed ' + councilRelativeTime(step.completed_at) + ' ago</div>';
-    }
-    if (step.notes) {
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;font-style:italic;">' + escapeHtml(step.notes) + '</div>';
-    }
-
-    html += '</div>'; // end right
-    html += '</div>'; // end step row
-  });
-
-  html += '</div>'; // end timeline
-
-  // ── Unified Conversation ──
-  var allEmails = (sub.email_threads || []).sort(function(a, b) {
+function renderConversation(sub) {
+  var allEmails = (sub.email_threads || []).slice().sort(function(a, b) {
     return new Date(a.created_at || a.sent_at || 0) - new Date(b.created_at || b.sent_at || 0);
   });
 
-  // Build filter chips from unique email parties
+  // Build party list from email addresses
   var parties = {};
   allEmails.forEach(function(em) {
     var addr = em.direction === 'inbound' || em.direction === 'received' ? em.from_email : em.to_email;
     if (addr && addr.indexOf('secureworks') === -1 && addr.indexOf('orders+') === -1) {
       var domain = addr.split('@')[1] || '';
       var label = domain.split('.')[0] || addr;
-      // Try to match to a step vendor
+      // Match to vendor name if possible
       (sub.steps || []).forEach(function(s) {
         if (s.vendor_email === addr && s.vendor) label = s.vendor;
       });
@@ -515,173 +519,191 @@ function openCouncilDetail(subId) {
   });
   var partyList = Object.values(parties);
 
-  // Filter chips
-  html += '<div style="padding:12px 16px 8px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);">';
-  html += '<div style="font-size:13px;font-weight:700;color:var(--sw-dark);margin-bottom:8px;">Conversation</div>';
-  html += '<div id="councilFilterChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
-  html += '<button class="council-filter-chip active" onclick="filterCouncilEmails(-1)" data-filter="-1" style="padding:4px 12px;border-radius:100px;border:1px solid var(--sw-border);background:var(--sw-dark);color:#fff;font-size:11px;font-weight:600;cursor:pointer;">All (' + allEmails.length + ')</button>';
+  var html = '<div style="flex:1;display:flex;flex-direction:column;min-width:0;">';
+
+  // ── Filter chips ──
+  html += '<div style="display:flex;gap:6px;padding:10px 20px;background:#FCFBFA;border-bottom:1px solid #EDF1F4;flex-shrink:0;flex-wrap:wrap;">';
+  html += '<button onclick="filterCouncilEmails(-1)" class="council-filter-chip" data-filter="all" style="padding:4px 14px;border-radius:100px;border:1px solid #293C46;background:#293C46;color:#fff;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">All (' + allEmails.length + ')</button>';
   partyList.forEach(function(p) {
     var count = allEmails.filter(function(em) { return em.from_email === p.addr || em.to_email === p.addr; }).length;
-    html += '<button class="council-filter-chip" onclick="filterCouncilEmails(-1,\'' + escapeHtml(p.addr) + '\')" data-filter="' + escapeHtml(p.addr) + '" style="padding:4px 12px;border-radius:100px;border:1px solid var(--sw-border);background:var(--sw-card,#fff);color:var(--sw-dark);font-size:11px;font-weight:500;cursor:pointer;">' + escapeHtml(p.label) + ' (' + count + ')</button>';
+    html += '<button onclick="filterCouncilEmails(-1,\'' + escapeHtml(p.addr) + '\')" class="council-filter-chip" data-filter="' + escapeHtml(p.addr) + '" style="padding:4px 14px;border-radius:100px;border:1px solid #D4DEE4;background:#fff;color:#293C46;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;">' + escapeHtml(p.label) + ' (' + count + ')</button>';
   });
-  html += '</div></div>';
+  html += '</div>';
 
-  // Messages
-  html += '<div id="councilMessages" style="padding:16px;display:flex;flex-direction:column;gap:8px;">';
+  // ── Messages ──
+  html += '<div id="councilMessages" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;display:flex;flex-direction:column;gap:12px;">';
 
   if (allEmails.length === 0) {
-    html += '<div style="text-align:center;padding:40px 20px;color:var(--sw-text-sec);font-size:13px;">';
-    html += '<div style="font-size:32px;margin-bottom:8px;">📧</div>';
-    html += 'No emails yet. Use the compose bar below to send the first message.';
+    html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:#8FA4B2;text-align:center;padding:40px;">';
+    html += '<div style="font-size:36px;margin-bottom:12px;opacity:0.4;">&#9993;</div>';
+    html += '<div style="font-size:13px;">No emails yet. Send the first message below.</div>';
     html += '</div>';
   } else {
+    var lastDateStr = '';
     allEmails.forEach(function(em) {
-      var isInbound = em.direction === 'inbound' || em.direction === 'received';
       var ts = em.created_at || em.sent_at || em.received_at;
-      var align = isInbound ? 'flex-start' : 'flex-end';
-      var bubbleBg = isInbound ? '#F0ECE8' : '#FEF3EF';
-      var bubbleBorder = isInbound ? '12px 12px 12px 2px' : '12px 12px 2px 12px';
-
-      // Data attributes for filtering
+      var isInbound = em.direction === 'inbound' || em.direction === 'received';
       var filterAddr = isInbound ? (em.from_email || '') : (em.to_email || '');
       var stepIdx = em.council_step_index != null ? em.council_step_index : -1;
       var stepName = stepIdx >= 0 && sub.steps[stepIdx] ? sub.steps[stepIdx].name : '';
 
-      html += '<div class="council-msg-item" data-addr="' + escapeHtml(filterAddr) + '" data-step="' + stepIdx + '" style="display:flex;flex-direction:column;align-items:' + align + ';max-width:82%;">';
+      // Date separator
+      var dateLabel = councilFormatDate(ts);
+      if (dateLabel && dateLabel !== lastDateStr) {
+        html += '<div style="text-align:center;font-size:10px;color:#8FA4B2;padding:8px 0;letter-spacing:0.3px;">' + dateLabel + '</div>';
+        lastDateStr = dateLabel;
+      }
+
+      // Message container
+      var align = isInbound ? 'flex-start' : 'flex-end';
+      html += '<div class="council-msg-item" data-addr="' + escapeHtml(filterAddr) + '" data-step="' + stepIdx + '" style="display:flex;flex-direction:column;max-width:65%;' +
+        'align-self:' + align + ';align-items:' + align + ';">';
 
       // Step badge
       if (stepName) {
-        html += '<div style="font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(41,60,70,0.06);color:var(--sw-text-sec);font-weight:500;margin-bottom:3px;">' + escapeHtml(stepName) + '</div>';
-      }
-
-      // AI classification pill (inbound only)
-      if (isInbound && em.ai_classification) {
-        var confColor = (em.ai_confidence && em.ai_confidence > 0.8) ? '#27AE60' : '#D97706';
-        html += '<div style="font-size:9px;padding:2px 8px;border-radius:8px;background:' + confColor + '15;color:' + confColor + ';font-weight:600;margin-bottom:3px;">' + escapeHtml(em.ai_classification) + '</div>';
+        html += '<div style="font-size:9px;padding:2px 8px;border-radius:6px;background:rgba(41,60,70,0.05);color:#4C6A7C;font-weight:500;margin-bottom:3px;">' + escapeHtml(stepName) + '</div>';
       }
 
       // From/To/CC info
       if (isInbound) {
-        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">From: ' + escapeHtml(em.from_email || '') + '</div>';
+        html += '<div style="font-size:10px;color:#8FA4B2;margin-bottom:2px;padding:0 6px;">From: ' + escapeHtml(em.from_email || '') + '</div>';
       } else {
         var toInfo = 'To: ' + escapeHtml(em.to_email || '');
         var ccEmails = em.cc_emails || [];
         if (Array.isArray(ccEmails) && ccEmails.length > 0) {
           toInfo += ' · CC: ' + ccEmails.map(function(c) { return escapeHtml(c); }).join(', ');
         }
-        html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-bottom:2px;padding:0 4px;">' + toInfo + '</div>';
+        html += '<div style="font-size:10px;color:#8FA4B2;margin-bottom:2px;padding:0 6px;">' + toInfo + '</div>';
       }
 
       // Bubble
-      html += '<div style="background:' + bubbleBg + ';border-radius:' + bubbleBorder + ';padding:10px 14px;">';
+      var bubbleBg = isInbound ? '#F0ECE8' : '#FEF3EF';
+      var bubbleRadius = isInbound ? '14px 14px 14px 3px' : '14px 14px 3px 14px';
+      html += '<div style="background:' + bubbleBg + ';border-radius:' + bubbleRadius + ';padding:10px 14px;font-size:13px;line-height:1.5;word-wrap:break-word;">';
+
       if (em.subject) {
-        html += '<div style="font-size:11px;font-weight:700;color:var(--sw-dark);margin-bottom:4px;">' + escapeHtml(em.subject) + '</div>';
+        html += '<div style="font-size:11px;font-weight:700;color:#293C46;margin-bottom:3px;opacity:0.7;">' + escapeHtml(em.subject) + '</div>';
       }
+
       var bodyText = em.body_text || '';
-      html += '<div style="font-size:13px;color:var(--sw-dark);line-height:1.5;white-space:pre-wrap;word-break:break-word;">' + escapeHtml(bodyText) + '</div>';
+      html += '<div style="white-space:pre-wrap;word-break:break-word;">' + escapeHtml(bodyText) + '</div>';
 
       // Attachments
       var atts = em.attachments_json || em.attachments || [];
       if (Array.isArray(atts) && atts.length > 0) {
-        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">';
         atts.forEach(function(att) {
           var name = att.filename || att.name || 'Document';
-          var url = att.storage_url || att.url || '';
-          html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(255,255,255,0.7);border:1px solid var(--sw-border,#E0E0E0);border-radius:8px;font-size:11px;color:var(--sw-dark);text-decoration:none;font-weight:600;">📎 ' + escapeHtml(name) + '</a>';
+          var url = att.storage_url || att.url || '#';
+          html += '<a href="' + escapeHtml(url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;margin-top:8px;background:rgba(255,255,255,0.6);border:1px solid #D4DEE4;border-radius:6px;font-size:11px;font-weight:600;color:#293C46;text-decoration:none;">&#128206; ' + escapeHtml(name) + '</a>';
         });
-        html += '</div>';
       }
 
       html += '</div>'; // end bubble
 
       // Timestamp
-      var senderText = isInbound ? escapeHtml(em.from_email || '') : 'You';
-      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:3px;padding:0 4px;">' + senderText + ' · ' + councilRelativeTime(ts) + '</div>';
+      var senderLabel = isInbound ? escapeHtml(em.from_email || '') : 'You';
+      var timeLabel = councilFormatTime(ts);
+      var statusLabel = '';
+      if (!isInbound) {
+        if (em.read_at) statusLabel = ' · Read';
+        else if (em.sent_at) statusLabel = ' · Sent';
+        else statusLabel = ' · Delivered &#10003;';
+      }
+      html += '<div style="font-size:10px;color:#8FA4B2;margin-top:3px;padding:0 6px;">' + senderLabel + ' · ' + timeLabel + statusLabel + '</div>';
 
-      html += '</div>'; // end message container
+      html += '</div>'; // end msg
     });
   }
 
   html += '</div>'; // end messages
 
-  // ── Compose bar (inline in detail view) ──
-  html += '<div style="padding:12px 16px;background:var(--sw-card,#fff);border-top:1px solid var(--sw-border,#E0E0E0);display:flex;flex-direction:column;gap:6px;">';
-  // To field
-  var lastInbound = null;
-  for (var li = allEmails.length - 1; li >= 0; li--) {
-    if (allEmails[li].direction === 'inbound' || allEmails[li].direction === 'received') { lastInbound = allEmails[li]; break; }
-  }
-  var defaultTo = lastInbound ? (lastInbound.from_email || '') : '';
-  var defaultCc = 'admin@secureworkswa.com.au';
-  if (lastInbound && Array.isArray(lastInbound.cc_emails) && lastInbound.cc_emails.length > 0) {
-    defaultCc = lastInbound.cc_emails.concat(['admin@secureworkswa.com.au']).filter(function(v, i, a) { return a.indexOf(v) === i; }).join(', ');
-  }
-  html += '<input type="text" id="councilDetailTo" placeholder="To: email..." value="' + escapeHtml(defaultTo) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
-  html += '<input type="text" id="councilDetailCc" placeholder="CC: (comma-separated)" value="' + escapeHtml(defaultCc) + '" style="padding:8px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:12px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;">';
-  html += '<div style="display:flex;align-items:flex-end;gap:8px;">';
-  html += '<textarea id="councilDetailMsg" placeholder="Type a message..." rows="1" style="flex:1;padding:10px 14px;border:1px solid var(--sw-border);border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:100px;line-height:1.4;" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,100)+\'px\'"></textarea>';
-  html += '<button onclick="sendCouncilDetailMessage(\'' + sub.id + '\')" style="width:40px;height:40px;border-radius:50%;background:var(--sw-orange,#F15A29);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
-    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>';
-  html += '</div>';
-  html += '<div style="text-align:center;"><button onclick="openCouncilEmailCompose(\'' + sub.id + '\',0)" style="background:none;border:none;color:var(--sw-text-sec);font-size:11px;cursor:pointer;text-decoration:underline;">Open full compose (with attachments)</button></div>';
-  html += '</div>';
+  // ── Compose bar ──
+  html += renderComposeBar(sub);
 
-  content.innerHTML = html;
-
-  // Inject pulse animation if not already present
-  if (!document.getElementById('councilPulseStyle')) {
-    var style = document.createElement('style');
-    style.id = 'councilPulseStyle';
-    style.textContent = '@keyframes councilPulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }';
-    document.head.appendChild(style);
-  }
-
-  // Slide in
-  requestAnimationFrame(function() {
-    view.style.transform = 'translateX(0)';
-  });
+  html += '</div>'; // end convo column
+  return html;
 }
+
+// ────────────────────────────────────────────────────────────
+// 6. COMPOSE BAR
+// ────────────────────────────────────────────────────────────
 
 /**
- * Close the detail view. Slides out to right.
+ * Render the sticky compose bar at the bottom of the conversation.
+ * Auto-fills To from last inbound sender or current step vendor.
+ * Auto-fills CC from admin + last inbound CC parties.
  */
-function closeCouncilDetail() {
-  var view = document.getElementById('councilDetailView');
-  if (!view) return;
-  view.style.transform = 'translateX(100%)';
-  _councilDetailSubId = null;
-}
-
-// ────────────────────────────────────────────────────────────
-// UNIFIED CONVERSATION HELPERS
-// ────────────────────────────────────────────────────────────
-
-// Filter council emails by party address or step index
-function filterCouncilEmails(stepIdx, partyAddr) {
-  var msgs = document.querySelectorAll('.council-msg-item');
-  var chips = document.querySelectorAll('.council-filter-chip');
-
-  // Update chip active states
-  chips.forEach(function(chip) {
-    var isAll = chip.getAttribute('data-filter') === '-1';
-    var isMatch = partyAddr ? chip.getAttribute('data-filter') === partyAddr : (stepIdx === -1 && isAll);
-    chip.style.background = isMatch ? 'var(--sw-dark,#293C46)' : 'var(--sw-card,#fff)';
-    chip.style.color = isMatch ? '#fff' : 'var(--sw-dark,#293C46)';
+function renderComposeBar(sub) {
+  var allEmails = (sub.email_threads || []).slice().sort(function(a, b) {
+    return new Date(a.created_at || a.sent_at || 0) - new Date(b.created_at || b.sent_at || 0);
   });
 
-  // Show/hide messages
-  msgs.forEach(function(msg) {
-    var show = true;
-    if (partyAddr) {
-      show = msg.getAttribute('data-addr') === partyAddr;
-    } else if (stepIdx >= 0) {
-      show = msg.getAttribute('data-step') === String(stepIdx);
+  // Find last inbound for auto-fill
+  var lastInbound = null;
+  for (var i = allEmails.length - 1; i >= 0; i--) {
+    if (allEmails[i].direction === 'inbound' || allEmails[i].direction === 'received') {
+      lastInbound = allEmails[i];
+      break;
     }
-    msg.style.display = show ? '' : 'none';
-  });
+  }
+
+  // Default To: last inbound sender, or current step vendor email
+  var currentStep = (sub.steps || [])[sub.current_step_index];
+  var defaultTo = '';
+  if (lastInbound && lastInbound.from_email) {
+    defaultTo = lastInbound.from_email;
+  } else if (currentStep && currentStep.vendor_email) {
+    defaultTo = currentStep.vendor_email;
+  }
+
+  // Default CC: admin@ + any CC'd parties from last inbound
+  var ccParts = ['admin@secureworkswa.com.au'];
+  if (lastInbound && Array.isArray(lastInbound.cc_emails)) {
+    lastInbound.cc_emails.forEach(function(cc) {
+      if (ccParts.indexOf(cc) === -1) ccParts.push(cc);
+    });
+  }
+  var defaultCc = ccParts.join(', ');
+
+  var html = '<div style="background:#fff;border-top:1px solid #D4DEE4;padding:10px 20px 12px;flex-shrink:0;">';
+
+  // To / CC fields (inline labeled)
+  html += '<div style="display:flex;gap:12px;margin-bottom:8px;">';
+  html += '<div style="display:flex;align-items:center;gap:6px;font-size:11px;flex:1;">';
+  html += '<label style="font-weight:600;color:#4C6A7C;flex-shrink:0;">To:</label>';
+  html += '<input type="text" id="councilDetailTo" value="' + escapeHtml(defaultTo) + '" style="flex:1;border:none;outline:none;font-size:12px;color:#293C46;padding:4px 0;border-bottom:1px solid #EDF1F4;min-width:0;font-family:inherit;" onfocus="this.style.borderBottomColor=\'#F15A29\'" onblur="this.style.borderBottomColor=\'#EDF1F4\'">';
+  html += '</div>';
+  html += '<div style="display:flex;align-items:center;gap:6px;font-size:11px;flex:1;">';
+  html += '<label style="font-weight:600;color:#4C6A7C;flex-shrink:0;">CC:</label>';
+  html += '<input type="text" id="councilDetailCc" value="' + escapeHtml(defaultCc) + '" style="flex:1;border:none;outline:none;font-size:12px;color:#293C46;padding:4px 0;border-bottom:1px solid #EDF1F4;min-width:0;font-family:inherit;" onfocus="this.style.borderBottomColor=\'#F15A29\'" onblur="this.style.borderBottomColor=\'#EDF1F4\'">';
+  html += '</div>';
+  html += '</div>';
+
+  // Message row: textarea + send button
+  html += '<div style="display:flex;align-items:flex-end;gap:10px;">';
+  html += '<textarea id="councilDetailMsg" placeholder="Type a message..." rows="1" style="flex:1;padding:9px 16px;border:1px solid #D4DEE4;border-radius:20px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:120px;line-height:1.4;" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,120)+\'px\'" onfocus="this.style.borderColor=\'#F15A29\'" onblur="this.style.borderColor=\'#D4DEE4\'"></textarea>';
+  html += '<button onclick="sendCouncilDetailMessage(\'' + sub.id + '\')" style="width:36px;height:36px;border-radius:50%;background:#F15A29;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform 0.1s;" onmousedown="this.style.transform=\'scale(0.9)\'" onmouseup="this.style.transform=\'\'">' +
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>';
+  html += '</div>';
+
+  // Extras
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">';
+  html += '<a style="font-size:10px;color:#8FA4B2;text-decoration:underline;cursor:pointer;">Attach files</a>';
+  html += '<a onclick="openCouncilEmailCompose(\'' + sub.id + '\',' + sub.current_step_index + ')" style="font-size:10px;color:#8FA4B2;text-decoration:underline;cursor:pointer;">Open full compose</a>';
+  html += '</div>';
+
+  html += '</div>'; // end compose-bar
+  return html;
 }
 
-// Send message from the unified detail compose bar
+// ────────────────────────────────────────────────────────────
+// 7. SEND MESSAGE
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Send email from the compose bar in detail view.
+ * After sending: refresh conversation, clear input, scroll to bottom.
+ */
 async function sendCouncilDetailMessage(subId) {
   var toEl = document.getElementById('councilDetailTo');
   var ccEl = document.getElementById('councilDetailCc');
@@ -700,18 +722,17 @@ async function sendCouncilDetailMessage(subId) {
   var sub = _councilSubmissions.find(function(s) { return s.id === subId; });
   if (!sub) return;
 
-  // Determine step index from current step
   var stepIdx = sub.current_step_index || 0;
 
-  // Check for existing thread to reply to
+  // Check for existing thread
   var allEmails = (sub.email_threads || []).sort(function(a, b) {
     return new Date(a.created_at || 0) - new Date(b.created_at || 0);
   });
   var lastEmail = allEmails.length > 0 ? allEmails[allEmails.length - 1] : null;
   var inReplyTo = lastEmail ? (lastEmail.message_id || '') : '';
-
   var subject = (allEmails.length > 0 ? 'Re: ' : '') + (sub.job_number || '') + ' — Council Approval — SecureWorks Group';
 
+  // Clear input immediately
   msgEl.value = '';
   msgEl.style.height = 'auto';
 
@@ -729,7 +750,7 @@ async function sendCouncilDetailMessage(subId) {
     await opsPost('send_council_email', payload);
     showToast('Email sent to ' + toEmail, 'success');
 
-    // Save vendor email if step doesn't have one
+    // Auto-save vendor email if step doesn't have one
     var step = (sub.steps || [])[stepIdx];
     if (step && !step.vendor_email) {
       try {
@@ -737,165 +758,105 @@ async function sendCouncilDetailMessage(subId) {
       } catch (e2) { /* non-critical */ }
     }
 
+    // Refresh everything
     await loadApprovals();
-    openCouncilDetail(subId);
+    // loadApprovals will call selectApproval if _councilDetailSubId is set
+
+    // Scroll conversation to bottom
+    var msgContainer = document.getElementById('councilMessages');
+    if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
   } catch (e) {
     showToast('Failed to send: ' + e.message, 'warning');
   }
 }
 
 // ────────────────────────────────────────────────────────────
-// EXISTING FUNCTIONS (preserved)
+// 8. FILTER EMAILS (data-attribute toggle, no re-render)
 // ────────────────────────────────────────────────────────────
 
-async function updateCouncilStep(submissionId, stepIndex, newStatus) {
-  if (!newStatus) return;
-  try {
-    await opsPost('update_council_status', {
-      submission_id: submissionId,
-      step_index: stepIndex,
-      status: newStatus,
-    });
-    loadApprovals();
-  } catch (e) {
-    alert('Failed to update step: ' + e.message);
-  }
-}
+/**
+ * Show/hide messages by step index or party email address.
+ * Uses data-addr and data-step attributes on .council-msg-item elements.
+ * @param {number} stepIdx - step index to filter by, or -1 for all
+ * @param {string} [partyAddr] - email address to filter by
+ */
+function filterCouncilEmails(stepIdx, partyAddr) {
+  var msgs = document.querySelectorAll('.council-msg-item');
+  var chips = document.querySelectorAll('.council-filter-chip');
 
-async function sendCouncilStepReply(submissionId, stepIndex, toEmail, inReplyTo) {
-  var stepKey = submissionId + '_' + stepIndex;
-  var textEl = document.getElementById('councilReply_' + stepKey);
-  if (!textEl) return;
-  var body = textEl.value.trim();
-  if (!body) { showToast('Type a message first', 'warning'); return; }
+  _councilActiveStepFilter = stepIdx;
+  _councilActivePartyFilter = partyAddr || null;
 
-  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
-  var step = sub ? (sub.steps || [])[stepIndex] : null;
-  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-
-  textEl.value = '';
-  textEl.rows = 1;
-
-  try {
-    var payload = {
-      submission_id: submissionId,
-      step_index: stepIndex,
-      to_email: toEmail,
-      subject: 'Re: ' + subject,
-      body_text: body,
-    };
-    if (inReplyTo) payload.in_reply_to = inReplyTo;
-    await opsPost('send_council_email', payload);
-    showToast('Email sent to ' + toEmail, 'success');
-    loadApprovals();
-  } catch (e) {
-    showToast('Failed to send: ' + e.message, 'warning');
-  }
-}
-
-async function sendCouncilStepFirstEmail(submissionId, stepIndex, stepKey) {
-  var toEl = document.getElementById('councilTo_' + stepKey);
-  var textEl = document.getElementById('councilReply_' + stepKey);
-  if (!toEl || !textEl) return;
-
-  var toEmail = toEl.value.trim();
-  var body = textEl.value.trim();
-  if (!toEmail) { showToast('Enter recipient email', 'warning'); return; }
-  if (!toEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { showToast('Invalid email', 'warning'); return; }
-  if (!body) { showToast('Type a message first', 'warning'); return; }
-
-  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
-  var step = sub ? (sub.steps || [])[stepIndex] : null;
-  var subject = (sub ? (sub.job_number || '') : '') + ' — ' + (step ? step.name : 'Council') + ' — SecureWorks Group';
-
-  textEl.value = '';
-
-  try {
-    await opsPost('send_council_email', {
-      submission_id: submissionId,
-      step_index: stepIndex,
-      to_email: toEmail,
-      subject: subject,
-      body_text: body,
-    });
-
-    // Save vendor_email on the step for next time
-    try {
-      await opsPost('update_council_status', {
-        submission_id: submissionId,
-        step_index: stepIndex,
-        vendor_email: toEmail,
-      });
-    } catch (e2) { /* non-critical */ }
-
-    showToast('Email sent to ' + toEmail, 'success');
-    loadApprovals();
-  } catch (e) {
-    showToast('Failed to send: ' + e.message, 'warning');
-  }
-}
-
-function openCouncilEmailCompose(submissionId, stepIndex) {
-  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
-  if (!sub) return;
-  var idx = (stepIndex !== undefined) ? stepIndex : sub.current_step_index;
-  var step = (sub.steps || [])[idx] || {};
-  var toEmail = step.vendor_email || '';
-  var subject = (sub.job_number || '') + ' — ' + (step.name || 'Council Application') + ' — SecureWorks Group';
-  var body = 'Hi,\n\nRegarding the ' + (step.name || 'application') + ' for ' + (sub.job_number || '') + ' — ' + (sub.client_name || '') + '.\n\n\n\nThanks,\nSecureWorks Group';
-
-  // Use the PO email compose modal (repurposed for council)
-  document.getElementById('poComposeTitle').textContent = 'Email — ' + (step.name || 'Council Step');
-  document.getElementById('poComposeTo').value = toEmail;
-  document.getElementById('poComposeSubject').value = subject;
-  document.getElementById('poComposeBody').value = body;
-  document.getElementById('poComposePoId').value = '';
-  document.getElementById('poComposeJobId').value = sub.job_id || '';
-  document.getElementById('poComposeAttachPDF').checked = false;
-  document.getElementById('poComposeTemplate').value = 'custom';
-  document.getElementById('poComposeFiles').value = '';
-  document.getElementById('poComposeFileList').textContent = '';
-  var ccEl = document.getElementById('poComposeCc');
-  if (ccEl) ccEl.value = '';
-
-  // Store council context for send handler
-  window._councilComposeContext = { submission_id: submissionId, step_index: idx };
-
-  var formView = document.getElementById('poComposeFormView');
-  var previewView = document.getElementById('poComposePreviewView');
-  if (formView) formView.style.display = '';
-  if (previewView) previewView.style.display = 'none';
-
-  document.getElementById('poEmailComposeModal').classList.add('active');
-}
-
-// Open council start modal from Approvals page (needs job picker)
-function openCouncilStartModalFromApprovals() {
-  // Build a quick job picker from _allJobs (patio jobs without council submissions)
-  var existingJobIds = _councilSubmissions.map(function(s) { return s.job_id; });
-  var patioJobs = (typeof _allJobs !== 'undefined' ? _allJobs : []).filter(function(j) {
-    return j.type === 'patio' && existingJobIds.indexOf(j.id) < 0 && ['cancelled', 'lost'].indexOf(j.status) < 0;
+  // Update chip active states
+  chips.forEach(function(chip) {
+    var filterVal = chip.getAttribute('data-filter');
+    var isMatch = false;
+    if (partyAddr) {
+      isMatch = filterVal === partyAddr;
+    } else if (stepIdx === -1) {
+      isMatch = filterVal === 'all';
+    }
+    chip.style.background = isMatch ? '#293C46' : '#fff';
+    chip.style.color = isMatch ? '#fff' : '#293C46';
+    chip.style.borderColor = isMatch ? '#293C46' : '#D4DEE4';
   });
 
-  if (patioJobs.length === 0) {
-    alert('No patio jobs available for council process (all either have one started or are cancelled).');
-    return;
-  }
+  // Show/hide messages
+  msgs.forEach(function(msg) {
+    var show = true;
+    if (partyAddr) {
+      show = msg.getAttribute('data-addr') === partyAddr;
+    } else if (stepIdx >= 0) {
+      show = msg.getAttribute('data-step') === String(stepIdx);
+    }
+    msg.style.display = show ? '' : 'none';
+  });
 
-  // Simple selection prompt — list jobs
-  var options = patioJobs.map(function(j) { return (j.job_number || '') + ' — ' + (j.client_name || '') + ' (' + (j.suburb || '') + ')'; });
-  var choice = prompt('Select a patio job (enter number):\n\n' + options.map(function(o, i) { return (i + 1) + '. ' + o; }).join('\n'));
-  if (!choice) return;
-  var idx = parseInt(choice, 10) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= patioJobs.length) { alert('Invalid selection.'); return; }
-
-  openCouncilStartModal(patioJobs[idx].id);
+  // Also show/hide date separators intelligently
+  var dateSeps = document.querySelectorAll('#councilMessages > div[style*="text-align:center"]');
+  dateSeps.forEach(function(sep) {
+    // Show separator if any visible message follows it (before next separator)
+    var next = sep.nextElementSibling;
+    var anyVisible = false;
+    while (next && !next.style.textAlign) {
+      if (next.classList && next.classList.contains('council-msg-item') && next.style.display !== 'none') {
+        anyVisible = true;
+        break;
+      }
+      next = next.nextElementSibling;
+    }
+    sep.style.display = (stepIdx === -1 && !partyAddr) ? '' : (anyVisible ? '' : 'none');
+  });
 }
 
 // ────────────────────────────────────────────────────────────
-// VENDOR EDITOR (inline on step timeline)
+// 9. PREFILL COMPOSE TO
 // ────────────────────────────────────────────────────────────
 
+/**
+ * Called when clicking a vendor email in the sidebar.
+ * Pre-fills the To field and scrolls compose bar into view.
+ */
+function prefillComposeTo(email) {
+  var toEl = document.getElementById('councilDetailTo');
+  if (toEl) {
+    toEl.value = email;
+    toEl.focus();
+  }
+  // Scroll compose bar into view
+  var composeBar = toEl ? toEl.closest('div[style*="border-top"]') : null;
+  if (composeBar) {
+    composeBar.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// KEPT FUNCTIONS (from previous version)
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Toggle inline vendor editor on a step in the sidebar.
+ */
 function toggleCouncilVendorEditor(subId, stepIdx) {
   var el = document.getElementById('councilVendorSet_' + stepIdx);
   if (!el) return;
@@ -903,14 +864,17 @@ function toggleCouncilVendorEditor(subId, stepIdx) {
   var step = sub && sub.steps ? sub.steps[stepIdx] : null;
 
   el.innerHTML = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">' +
-    '<input type="text" id="councilVendorName_' + stepIdx + '" placeholder="Vendor name (e.g. PS Engineering)" value="' + escapeHtml((step && step.vendor) || '') + '" style="padding:6px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;">' +
-    '<input type="email" id="councilVendorEmail_' + stepIdx + '" placeholder="Vendor email" value="' + escapeHtml((step && step.vendor_email) || '') + '" style="padding:6px 10px;border:1px solid var(--sw-border);border-radius:6px;font-size:12px;font-family:inherit;">' +
+    '<input type="text" id="councilVendorName_' + stepIdx + '" placeholder="Vendor name (e.g. PS Engineering)" value="' + escapeHtml((step && step.vendor) || '') + '" style="padding:6px 10px;border:1px solid #D4DEE4;border-radius:6px;font-size:11px;font-family:inherit;width:100%;box-sizing:border-box;">' +
+    '<input type="email" id="councilVendorEmail_' + stepIdx + '" placeholder="Vendor email" value="' + escapeHtml((step && step.vendor_email) || '') + '" style="padding:6px 10px;border:1px solid #D4DEE4;border-radius:6px;font-size:11px;font-family:inherit;width:100%;box-sizing:border-box;">' +
     '<div style="display:flex;gap:6px;">' +
-    '<button onclick="saveCouncilVendor(\'' + subId + '\',' + stepIdx + ')" style="padding:4px 12px;background:var(--sw-orange,#F15A29);color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;">Save</button>' +
-    '<button onclick="openCouncilDetail(\'' + subId + '\')" style="padding:4px 12px;background:var(--sw-border);color:var(--sw-dark);border:none;border-radius:4px;font-size:11px;cursor:pointer;">Cancel</button>' +
+    '<button onclick="saveCouncilVendor(\'' + subId + '\',' + stepIdx + ')" style="padding:4px 12px;background:#F15A29;color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;">Save</button>' +
+    '<button onclick="selectApproval(\'' + subId + '\')" style="padding:4px 12px;background:#D4DEE4;color:#293C46;border:none;border-radius:4px;font-size:10px;cursor:pointer;">Cancel</button>' +
     '</div></div>';
 }
 
+/**
+ * Save vendor name + email for a step.
+ */
 async function saveCouncilVendor(subId, stepIdx) {
   var nameEl = document.getElementById('councilVendorName_' + stepIdx);
   var emailEl = document.getElementById('councilVendorEmail_' + stepIdx);
@@ -928,16 +892,14 @@ async function saveCouncilVendor(subId, stepIdx) {
     });
     showToast('Vendor saved: ' + vendor, 'success');
     await loadApprovals();
-    openCouncilDetail(subId);
   } catch (e) {
     showToast('Failed to save vendor: ' + e.message, 'warning');
   }
 }
 
-// ────────────────────────────────────────────────────────────
-// SKIP STEP
-// ────────────────────────────────────────────────────────────
-
+/**
+ * Skip a council step with confirmation.
+ */
 async function skipCouncilStep(subId, stepIdx, stepName) {
   if (!confirm('Skip "' + stepName + '"? This will mark it as complete and move to the next step.')) return;
 
@@ -950,8 +912,66 @@ async function skipCouncilStep(subId, stepIdx, stepName) {
     });
     showToast('Skipped: ' + stepName, 'success');
     await loadApprovals();
-    openCouncilDetail(subId);
   } catch (e) {
     showToast('Failed to skip step: ' + e.message, 'warning');
   }
+}
+
+/**
+ * Open the full email compose modal (repurposed PO compose).
+ */
+function openCouncilEmailCompose(submissionId, stepIndex) {
+  var sub = _councilSubmissions.find(function(s) { return s.id === submissionId; });
+  if (!sub) return;
+  var idx = (stepIndex !== undefined) ? stepIndex : sub.current_step_index;
+  var step = (sub.steps || [])[idx] || {};
+  var toEmail = step.vendor_email || '';
+  var subject = (sub.job_number || '') + ' — ' + (step.name || 'Council Application') + ' — SecureWorks Group';
+  var body = 'Hi,\n\nRegarding the ' + (step.name || 'application') + ' for ' + (sub.job_number || '') + ' — ' + (sub.client_name || '') + '.\n\n\n\nThanks,\nSecureWorks Group';
+
+  document.getElementById('poComposeTitle').textContent = 'Email — ' + (step.name || 'Council Step');
+  document.getElementById('poComposeTo').value = toEmail;
+  document.getElementById('poComposeSubject').value = subject;
+  document.getElementById('poComposeBody').value = body;
+  document.getElementById('poComposePoId').value = '';
+  document.getElementById('poComposeJobId').value = sub.job_id || '';
+  document.getElementById('poComposeAttachPDF').checked = false;
+  document.getElementById('poComposeTemplate').value = 'custom';
+  document.getElementById('poComposeFiles').value = '';
+  document.getElementById('poComposeFileList').textContent = '';
+  var ccEl = document.getElementById('poComposeCc');
+  if (ccEl) ccEl.value = '';
+
+  window._councilComposeContext = { submission_id: submissionId, step_index: idx };
+
+  var formView = document.getElementById('poComposeFormView');
+  var previewView = document.getElementById('poComposePreviewView');
+  if (formView) formView.style.display = '';
+  if (previewView) previewView.style.display = 'none';
+
+  document.getElementById('poEmailComposeModal').classList.add('active');
+}
+
+/**
+ * Open council start modal from the "+ New" button.
+ * Builds a quick job picker from patio jobs without existing submissions.
+ */
+function openCouncilStartModalFromApprovals() {
+  var existingJobIds = _councilSubmissions.map(function(s) { return s.job_id; });
+  var patioJobs = (typeof _allJobs !== 'undefined' ? _allJobs : []).filter(function(j) {
+    return j.type === 'patio' && existingJobIds.indexOf(j.id) < 0 && ['cancelled', 'lost'].indexOf(j.status) < 0;
+  });
+
+  if (patioJobs.length === 0) {
+    alert('No patio jobs available for council process (all either have one started or are cancelled).');
+    return;
+  }
+
+  var options = patioJobs.map(function(j) { return (j.job_number || '') + ' — ' + (j.client_name || '') + ' (' + (j.suburb || '') + ')'; });
+  var choice = prompt('Select a patio job (enter number):\n\n' + options.map(function(o, i) { return (i + 1) + '. ' + o; }).join('\n'));
+  if (!choice) return;
+  var idx = parseInt(choice, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= patioJobs.length) { alert('Invalid selection.'); return; }
+
+  openCouncilStartModal(patioJobs[idx].id);
 }
