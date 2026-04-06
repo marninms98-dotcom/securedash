@@ -5892,22 +5892,30 @@
       var runs = scopeJob.runs || config.runs || [];
       if (runs.length > 0) {
         runs.forEach(function(run, idx) {
-          var label = run.label || run.boundary || ('Run ' + (run.runNumber || (idx + 1)));
+          var label = run.name || run.label || run.boundary || ('Run ' + (idx + 1));
           var len = run.totalLength || run.lengthM || run.length || 0;
-          var panels = run.panelCount || run.panels || '';
-          var ht = run.height || config.height || '';
-          var retMin = run.retainingMin || run.retaining_min || '';
-          var retMax = run.retainingMax || run.retaining_max || '';
+          var panelArr = Array.isArray(run.panels) ? run.panels : [];
+          var panelCount = panelArr.length || run.panelCount || '';
+          var ht = run.sheetHeight || run.height || config.height || '';
+          // Compute retaining from panel data
           var retDetail = '';
-          if (retMin && retMax) retDetail = retMin + '-' + retMax + 'mm';
-          else if (retMin || retMax) retDetail = (retMin || retMax) + 'mm';
-          else if (run.retaining) retDetail = run.retaining;
+          if (panelArr.length > 0) {
+            var retValues = panelArr.map(function(p) { return Number(p.retaining) || 0; }).filter(function(v) { return v > 0; });
+            if (retValues.length > 0) {
+              var retMin = Math.min.apply(null, retValues);
+              var retMax = Math.max.apply(null, retValues);
+              retDetail = retMin === retMax ? retMin + 'mm' : retMin + '-' + retMax + 'mm';
+              retDetail += ' (' + retValues.length + '/' + panelArr.length + ' panels)';
+            }
+          } else if (run.retaining) {
+            retDetail = String(run.retaining);
+          }
 
           h += '<div style="background:#F8F6F3;border-left:3px solid var(--sw-dark);padding:10px 12px;margin-bottom:6px">';
           h += '<div style="font-size:14px;font-weight:700;color:var(--sw-dark);margin-bottom:4px">' + esc(label) + '</div>';
           h += '<div style="font-size:13px;color:var(--sw-text);display:flex;flex-wrap:wrap;gap:4px 16px">';
           if (len) h += '<span>' + Math.round(len) + 'm</span>';
-          if (panels) h += '<span>' + panels + ' panels</span>';
+          if (panelCount) h += '<span>' + panelCount + ' panels</span>';
           if (ht) h += '<span>' + ht + 'mm</span>';
           if (retDetail) h += '<span style="color:var(--sw-orange);font-weight:600">Ret: ' + esc(retDetail) + '</span>';
           h += '</div>';
@@ -5934,12 +5942,15 @@
 
       // Removal info
       var removal = scopeJob.removal || {};
-      if (removal.type || removal.length) {
+      var remType = removal.existingFenceType || removal.type || '';
+      var remLength = removal.existingFenceLength || removal.length || '';
+      var remRequired = removal.removalRequired !== false;
+      if (remRequired && (remType || remLength)) {
         h += '<div style="background:#F8F6F3;border-left:3px solid var(--sw-mid);padding:10px 12px;margin-top:8px">';
         h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;color:var(--sw-mid);margin-bottom:4px">Removal</div>';
         h += '<div style="font-size:13px;color:var(--sw-text);display:flex;flex-wrap:wrap;gap:4px 16px">';
-        if (removal.type) h += '<span>' + esc(removal.type) + '</span>';
-        if (removal.length) h += '<span>' + removal.length + 'm</span>';
+        if (remType) h += '<span>' + esc(remType.charAt(0).toUpperCase() + remType.slice(1)) + ' fence</span>';
+        if (remLength) h += '<span>' + remLength + 'm</span>';
         if (removal.access) h += '<span>Access: ' + esc(removal.access) + '</span>';
         if (removal.disposal) h += '<span>Disposal: ' + esc(removal.disposal) + '</span>';
         h += '</div>';
