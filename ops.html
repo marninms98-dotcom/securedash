@@ -5001,7 +5001,6 @@ function renderSwimlaneView(container, range) {
     crewNames.push('Unassigned');
   }
 
-  var prevDiv = null;
   var numCols = numDays + 1;
   var isMonthMode = _calRangeMode === 'month';
 
@@ -5134,12 +5133,6 @@ function renderSwimlaneView(container, range) {
       html += '</div>';
     });
   });
-
-  // Ensure FENCING header appears even if no fencing crew visible
-  if (!emittedDivs['fencing']) {
-    if (!emittedDivs['patio']) html += '<div class="cal-division-label">PATIOS</div>';
-    html += '<div class="cal-division-label">FENCING</div>';
-  }
 
   // Delivery row
   var hasDeliveries = dates.some(function(ds) { return deliveryMap[ds] && deliveryMap[ds].length > 0; });
