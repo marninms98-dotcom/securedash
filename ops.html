@@ -445,6 +445,17 @@
     .cal-controls button.active { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
     .cal-title { font-size: 16px; font-weight: 700; }
 
+    /* View mode buttons */
+    .cal-view-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--sw-border); background: var(--sw-card); color: var(--sw-text);
+    }
+    .cal-view-btn:first-child { border-radius: 4px 0 0 4px; }
+    .cal-view-btn:last-child { border-radius: 0 4px 4px 0; }
+    .cal-view-btn:not(:first-child) { border-left: 0; }
+    .cal-view-btn.active { background: var(--sw-dark); color: #fff; border-color: var(--sw-dark); }
+    .cal-view-btn:hover:not(.active) { background: var(--sw-light); }
+
     /* Division filter pills */
     .cal-division-filters { display: flex; gap: 4px; }
     .cal-div-pill {
@@ -2248,7 +2259,11 @@
         <button id="btnRangeMonth" onclick="setCalRange('month')">Month</button>
         <button id="btnMonthViewToggle" onclick="toggleMonthView()" style="display:none;font-size:11px;">Day View</button>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
-        <button id="btnCalViewMode" onclick="toggleCalViewMode()" style="font-size:11px;padding:4px 10px;">Job View</button>
+        <span class="cal-view-group" style="display:inline-flex;gap:0;">
+          <button id="btnViewCrew" class="cal-view-btn active" onclick="setCalViewMode('crew')">Crew</button>
+          <button id="btnViewJobs" class="cal-view-btn" onclick="setCalViewMode('jobs')">Jobs</button>
+          <button id="btnViewList" class="cal-view-btn" onclick="setCalViewMode('list')">List</button>
+        </span>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
         <div class="cal-division-filters">
           <button class="cal-div-pill active" data-caldiv="all" onclick="setCalDivision('all')">All</button>
@@ -4867,12 +4882,15 @@ function renderCalendar() {
     toggleBtn.style.display = 'none';
     _calMonthView = 'swimlane'; // reset when leaving month mode
   }
-  // Update view mode button text
-  var viewModeBtn = document.getElementById('btnCalViewMode');
-  if (viewModeBtn) viewModeBtn.textContent = _calViewMode === 'crew' ? 'Job View' : 'Crew View';
+  // Update view mode buttons
+  document.querySelectorAll('.cal-view-btn').forEach(function(b) {
+    b.classList.toggle('active', b.id === 'btnView' + _calViewMode.charAt(0).toUpperCase() + _calViewMode.slice(1));
+  });
 
-  // Render: job view, compact month, or crew swimlane
-  if (_calViewMode === 'jobs') {
+  // Render: list, job, compact month, or crew swimlane
+  if (_calViewMode === 'list') {
+    renderListView(container, range);
+  } else if (_calViewMode === 'jobs') {
     renderJobView(container, range);
   } else if (_calRangeMode === 'month' && _calMonthView === 'compact') {
     renderCompactMonth(container, range);
@@ -5347,11 +5365,12 @@ function toggleMonthView() {
   loadCalendar();
 }
 
-function toggleCalViewMode() {
-  _calViewMode = _calViewMode === 'crew' ? 'jobs' : 'crew';
-  localStorage.setItem('sw_cal_view_mode', _calViewMode);
-  var btn = document.getElementById('btnCalViewMode');
-  btn.textContent = _calViewMode === 'crew' ? 'Job View' : 'Crew View';
+function setCalViewMode(mode) {
+  _calViewMode = mode;
+  localStorage.setItem('sw_cal_view_mode', mode);
+  document.querySelectorAll('.cal-view-btn').forEach(function(b) {
+    b.classList.toggle('active', b.id === 'btnView' + mode.charAt(0).toUpperCase() + mode.slice(1));
+  });
   renderCalendar();
 }
 
@@ -5504,6 +5523,184 @@ function renderJobView(container, range) {
       }
       html += '</div>';
     });
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// ── List View — scannable table grouped by date ──
+function renderListView(container, range) {
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var dates = getCalDays(range);
+  var readinessMap = _calReadiness || {};
+  var DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Build rows: one per unique job+date, deduplicate crew
+  var rows = [];
+  var seen = {}; // 'jobId_date' → row index
+  _calEvents.forEach(function(ev) {
+    if (!ev.job_id) return;
+    var startDate = ev.scheduled_date;
+    var endDate = ev.scheduled_end || ev.scheduled_date;
+
+    dates.forEach(function(dateStr) {
+      if (dateStr < startDate || dateStr > endDate) return;
+      var key = ev.job_id + '_' + dateStr;
+
+      // Resolve crew name
+      var crewName = 'Unassigned';
+      if (ev.user_id) {
+        var m = _crewList.find(function(u) { return u.id === ev.user_id; });
+        crewName = m ? m.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+      } else {
+        crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+      }
+
+      if (seen[key] !== undefined) {
+        var existing = rows[seen[key]];
+        if (existing.crew.indexOf(crewName) === -1) existing.crew.push(crewName);
+        if (!existing.assignmentId && ev.assignment_id) existing.assignmentId = ev.assignment_id;
+        return;
+      }
+
+      seen[key] = rows.length;
+      rows.push({
+        date: dateStr,
+        job_id: ev.job_id,
+        job_number: ev.job_number || '?',
+        client_name: ev.client_name || '?',
+        site_suburb: ev.site_suburb || ev.site_address || '',
+        job_type: ev.job_type || 'patio',
+        start_time: ev.start_time || null,
+        end_time: ev.end_time || null,
+        confirmation: ev.confirmation_status || 'tentative',
+        assignmentId: ev.assignment_id || '',
+        crew: [crewName]
+      });
+    });
+  });
+
+  // Sort by date, then start_time, then job_number
+  rows.sort(function(a, b) {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    var ta = a.start_time || '00:00', tb = b.start_time || '00:00';
+    if (ta !== tb) return ta.localeCompare(tb);
+    return a.job_number.localeCompare(b.job_number);
+  });
+
+  if (rows.length === 0) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sw-mid);">No scheduled jobs in this period.</div>';
+    return;
+  }
+
+  // Format time
+  function fmtTime(t) {
+    if (!t) return '';
+    var parts = t.split(':');
+    var h = parseInt(parts[0]), m = parts[1];
+    var ampm = h >= 12 ? 'pm' : 'am';
+    h = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+    return m === '00' ? h + ampm : h + ':' + m + ampm;
+  }
+
+  // Readiness dot
+  function readinessDot(jobId) {
+    var r = readinessMap[jobId];
+    if (!r) return '';
+    var colors = { ready: 'var(--sw-green)', at_risk: 'var(--sw-yellow)', blocked: 'var(--sw-red)' };
+    var labels = { ready: 'Ready', at_risk: 'At risk', blocked: 'Blocked' };
+    var c = colors[r.status] || 'var(--sw-mid)';
+    return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:' + c + ';font-weight:600;">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:' + c + ';display:inline-block;"></span>' +
+      (labels[r.status] || '') + '</span>';
+  }
+
+  // Type badge
+  function typeBadge(type) {
+    var isFencing = type === 'fencing';
+    var bg = isFencing ? 'rgba(76,106,124,0.12)' : 'rgba(241,90,41,0.10)';
+    var color = isFencing ? 'var(--sw-mid)' : 'var(--sw-orange)';
+    var label = isFencing ? 'Fencing' : (type === 'decking' ? 'Decking' : 'Patio');
+    return '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:100px;background:' + bg + ';color:' + color + ';text-transform:uppercase;letter-spacing:0.3px;">' + label + '</span>';
+  }
+
+  // Confirmation badge
+  function confBadge(status) {
+    if (status === 'confirmed') return '<span style="color:var(--sw-green);font-size:9px;font-weight:700;">Confirmed</span>';
+    if (status === 'placeholder') return '<span style="color:var(--sw-text-sec);font-size:9px;">Placeholder</span>';
+    return '<span style="color:var(--sw-yellow);font-size:9px;">Planned</span>';
+  }
+
+  var html = '<div style="border:1px solid var(--sw-border);overflow:hidden;">';
+
+  // Table header
+  html += '<div style="display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:var(--sw-dark);color:#fff;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">';
+  ['Date','Time','Job','Client','Suburb','Crew','Type','Status','Ready'].forEach(function(h) {
+    html += '<div style="padding:8px 10px;">' + h + '</div>';
+  });
+  html += '</div>';
+
+  // Rows grouped by date
+  var lastDate = '';
+  rows.forEach(function(row, idx) {
+    var dd = new Date(row.date + 'T00:00:00');
+    var isToday = row.date === todayStr;
+    var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
+    var rowBg = idx % 2 === 0 ? 'var(--sw-card)' : 'var(--sw-warm-100)';
+    if (isWeekend) rowBg = 'var(--sw-warm-200)';
+
+    // Date group header
+    if (row.date !== lastDate) {
+      var jobsOnDate = rows.filter(function(r) { return r.date === row.date; });
+      var crewOnDate = {};
+      jobsOnDate.forEach(function(r) { r.crew.forEach(function(c) { crewOnDate[c] = true; }); });
+      var crewCount = Object.keys(crewOnDate).filter(function(c) { return c !== 'Unassigned'; }).length;
+
+      html += '<div style="grid-column:1/-1;display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:var(--sw-light);border-top:1px solid var(--sw-border);border-bottom:1px solid var(--sw-border);padding:0;">';
+      html += '<div style="grid-column:1/-1;padding:6px 10px;font-size:11px;font-weight:700;color:var(--sw-dark);' + (isToday ? 'border-left:3px solid var(--sw-orange);' : '') + '">';
+      html += DAYS_FULL[dd.getDay()] + ' ' + dd.getDate() + ' ' + MONTHS_SHORT[dd.getMonth()];
+      html += '<span style="font-weight:400;color:var(--sw-text-sec);margin-left:8px;">' + jobsOnDate.length + ' job' + (jobsOnDate.length !== 1 ? 's' : '') + ', ' + crewCount + ' crew</span>';
+      if (isToday) html += '<span style="margin-left:6px;font-size:9px;color:var(--sw-orange);font-weight:700;">TODAY</span>';
+      html += '</div></div>';
+      lastDate = row.date;
+    }
+
+    // Data row
+    var timeStr = row.start_time ? fmtTime(row.start_time) + (row.end_time ? '–' + fmtTime(row.end_time) : '') : 'All day';
+    var clickAttr = row.assignmentId ? ' onclick="openCalJobPopup(event,\'' + row.assignmentId + '\')" style="cursor:pointer;"' : '';
+
+    html += '<div style="display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:' + rowBg + ';border-bottom:1px solid rgba(0,0,0,0.04);font-size:12px;align-items:center;"' + clickAttr + '>';
+
+    // Date (empty — shown in group header)
+    html += '<div style="padding:8px 10px;"></div>';
+    // Time
+    html += '<div style="padding:8px 6px;font-size:10px;color:' + (row.start_time ? 'var(--sw-text)' : 'var(--sw-text-sec)') + ';">' + timeStr + '</div>';
+    // Job number
+    html += '<div style="padding:8px 6px;font-weight:700;font-size:11px;">' + row.job_number + '</div>';
+    // Client
+    html += '<div style="padding:8px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + row.client_name + '</div>';
+    // Suburb
+    var suburb = row.site_suburb;
+    if (suburb && suburb.length > 20) suburb = suburb.split(',')[0]; // First part only
+    html += '<div style="padding:8px 6px;font-size:10px;color:var(--sw-text-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (suburb || '') + '</div>';
+    // Crew chips
+    html += '<div style="padding:8px 6px;display:flex;gap:2px;flex-wrap:wrap;">';
+    row.crew.forEach(function(c) {
+      if (c === 'Unassigned') return;
+      var bg = crewColor(c);
+      html += '<span title="' + c + '" style="display:inline-block;width:20px;height:20px;border-radius:50%;background:' + bg + ';color:#fff;font-size:9px;font-weight:700;text-align:center;line-height:20px;">' + c.charAt(0).toUpperCase() + '</span>';
+    });
+    html += '</div>';
+    // Type
+    html += '<div style="padding:8px 6px;">' + typeBadge(row.job_type) + '</div>';
+    // Status
+    html += '<div style="padding:8px 6px;">' + confBadge(row.confirmation) + '</div>';
+    // Ready
+    html += '<div style="padding:8px 6px;">' + readinessDot(row.job_id) + '</div>';
+
+    html += '</div>';
   });
 
   html += '</div>';
