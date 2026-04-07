@@ -5027,14 +5027,6 @@ function renderSwimlaneView(container, range) {
     var isDimmed = _calDivFilter !== 'all' && div && div !== _calDivFilter;
 
     // Division divider removed — single unified crew list
-    if (false) {
-      var divLabel = '';
-      if (divLabel) {
-        html += '<div class="cal-division-label">' + divLabel + '</div>';
-        emittedDivs[displayDiv] = true;
-        prevDiv = displayDiv;
-      }
-    }
 
     // Row label
     var initial = crew.charAt(0).toUpperCase();
