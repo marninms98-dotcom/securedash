@@ -608,32 +608,85 @@
     .cal-cell-warning.conflict { color: var(--sw-red); }
     .cal-cell-warning.materials { color: #D97706; }
 
-    /* ── Compact Month Grid ── */
-    .cal-compact-month {
-      display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
-      background: var(--sw-border); border: 1px solid var(--sw-border);
+    /* ── Schedule View Grid ── */
+    .cal-schedule-grid {
+      border: 2px solid var(--sw-border); border-radius: 8px; overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
-    .cal-compact-month .cm-header {
+    .cal-schedule-week {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 0;
+      position: relative;
+    }
+    .cal-schedule-week + .cal-schedule-week { border-top: 1px solid var(--sw-border); }
+    .cal-schedule-header {
       background: var(--sw-dark); color: #fff; font-size: 11px; font-weight: 600;
       text-align: center; padding: 6px 4px; text-transform: uppercase; letter-spacing: 0.5px;
+      border-right: 1px solid rgba(255,255,255,0.1);
     }
-    .cal-compact-month .cm-cell {
-      background: var(--sw-card); min-height: 80px; padding: 4px; position: relative;
-      cursor: pointer; vertical-align: top;
+    .cal-schedule-header:last-child { border-right: 0; }
+    .cal-schedule-header.today { color: var(--sw-orange); }
+    .cal-schedule-header .sh-day { font-size: 10px; color: rgba(255,255,255,0.7); }
+    .cal-schedule-header .sh-num { font-size: 16px; font-weight: 700; font-family: var(--sw-font-num); }
+    .cal-schedule-cell {
+      background: var(--sw-card); min-height: 90px; padding: 22px 3px 3px 3px;
+      position: relative; cursor: pointer; border-right: 1px solid var(--sw-border);
     }
-    .cal-compact-month .cm-cell.outside { background: var(--sw-warm-200); opacity: 0.5; }
-    .cal-compact-month .cm-cell.today { outline: 2px solid rgba(241,90,41,0.4); outline-offset: -2px; }
-    .cal-compact-month .cm-cell.weekend { background: var(--sw-warm-100); }
-    .cal-compact-month .cm-day-num {
-      font-size: 11px; font-weight: 600; color: var(--sw-text-sec); margin-bottom: 3px;
+    .cal-schedule-cell:last-child { border-right: 0; }
+    .cal-schedule-cell.outside { background: var(--sw-warm-200); opacity: 0.5; }
+    .cal-schedule-cell.today { outline: 2.5px solid rgba(241,90,41,0.5); outline-offset: -2px; background: rgba(241,90,41,0.04); }
+    .cal-schedule-cell.weekend { background: var(--sw-bg); }
+    .cal-schedule-cell:hover { outline: 2px solid rgba(241,90,41,0.3); outline-offset: -2px; }
+    .cal-schedule-day-num {
+      position: absolute; top: 3px; left: 5px; font-size: 11px; font-weight: 600;
+      color: var(--sw-text-sec);
     }
-    .cal-compact-month .cm-cell.today .cm-day-num { color: var(--sw-orange); font-weight: 700; }
-    .cal-compact-month .cm-pill {
-      font-size: 9px; padding: 2px 4px; border-radius: 3px; margin-bottom: 1px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
-      font-weight: 500;
+    .cal-schedule-cell.today .cal-schedule-day-num { color: var(--sw-orange); font-weight: 700; }
+
+    /* Job bars */
+    .cal-schedule-bar-layer {
+      position: absolute; left: 0; right: 0; top: 20px; pointer-events: none;
     }
-    .cal-compact-month .cm-pill:hover { opacity: 0.8; }
+    .cal-schedule-bar {
+      display: flex; align-items: center; gap: 3px;
+      font-size: 10px; padding: 3px 5px; margin-bottom: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: pointer; font-weight: 500; pointer-events: auto;
+      position: relative; border-left: 3px solid transparent;
+    }
+    .cal-schedule-bar.patio { background: rgba(241,90,41,0.10); border-left-color: var(--sw-orange); color: var(--sw-dark); }
+    .cal-schedule-bar.fencing { background: rgba(76,106,124,0.10); border-left-color: var(--sw-mid); color: var(--sw-dark); }
+    .cal-schedule-bar.decking { background: rgba(230,126,34,0.10); border-left-color: #E67E22; color: var(--sw-dark); }
+    .cal-schedule-bar.confirmed { border-right: 2px solid #27AE60; font-weight: 700; }
+    .cal-schedule-bar.tentative { border-right: 1px dashed var(--sw-border); }
+    .cal-schedule-bar.placeholder { opacity: 0.35; border-right: 1px dashed #ccc; }
+    .cal-schedule-bar.readiness-ready { box-shadow: inset 3px 0 0 0 #22C55E; }
+    .cal-schedule-bar.readiness-at_risk { box-shadow: inset 3px 0 0 0 #F59E0B; }
+    .cal-schedule-bar.readiness-blocked { box-shadow: inset 3px 0 0 0 #EF4444; }
+    .cal-schedule-bar:hover { filter: brightness(0.95); }
+    .cal-schedule-bar .bar-crew { display: inline-flex; gap: 1px; margin-left: auto; flex-shrink: 0; }
+    .cal-schedule-bar .bar-crew .crew-initial {
+      width: 18px; height: 18px; border-radius: 50%; color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; flex-shrink: 0;
+    }
+    .cal-schedule-bar .bar-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .cal-schedule-bar .bar-lock { font-size: 8px; flex-shrink: 0; }
+
+    /* Schedule tooltip */
+    .cal-schedule-tooltip {
+      position: fixed; z-index: 9999; background: var(--sw-card);
+      border: 1px solid var(--sw-border); box-shadow: 0 4px 16px rgba(41,60,70,0.18);
+      padding: 10px 14px; font-size: 12px; max-width: 280px;
+      pointer-events: none; display: none;
+    }
+    .cal-schedule-tooltip.visible { display: block; }
+    .cal-schedule-tooltip .tt-name { font-weight: 700; margin-bottom: 2px; }
+    .cal-schedule-tooltip .tt-addr { font-size: 11px; color: var(--sw-text-sec); margin-bottom: 6px; }
+    .cal-schedule-tooltip .tt-crew { font-size: 11px; margin-bottom: 4px; }
+    .cal-schedule-tooltip .tt-readiness { font-size: 10px; }
+    .cal-schedule-tooltip .tt-time { font-size: 10px; color: var(--sw-mid); margin-bottom: 4px; }
 
     /* Delivery row */
     .cal-delivery-block {
@@ -2257,12 +2310,10 @@
         <button id="btnRange1w" class="active" onclick="setCalRange('1w')">1 Week</button>
         <button id="btnRange2w" onclick="setCalRange('2w')">2 Weeks</button>
         <button id="btnRangeMonth" onclick="setCalRange('month')">Month</button>
-        <button id="btnMonthViewToggle" onclick="toggleMonthView()" style="display:none;font-size:11px;">Day View</button>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
         <span class="cal-view-group" style="display:inline-flex;gap:0;">
           <button id="btnViewCrew" class="cal-view-btn active" onclick="setCalViewMode('crew')">Crew</button>
-          <button id="btnViewJobs" class="cal-view-btn" onclick="setCalViewMode('jobs')">Jobs</button>
-          <button id="btnViewList" class="cal-view-btn" onclick="setCalViewMode('list')">List</button>
+          <button id="btnViewSchedule" class="cal-view-btn" onclick="setCalViewMode('schedule')">Schedule</button>
         </span>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
         <div class="cal-division-filters">
@@ -4695,8 +4746,11 @@ var _calUnschedOpen = false;
 var _calAvailability = {}; // { 'CrewName_date': { status, note } }
 var _calReadiness = {};   // { jobId: { score, status, blockers, warnings, completeness } }
 var _calPopupAssignment = null; // currently open popup data
-var _calMonthView = 'swimlane'; // 'swimlane' or 'compact'
-var _calViewMode = localStorage.getItem('sw_cal_view_mode') || 'crew'; // 'crew' or 'jobs'
+var _calViewMode = (function() {
+  var v = localStorage.getItem('sw_cal_view_mode') || 'crew';
+  if (v === 'jobs' || v === 'list') v = 'schedule'; // migrate legacy
+  return v;
+})(); // 'crew' or 'schedule'
 
 // TODO Phase 2: BOM Perth weather strip along top of calendar — temperature and rain probability per day
 // TODO Phase 2: Estimated job duration auto-populated from scope_json based on job size
@@ -4873,27 +4927,14 @@ function renderCalendar() {
     titleEl.textContent = (_calRangeMode === '2w' ? '2 Weeks from ' : 'Week of ') + fmtDate(range.from);
   }
   var container = document.getElementById('calendarBody');
-  // Show/hide month view toggle
-  var toggleBtn = document.getElementById('btnMonthViewToggle');
-  if (_calRangeMode === 'month') {
-    toggleBtn.style.display = '';
-    toggleBtn.textContent = _calMonthView === 'swimlane' ? 'Day View' : 'Crew View';
-  } else {
-    toggleBtn.style.display = 'none';
-    _calMonthView = 'swimlane'; // reset when leaving month mode
-  }
   // Update view mode buttons
   document.querySelectorAll('.cal-view-btn').forEach(function(b) {
     b.classList.toggle('active', b.id === 'btnView' + _calViewMode.charAt(0).toUpperCase() + _calViewMode.slice(1));
   });
 
-  // Render: list, job, compact month, or crew swimlane
-  if (_calViewMode === 'list') {
-    renderListView(container, range);
-  } else if (_calViewMode === 'jobs') {
-    renderJobView(container, range);
-  } else if (_calRangeMode === 'month' && _calMonthView === 'compact') {
-    renderCompactMonth(container, range);
+  // Render: schedule or crew swimlane
+  if (_calViewMode === 'schedule') {
+    renderScheduleView(container, range);
   } else {
     renderSwimlaneView(container, range);
   }
@@ -5275,96 +5316,6 @@ function renderCalSummary(range) {
   bar.innerHTML = html;
 }
 
-// ── Compact Month Grid (day-based view) ──
-function renderCompactMonth(container, range) {
-  var dates = getCalDays(range);
-  var todayStr = new Date().toISOString().slice(0, 10);
-
-  // Build a map: dateStr → [events]
-  var dayEvents = {};
-  _calEvents.forEach(function(ev) {
-    if (_calDivFilter !== 'all') {
-      var div = ev.job_type || 'patio';
-      if (_calDivFilter === 'patio' && div !== 'patio' && div !== 'decking') return;
-      if (_calDivFilter === 'fencing' && div !== 'fencing') return;
-    }
-    var start = ev.scheduled_date;
-    var end = ev.scheduled_end || start;
-    dates.forEach(function(ds) {
-      if (ds >= start && ds <= end) {
-        if (!dayEvents[ds]) dayEvents[ds] = [];
-        // Avoid duplicate job entries per day
-        var already = dayEvents[ds].some(function(x) { return x.job_id === ev.job_id && x.assignment_id === ev.assignment_id; });
-        if (!already) dayEvents[ds].push(ev);
-      }
-    });
-  });
-
-  // Find the first Monday on or before the first date, and last Sunday on or after the last date
-  var firstDate = new Date(dates[0] + 'T00:00:00');
-  var lastDate = new Date(dates[dates.length - 1] + 'T00:00:00');
-  // Go back to Monday
-  var startDow = (firstDate.getDay() + 6) % 7;
-  var gridStart = new Date(firstDate);
-  gridStart.setDate(gridStart.getDate() - startDow);
-  // Go forward to Sunday
-  var endDow = (lastDate.getDay() + 6) % 7;
-  var gridEnd = new Date(lastDate);
-  gridEnd.setDate(gridEnd.getDate() + (6 - endDow));
-
-  var html = '<div class="cal-compact-month">';
-  // Header row
-  var dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  dayNames.forEach(function(d) { html += '<div class="cm-header">' + d + '</div>'; });
-
-  // Day cells
-  var cursor = new Date(gridStart);
-  while (cursor <= gridEnd) {
-    var ds = cursor.toISOString().slice(0, 10);
-    var inRange = ds >= dates[0] && ds <= dates[dates.length - 1];
-    var dow = (cursor.getDay() + 6) % 7;
-    var cellClass = 'cm-cell';
-    if (!inRange) cellClass += ' outside';
-    if (ds === todayStr) cellClass += ' today';
-    if (dow >= 5) cellClass += ' weekend';
-
-    html += '<div class="' + cellClass + '" onclick="handleCompactDayClick(\'' + ds + '\')">';
-    html += '<div class="cm-day-num">' + cursor.getDate() + '</div>';
-
-    var evts = dayEvents[ds] || [];
-    evts.forEach(function(ev) {
-      var rd = _calReadiness[ev.job_id];
-      var bgColor = 'var(--sw-card)';
-      if (rd) {
-        if (rd.status === 'ready') bgColor = 'rgba(34,197,94,0.15)';
-        else if (rd.status === 'at_risk') bgColor = 'rgba(245,158,11,0.18)';
-        else if (rd.status === 'blocked') bgColor = 'rgba(239,68,60,0.18)';
-      }
-      var cs = ev.confirmation_status || 'tentative';
-      var borderStyle = cs === 'confirmed' ? '2px solid #27AE60' : cs === 'placeholder' ? '1px dashed #ccc' : '1px solid #8FA4B2';
-      html += '<div class="cm-pill" style="background:' + bgColor + ';border:' + borderStyle + ';"';
-      html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
-      html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '">';
-      html += escapeHtml(ev.client_name || 'Unknown');
-      if (cs === 'confirmed') html += ' 🔒';
-      html += '</div>';
-    });
-
-    html += '</div>';
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function toggleMonthView() {
-  _calMonthView = _calMonthView === 'swimlane' ? 'compact' : 'swimlane';
-  var btn = document.getElementById('btnMonthViewToggle');
-  btn.textContent = _calMonthView === 'swimlane' ? 'Day View' : 'Crew View';
-  loadCalendar();
-}
-
 function setCalViewMode(mode) {
   _calViewMode = mode;
   localStorage.setItem('sw_cal_view_mode', mode);
@@ -5374,31 +5325,63 @@ function setCalViewMode(mode) {
   renderCalendar();
 }
 
-// ── Job Date View — rows=jobs, columns=dates, shows crew per day ──
-function renderJobView(container, range) {
+// ── Schedule View — week-row grid with multi-day spanning bars ──
+function renderScheduleView(container, range) {
   var todayStr = new Date().toISOString().slice(0, 10);
   var dates = getCalDays(range);
-  var numDays = dates.length;
-  var isMonthMode = _calRangeMode === 'month';
+  var DAYS_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-  // Group events by job — track crew + assignment IDs per date
+  // Pad to full weeks (Mon-Sun)
+  var firstDate = new Date(dates[0] + 'T00:00:00');
+  var lastDate = new Date(dates[dates.length - 1] + 'T00:00:00');
+  var startDow = (firstDate.getDay() + 6) % 7;
+  var gridStart = new Date(firstDate);
+  gridStart.setDate(gridStart.getDate() - startDow);
+  var endDow = (lastDate.getDay() + 6) % 7;
+  var gridEnd = new Date(lastDate);
+  gridEnd.setDate(gridEnd.getDate() + (6 - endDow));
+
+  // Build full date array for grid
+  var allDates = [];
+  var cursor = new Date(gridStart);
+  while (cursor <= gridEnd) {
+    allDates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Group events by job_id — deduplicate crew, compute span
   var jobMap = {};
   _calEvents.forEach(function(ev) {
+    if (!ev.job_id) return;
+    // Division filter
+    if (_calDivFilter !== 'all') {
+      var div = ev.job_type || 'patio';
+      if (_calDivFilter === 'patio' && div !== 'patio' && div !== 'decking') return;
+      if (_calDivFilter === 'fencing' && div !== 'fencing') return;
+    }
     var jid = ev.job_id;
-    if (!jid) return;
     if (!jobMap[jid]) {
       jobMap[jid] = {
-        job_number: ev.job_number || '?',
-        client_name: ev.client_name || '?',
-        site_suburb: ev.site_suburb || ev.site_address || '',
+        job_number: ev.job_number || '',
+        client_name: ev.client_name || 'Unknown',
+        site_suburb: ev.site_suburb || '',
+        site_address: ev.site_address || '',
         job_type: ev.job_type || 'patio',
-        job_status: ev.job_status || '',
         confirmation: ev.confirmation_status || 'tentative',
-        allCrew: {},
-        events: {},
-        assignmentIds: {}
+        start_time: ev.start_time || null,
+        end_time: ev.end_time || null,
+        start: ev.scheduled_date,
+        end: ev.scheduled_end || ev.scheduled_date,
+        crew: {},
+        assignmentId: ev.assignment_id || ''
       };
     }
+    // Expand span
+    if (ev.scheduled_date < jobMap[jid].start) jobMap[jid].start = ev.scheduled_date;
+    var evEnd = ev.scheduled_end || ev.scheduled_date;
+    if (evEnd > jobMap[jid].end) jobMap[jid].end = evEnd;
+    if (!jobMap[jid].assignmentId && ev.assignment_id) jobMap[jid].assignmentId = ev.assignment_id;
+    // Collect crew
     var crewName = 'Unassigned';
     if (ev.user_id) {
       var m = _crewList.find(function(u) { return u.id === ev.user_id; });
@@ -5406,310 +5389,250 @@ function renderJobView(container, range) {
     } else {
       crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
     }
-    jobMap[jid].allCrew[crewName] = true;
-    var startDate = ev.scheduled_date;
-    var endDate = ev.scheduled_end || ev.scheduled_date;
-    dates.forEach(function(dateStr) {
-      if (dateStr >= startDate && dateStr <= endDate) {
-        if (!jobMap[jid].events[dateStr]) jobMap[jid].events[dateStr] = [];
-        if (jobMap[jid].events[dateStr].indexOf(crewName) === -1) {
-          jobMap[jid].events[dateStr].push(crewName);
-        }
-        if (!jobMap[jid].assignmentIds[dateStr] && ev.assignment_id) {
-          jobMap[jid].assignmentIds[dateStr] = ev.assignment_id;
-        }
-      }
-    });
+    if (crewName !== 'Unassigned') jobMap[jid].crew[crewName] = true;
   });
 
-  // Sort by earliest date, then job number
-  var jobIds = Object.keys(jobMap).sort(function(a, b) {
-    var datesA = Object.keys(jobMap[a].events).sort();
-    var datesB = Object.keys(jobMap[b].events).sort();
-    var minA = datesA[0] || 'z', minB = datesB[0] || 'z';
-    if (minA !== minB) return minA.localeCompare(minB);
-    return (jobMap[a].job_number || '').localeCompare(jobMap[b].job_number || '');
-  });
-
-  if (jobIds.length === 0) {
-    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sw-mid);">No scheduled jobs in this period.</div>';
-    return;
-  }
-
-  // Get readiness data
-  var readinessMap = _calReadiness || {};
-
-  var html = '<div class="cal-swimlane-grid' + (isMonthMode ? ' month-mode' : '') + '" style="grid-template-columns: 200px repeat(' + numDays + ', 1fr);">';
-
-  // Header row
-  html += '<div class="cal-swimlane-corner">Job</div>';
-  dates.forEach(function(dateStr) {
-    var dd = new Date(dateStr + 'T00:00:00');
-    var dayIdx = (dd.getDay() + 6) % 7;
-    var isToday = dateStr === todayStr;
-    html += '<div class="cal-swimlane-day-header' + (isToday ? ' today' : '') + '">';
-    html += '<div class="day-name">' + DAYS[dayIdx] + '</div>';
-    html += '<div class="day-num">' + dd.getDate() + '</div>';
-    if (!isMonthMode) html += weatherBadgeHtml(dateStr, true);
-    html += '</div>';
-  });
-
-  // Job rows
-  jobIds.forEach(function(jid) {
-    var job = jobMap[jid];
-    var isFencing = job.job_type === 'fencing';
-    var typeColor = isFencing ? 'var(--sw-mid)' : 'var(--sw-orange)';
-    var crewNames = Object.keys(job.allCrew).filter(function(c) { return c !== 'Unassigned'; });
-    var scheduledDates = Object.keys(job.events).sort();
-
-    // Readiness
-    var readiness = readinessMap[jid];
-    var readinessStatus = readiness ? readiness.status : '';
-
-    // Row label — type icon + job number + client + suburb + crew chips
-    html += '<div class="cal-crew-label" style="min-height:48px;padding:6px 8px;flex-direction:column;align-items:flex-start;gap:3px;">';
-    html += '<div style="display:flex;align-items:center;gap:5px;width:100%;">';
-    html += calTypeIconSvg(job.job_type);
-    html += '<div style="overflow:hidden;flex:1;">';
-    html += '<strong style="font-size:11px;">' + job.job_number + '</strong>';
-    html += '<span style="font-size:10px;opacity:0.55;margin-left:4px;">' + job.client_name + '</span>';
-    html += '</div>';
-    // Crew count
-    if (crewNames.length > 0) {
-      html += '<span style="font-size:9px;background:var(--sw-light);padding:1px 5px;border-radius:8px;font-weight:600;color:var(--sw-mid);">' + crewNames.length + '</span>';
-    }
-    html += '</div>';
-    // Suburb
-    if (job.site_suburb) {
-      html += '<div style="font-size:9px;color:var(--sw-text-sec);padding-left:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">' + job.site_suburb + '</div>';
-    }
-    html += '</div>';
-
-    // Day cells
-    dates.forEach(function(dateStr) {
-      var dd = new Date(dateStr + 'T00:00:00');
-      var dayIdx = (dd.getDay() + 6) % 7;
-      var isToday = dateStr === todayStr;
-      var isWeekend = dayIdx >= 5;
-      var crew = job.events[dateStr] || [];
-      var assignId = job.assignmentIds[dateStr] || '';
-
-      html += '<div class="cal-swim-cell' + (isToday ? ' today-col' : '') + (isWeekend ? ' weekend' : '') + '">';
-      if (crew.length > 0) {
-        // Multi-day position
-        var isFirst = scheduledDates[0] === dateStr;
-        var isLast = scheduledDates[scheduledDates.length - 1] === dateStr;
-        var isOnly = scheduledDates.length === 1;
-        var multiClass = isOnly ? 'multi-single' : (isFirst ? 'multi-start' : (isLast ? 'multi-end' : 'multi-mid'));
-        if (scheduledDates.length > 1) multiClass += ' multi';
-
-        // Readiness + confirmation classes
-        var blockClasses = 'cal-job-block ' + multiClass;
-        if (readinessStatus) blockClasses += ' readiness-' + readinessStatus;
-        var conf = job.confirmation || 'tentative';
-        blockClasses += ' ' + conf;
-
-        var clickAttr = assignId ? ' onclick="openCalJobPopup(event,\'' + assignId + '\')" style="cursor:pointer;"' : '';
-
-        html += '<div class="' + blockClasses + '"' + clickAttr + '>';
-        // Crew initial chips
-        crew.forEach(function(c) {
-          if (c === 'Unassigned') return;
-          var bg = crewColor(c);
-          var initial = c.charAt(0).toUpperCase();
-          html += '<span title="' + c + '" style="display:inline-block;width:20px;height:20px;border-radius:50%;background:' + bg + ';color:#fff;font-size:9px;font-weight:700;text-align:center;line-height:20px;margin-right:2px;">' + initial + '</span>';
-        });
-        html += '</div>';
-      }
-      html += '</div>';
-    });
-  });
-
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-// ── List View — scannable table grouped by date ──
-function renderListView(container, range) {
-  var todayStr = new Date().toISOString().slice(0, 10);
-  var dates = getCalDays(range);
-  var readinessMap = _calReadiness || {};
-  var DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  // Build rows: one per unique job+date, deduplicate crew
-  var rows = [];
-  var seen = {}; // 'jobId_date' → row index
-  _calEvents.forEach(function(ev) {
-    if (!ev.job_id) return;
-    var startDate = ev.scheduled_date;
-    var endDate = ev.scheduled_end || ev.scheduled_date;
-
-    dates.forEach(function(dateStr) {
-      if (dateStr < startDate || dateStr > endDate) return;
-      var key = ev.job_id + '_' + dateStr;
-
-      // Resolve crew name
-      var crewName = 'Unassigned';
-      if (ev.user_id) {
-        var m = _crewList.find(function(u) { return u.id === ev.user_id; });
-        crewName = m ? m.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
-      } else {
-        crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
-      }
-
-      if (seen[key] !== undefined) {
-        var existing = rows[seen[key]];
-        if (existing.crew.indexOf(crewName) === -1) existing.crew.push(crewName);
-        if (!existing.assignmentId && ev.assignment_id) existing.assignmentId = ev.assignment_id;
-        return;
-      }
-
-      seen[key] = rows.length;
-      rows.push({
-        date: dateStr,
-        job_id: ev.job_id,
-        job_number: ev.job_number || '?',
-        client_name: ev.client_name || '?',
-        site_suburb: ev.site_suburb || ev.site_address || '',
-        job_type: ev.job_type || 'patio',
-        start_time: ev.start_time || null,
-        end_time: ev.end_time || null,
-        confirmation: ev.confirmation_status || 'tentative',
-        assignmentId: ev.assignment_id || '',
-        crew: [crewName]
-      });
-    });
-  });
-
-  // Sort by date, then start_time, then job_number
-  rows.sort(function(a, b) {
-    if (a.date !== b.date) return a.date.localeCompare(b.date);
-    var ta = a.start_time || '00:00', tb = b.start_time || '00:00';
-    if (ta !== tb) return ta.localeCompare(tb);
+  // Convert to array and sort by start date, then job number
+  var jobs = Object.keys(jobMap).map(function(jid) {
+    var j = jobMap[jid];
+    j.id = jid;
+    j.crewNames = Object.keys(j.crew);
+    return j;
+  }).sort(function(a, b) {
+    if (a.start !== b.start) return a.start.localeCompare(b.start);
     return a.job_number.localeCompare(b.job_number);
   });
 
-  if (rows.length === 0) {
-    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sw-mid);">No scheduled jobs in this period.</div>';
-    return;
+  // Split dates into weeks (arrays of 7)
+  var weeks = [];
+  for (var i = 0; i < allDates.length; i += 7) {
+    weeks.push(allDates.slice(i, i + 7));
   }
 
-  // Format time
-  function fmtTime(t) {
-    if (!t) return '';
-    var parts = t.split(':');
-    var h = parseInt(parts[0]), m = parts[1];
-    var ampm = h >= 12 ? 'pm' : 'am';
-    h = h > 12 ? h - 12 : (h === 0 ? 12 : h);
-    return m === '00' ? h + ampm : h + ':' + m + ampm;
-  }
+  // Build HTML
+  var html = '<div class="cal-schedule-grid">';
 
-  // Readiness dot
-  function readinessDot(jobId) {
-    var r = readinessMap[jobId];
-    if (!r) return '';
-    var colors = { ready: 'var(--sw-green)', at_risk: 'var(--sw-yellow)', blocked: 'var(--sw-red)' };
-    var labels = { ready: 'Ready', at_risk: 'At risk', blocked: 'Blocked' };
-    var c = colors[r.status] || 'var(--sw-mid)';
-    return '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:' + c + ';font-weight:600;">' +
-      '<span style="width:6px;height:6px;border-radius:50%;background:' + c + ';display:inline-block;"></span>' +
-      (labels[r.status] || '') + '</span>';
-  }
-
-  // Type badge
-  function typeBadge(type) {
-    var isFencing = type === 'fencing';
-    var bg = isFencing ? 'rgba(76,106,124,0.12)' : 'rgba(241,90,41,0.10)';
-    var color = isFencing ? 'var(--sw-mid)' : 'var(--sw-orange)';
-    var label = isFencing ? 'Fencing' : (type === 'decking' ? 'Decking' : 'Patio');
-    return '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:100px;background:' + bg + ';color:' + color + ';text-transform:uppercase;letter-spacing:0.3px;">' + label + '</span>';
-  }
-
-  // Confirmation badge
-  function confBadge(status) {
-    if (status === 'confirmed') return '<span style="color:var(--sw-green);font-size:9px;font-weight:700;">Confirmed</span>';
-    if (status === 'placeholder') return '<span style="color:var(--sw-text-sec);font-size:9px;">Placeholder</span>';
-    return '<span style="color:var(--sw-yellow);font-size:9px;">Planned</span>';
-  }
-
-  var html = '<div style="border:1px solid var(--sw-border);overflow:hidden;">';
-
-  // Table header
-  html += '<div style="display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:var(--sw-dark);color:#fff;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">';
-  ['Date','Time','Job','Client','Suburb','Crew','Type','Status','Ready'].forEach(function(h) {
-    html += '<div style="padding:8px 10px;">' + h + '</div>';
+  // Header row (day names)
+  html += '<div class="cal-schedule-week" style="border-bottom:1px solid var(--sw-border);">';
+  DAYS_SHORT.forEach(function(d) {
+    html += '<div class="cal-schedule-header">' + d + '</div>';
   });
   html += '</div>';
 
-  // Rows grouped by date
-  var lastDate = '';
-  rows.forEach(function(row, idx) {
-    var dd = new Date(row.date + 'T00:00:00');
-    var isToday = row.date === todayStr;
-    var isWeekend = dd.getDay() === 0 || dd.getDay() === 6;
-    var rowBg = idx % 2 === 0 ? 'var(--sw-card)' : 'var(--sw-warm-100)';
-    if (isWeekend) rowBg = 'var(--sw-warm-200)';
+  // Each week row
+  weeks.forEach(function(weekDates) {
+    // Lane stacking: assign each job a vertical lane to avoid overlaps
+    var lanes = []; // each lane is an array of jobs occupying it
+    var jobLanes = {}; // jobId → lane index
 
-    // Date group header
-    if (row.date !== lastDate) {
-      var jobsOnDate = rows.filter(function(r) { return r.date === row.date; });
-      var crewOnDate = {};
-      jobsOnDate.forEach(function(r) { r.crew.forEach(function(c) { crewOnDate[c] = true; }); });
-      var crewCount = Object.keys(crewOnDate).filter(function(c) { return c !== 'Unassigned'; }).length;
+    jobs.forEach(function(job) {
+      // Does this job overlap this week?
+      var weekStart = weekDates[0], weekEnd = weekDates[6];
+      if (job.end < weekStart || job.start > weekEnd) return;
 
-      html += '<div style="grid-column:1/-1;display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:var(--sw-light);border-top:1px solid var(--sw-border);border-bottom:1px solid var(--sw-border);padding:0;">';
-      html += '<div style="grid-column:1/-1;padding:6px 10px;font-size:11px;font-weight:700;color:var(--sw-dark);' + (isToday ? 'border-left:3px solid var(--sw-orange);' : '') + '">';
-      html += DAYS_FULL[dd.getDay()] + ' ' + dd.getDate() + ' ' + MONTHS_SHORT[dd.getMonth()];
-      html += '<span style="font-weight:400;color:var(--sw-text-sec);margin-left:8px;">' + jobsOnDate.length + ' job' + (jobsOnDate.length !== 1 ? 's' : '') + ', ' + crewCount + ' crew</span>';
-      if (isToday) html += '<span style="margin-left:6px;font-size:9px;color:var(--sw-orange);font-weight:700;">TODAY</span>';
-      html += '</div></div>';
-      lastDate = row.date;
-    }
+      // Find first available lane
+      var placed = false;
+      for (var li = 0; li < lanes.length; li++) {
+        var canFit = true;
+        for (var oi = 0; oi < lanes[li].length; oi++) {
+          var other = lanes[li][oi];
+          // Check overlap within this week
+          if (!(job.end < other.start || job.start > other.end)) {
+            canFit = false;
+            break;
+          }
+        }
+        if (canFit) {
+          lanes[li].push(job);
+          jobLanes[job.id] = li;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        jobLanes[job.id] = lanes.length;
+        lanes.push([job]);
+      }
+    });
 
-    // Data row
-    var timeStr = row.start_time ? fmtTime(row.start_time) + (row.end_time ? '–' + fmtTime(row.end_time) : '') : 'All day';
-    var clickAttr = row.assignmentId ? ' onclick="openCalJobPopup(event,\'' + row.assignmentId + '\')" style="cursor:pointer;"' : '';
+    var numLanes = Math.max(lanes.length, 1);
+    var barHeight = 22;
+    var barGap = 2;
+    var cellMinHeight = Math.max(90, 22 + numLanes * (barHeight + barGap) + 4);
 
-    html += '<div style="display:grid;grid-template-columns:100px 70px 100px 1fr 120px 120px 70px 70px 70px;background:' + rowBg + ';border-bottom:1px solid rgba(0,0,0,0.04);font-size:12px;align-items:center;"' + clickAttr + '>';
+    // Day number + date headers
+    html += '<div class="cal-schedule-week">';
+    weekDates.forEach(function(ds) {
+      var dd = new Date(ds + 'T00:00:00');
+      var dow = (dd.getDay() + 6) % 7;
+      var isToday = ds === todayStr;
+      var inRange = ds >= dates[0] && ds <= dates[dates.length - 1];
+      var isWeekend = dow >= 5;
 
-    // Date (empty — shown in group header)
-    html += '<div style="padding:8px 10px;"></div>';
-    // Time
-    html += '<div style="padding:8px 6px;font-size:10px;color:' + (row.start_time ? 'var(--sw-text)' : 'var(--sw-text-sec)') + ';">' + timeStr + '</div>';
-    // Job number
-    html += '<div style="padding:8px 6px;font-weight:700;font-size:11px;">' + row.job_number + '</div>';
-    // Client
-    html += '<div style="padding:8px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + row.client_name + '</div>';
-    // Suburb
-    var suburb = row.site_suburb;
-    if (suburb && suburb.length > 20) suburb = suburb.split(',')[0]; // First part only
-    html += '<div style="padding:8px 6px;font-size:10px;color:var(--sw-text-sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (suburb || '') + '</div>';
-    // Crew chips
-    html += '<div style="padding:8px 6px;display:flex;gap:2px;flex-wrap:wrap;">';
-    row.crew.forEach(function(c) {
-      if (c === 'Unassigned') return;
-      var bg = crewColor(c);
-      html += '<span title="' + c + '" style="display:inline-block;width:20px;height:20px;border-radius:50%;background:' + bg + ';color:#fff;font-size:9px;font-weight:700;text-align:center;line-height:20px;">' + c.charAt(0).toUpperCase() + '</span>';
+      var cellClass = 'cal-schedule-cell';
+      if (!inRange) cellClass += ' outside';
+      if (isToday) cellClass += ' today';
+      if (isWeekend) cellClass += ' weekend';
+
+      html += '<div class="' + cellClass + '" style="min-height:' + cellMinHeight + 'px;"';
+      html += ' onclick="openAssignmentModal(null,\'' + ds + '\')">';
+      html += '<span class="cal-schedule-day-num">' + dd.getDate() + '</span>';
+      html += '</div>';
     });
     html += '</div>';
-    // Type
-    html += '<div style="padding:8px 6px;">' + typeBadge(row.job_type) + '</div>';
-    // Status
-    html += '<div style="padding:8px 6px;">' + confBadge(row.confirmation) + '</div>';
-    // Ready
-    html += '<div style="padding:8px 6px;">' + readinessDot(row.job_id) + '</div>';
+
+    // Bar overlay layer — uses CSS grid for column spanning, absolute pos for vertical lanes
+    html += '<div style="position:relative;pointer-events:none;margin-top:-' + cellMinHeight + 'px;height:' + cellMinHeight + 'px;">';
+
+    // Render bars using percentage-based positioning
+    jobs.forEach(function(job) {
+      var weekStart = weekDates[0], weekEnd = weekDates[6];
+      if (job.end < weekStart || job.start > weekEnd) return;
+
+      var barStart = job.start < weekStart ? weekStart : job.start;
+      var barEnd = job.end > weekEnd ? weekEnd : job.end;
+
+      var startIdx = weekDates.indexOf(barStart);
+      var endIdx = weekDates.indexOf(barEnd);
+      var leftPct = (startIdx / 7 * 100).toFixed(2);
+      var widthPct = ((endIdx - startIdx + 1) / 7 * 100).toFixed(2);
+
+      var lane = jobLanes[job.id] || 0;
+      var topPx = 22 + lane * (barHeight + barGap);
+
+      var typeClass = (job.job_type === 'fencing') ? 'fencing' : (job.job_type === 'decking') ? 'decking' : 'patio';
+      var confClass = job.confirmation || 'tentative';
+      var readiness = _calReadiness[job.id];
+      var readinessClass = readiness ? ' readiness-' + readiness.status : '';
+
+      html += '<div class="cal-schedule-bar ' + typeClass + ' ' + confClass + readinessClass + '"';
+      html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;"';
+      html += ' data-job-id="' + job.id + '"';
+      html += ' data-assignment-id="' + (job.assignmentId || '') + '"';
+      html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + (job.assignmentId || '') + '\')"';
+      html += ' onmouseenter="showScheduleTooltip(event,\'' + job.id + '\')"';
+      html += ' onmouseleave="hideScheduleTooltip()"';
+      html += '>';
+
+      // Readiness dot
+      if (readiness) {
+        var dotColors = { ready: '#22C55E', at_risk: '#F59E0B', blocked: '#EF4444' };
+        html += '<span class="bar-dot" style="background:' + (dotColors[readiness.status] || '#999') + ';"></span>';
+      }
+
+      // Job number + client
+      if (job.job_number) html += '<strong style="font-size:9px;">' + job.job_number + '</strong> ';
+      html += '<span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.client_name) + '</span>';
+
+      // Lock icon
+      if (confClass === 'confirmed') html += '<span class="bar-lock">&#128274;</span>';
+
+      // Crew chips
+      if (job.crewNames.length > 0) {
+        html += '<span class="bar-crew">';
+        job.crewNames.forEach(function(c) {
+          html += '<span class="crew-initial" style="background:' + crewColor(c) + ';">' + c.charAt(0).toUpperCase() + '</span>';
+        });
+        html += '</span>';
+      }
+
+      html += '</div>';
+    });
 
     html += '</div>';
   });
 
   html += '</div>';
+
+  // Tooltip element
+  html += '<div class="cal-schedule-tooltip" id="calScheduleTooltip"></div>';
+
   container.innerHTML = html;
+
 }
 
-function handleCompactDayClick(dateStr) {
-  // Open assignment modal for that day
-  openAssignmentModal(null, dateStr);
+// Schedule tooltip
+function showScheduleTooltip(event, jobId) {
+  var job = null;
+  // Find job data from _calEvents
+  for (var i = 0; i < _calEvents.length; i++) {
+    if (_calEvents[i].job_id === jobId) { job = _calEvents[i]; break; }
+  }
+  if (!job) return;
+
+  var tip = document.getElementById('calScheduleTooltip');
+  if (!tip) return;
+
+  // Collect all crew for this job
+  var crewSet = {};
+  _calEvents.forEach(function(ev) {
+    if (ev.job_id !== jobId) return;
+    var cn = 'Unassigned';
+    if (ev.user_id) {
+      var m = _crewList.find(function(u) { return u.id === ev.user_id; });
+      cn = m ? m.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+    } else {
+      cn = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+    }
+    if (cn !== 'Unassigned') crewSet[cn] = true;
+  });
+  var crewNames = Object.keys(crewSet);
+
+  // Time
+  var timeStr = '';
+  if (job.start_time) {
+    var parts = job.start_time.split(':');
+    var h = parseInt(parts[0]), ampm = h >= 12 ? 'pm' : 'am';
+    h = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+    timeStr = h + ampm;
+    if (job.end_time) {
+      parts = job.end_time.split(':');
+      h = parseInt(parts[0]); ampm = h >= 12 ? 'pm' : 'am';
+      h = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+      timeStr += ' - ' + h + ampm;
+    }
+  }
+
+  var html = '<div class="tt-name">' + escapeHtml(job.client_name || 'Unknown') + '</div>';
+  if (job.job_number) html += '<div style="font-size:10px;color:var(--sw-mid);margin-bottom:2px;">' + job.job_number + '</div>';
+  if (job.site_address || job.site_suburb) {
+    html += '<div class="tt-addr">' + escapeHtml(job.site_address || job.site_suburb || '') + '</div>';
+  }
+  if (timeStr) html += '<div class="tt-time">' + timeStr + '</div>';
+  if (crewNames.length > 0) {
+    html += '<div class="tt-crew"><strong>Crew:</strong> ' + crewNames.map(escapeHtml).join(', ') + '</div>';
+  }
+  // Readiness
+  var rd = _calReadiness[jobId];
+  if (rd) {
+    var rdColors = { ready: '#22C55E', at_risk: '#F59E0B', blocked: '#EF4444' };
+    var rdLabels = { ready: 'Ready', at_risk: 'At Risk', blocked: 'Blocked' };
+    html += '<div class="tt-readiness" style="color:' + (rdColors[rd.status] || '#999') + ';font-weight:600;">';
+    html += rdLabels[rd.status] || rd.status;
+    if (rd.blockers && rd.blockers.length > 0) {
+      html += '<br><span style="font-weight:400;color:var(--sw-text-sec);">' + rd.blockers.map(function(b) { return readinessLabel(b.key || b, b.met); }).join(', ') + '</span>';
+    }
+    html += '</div>';
+  }
+
+  tip.innerHTML = html;
+  tip.classList.add('visible');
+
+  // Position near the bar
+  var rect = event.target.closest('.cal-schedule-bar').getBoundingClientRect();
+  var tipW = 280, tipH = tip.offsetHeight || 120;
+  var left = rect.left + rect.width / 2 - tipW / 2;
+  var top = rect.bottom + 6;
+  if (left < 4) left = 4;
+  if (left + tipW > window.innerWidth - 4) left = window.innerWidth - tipW - 4;
+  if (top + tipH > window.innerHeight - 4) top = rect.top - tipH - 6;
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+function hideScheduleTooltip() {
+  var tip = document.getElementById('calScheduleTooltip');
+  if (tip) tip.classList.remove('visible');
 }
 
 // ── Unscheduled Sidebar ──
