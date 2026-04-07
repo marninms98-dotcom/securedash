@@ -4931,7 +4931,7 @@ function renderSwimlaneView(container, range) {
   });
 
   // ── Filter crew rows: field roles always show, office roles only if assigned ──
-  var FIELD_ROLES = ['installer', 'trade', 'subcontractor', 'lead_installer'];
+  var FIELD_ROLES = ['installer', 'trade', 'subcontractor', 'lead_installer', 'crew', 'ops_manager'];
   var OFFICE_ONLY_NAMES = ['Marnin', 'Nithin', 'Khairo']; // fallback for roles marked 'estimator'
   var assignedNames = new Set();
   _calEvents.forEach(function(ev) {
@@ -4988,15 +4988,10 @@ function renderSwimlaneView(container, range) {
     if (crewMap[u.name] && u.division) crewMap[u.name].division = u.division;
   });
 
-  // Re-sort with enriched divisions: patio first, fencing second, empty last, Unassigned at end
-  var divOrder = { patio: 0, trade: 0, decking: 1, fencing: 2 };
+  // Sort crew alphabetically, Unassigned at end (no division split)
   crewNames.sort(function(a, b) {
     if (a === 'Unassigned') return 1;
     if (b === 'Unassigned') return -1;
-    var da = crewMap[a].division || '', db = crewMap[b].division || '';
-    var oa = divOrder[da] !== undefined ? divOrder[da] : 3;
-    var ob = divOrder[db] !== undefined ? divOrder[db] : 3;
-    if (oa !== ob) return oa - ob;
     return a.localeCompare(b);
   });
 
@@ -5025,24 +5020,15 @@ function renderSwimlaneView(container, range) {
     html += '</div>';
   });
 
-  // Track which division headers we've emitted
-  var emittedDivs = {};
-
   // Crew rows
   crewNames.forEach(function(crew) {
     var crewData = crewMap[crew] || { division: '', events: {} };
     var div = crewData.division || '';
     var isDimmed = _calDivFilter !== 'all' && div && div !== _calDivFilter;
 
-    // Division divider — always show PATIOS + FENCING headers
-    var displayDiv = (div === 'trade' || div === 'patio' || div === 'decking') ? 'patio' : (div === 'fencing' ? 'fencing' : div);
-    if (displayDiv !== prevDiv && crew !== 'Unassigned') {
-      // If jumping to fencing and patio header hasn't been emitted, emit it first
-      if (displayDiv === 'fencing' && !emittedDivs['patio']) {
-        html += '<div class="cal-division-label">PATIOS</div>';
-        emittedDivs['patio'] = true;
-      }
-      var divLabel = displayDiv === 'patio' ? 'PATIOS' : displayDiv === 'fencing' ? 'FENCING' : (displayDiv || '').toUpperCase();
+    // Division divider removed — single unified crew list
+    if (false) {
+      var divLabel = '';
       if (divLabel) {
         html += '<div class="cal-division-label">' + divLabel + '</div>';
         emittedDivs[displayDiv] = true;
@@ -5056,7 +5042,13 @@ function renderSwimlaneView(container, range) {
     html += '<div class="cal-crew-label' + (isDimmed ? ' dimmed' : '') + '">';
     html += '<span class="crew-initial" style="background:' + crewBg + '">' + initial + '</span>';
     html += '<span style="overflow:hidden;text-overflow:ellipsis;">' + crew + '</span>';
-    if (div) html += '<span class="division-badge ' + div + '">' + div + '</span>';
+    // Show role badge instead of division
+    var roleBadge = '';
+    var _u = _crewList.find(function(c) { return c.name === crew; });
+    if (_u && _u.role === 'lead_installer') roleBadge = 'LEAD';
+    else if (_u && _u.role === 'ops_manager') roleBadge = 'OPS';
+    else if (_u && _u.role === 'crew') roleBadge = 'CREW';
+    if (roleBadge) html += '<span class="division-badge">' + roleBadge + '</span>';
     html += '</div>';
 
     // Day cells
