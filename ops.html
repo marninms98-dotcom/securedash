@@ -2248,6 +2248,8 @@
         <button id="btnRangeMonth" onclick="setCalRange('month')">Month</button>
         <button id="btnMonthViewToggle" onclick="toggleMonthView()" style="display:none;font-size:11px;">Day View</button>
         <div style="width:1px;height:20px;background:var(--sw-border);"></div>
+        <button id="btnCalViewMode" onclick="toggleCalViewMode()" style="font-size:11px;padding:4px 10px;">Job View</button>
+        <div style="width:1px;height:20px;background:var(--sw-border);"></div>
         <div class="cal-division-filters">
           <button class="cal-div-pill active" data-caldiv="all" onclick="setCalDivision('all')">All</button>
           <button class="cal-div-pill patio-pill" data-caldiv="patio" onclick="setCalDivision('patio')">Patios</button>
@@ -4679,6 +4681,7 @@ var _calAvailability = {}; // { 'CrewName_date': { status, note } }
 var _calReadiness = {};   // { jobId: { score, status, blockers, warnings, completeness } }
 var _calPopupAssignment = null; // currently open popup data
 var _calMonthView = 'swimlane'; // 'swimlane' or 'compact'
+var _calViewMode = localStorage.getItem('sw_cal_view_mode') || 'crew'; // 'crew' or 'jobs'
 
 // TODO Phase 2: BOM Perth weather strip along top of calendar — temperature and rain probability per day
 // TODO Phase 2: Estimated job duration auto-populated from scope_json based on job size
@@ -4864,8 +4867,14 @@ function renderCalendar() {
     toggleBtn.style.display = 'none';
     _calMonthView = 'swimlane'; // reset when leaving month mode
   }
-  // Render compact or swimlane
-  if (_calRangeMode === 'month' && _calMonthView === 'compact') {
+  // Update view mode button text
+  var viewModeBtn = document.getElementById('btnCalViewMode');
+  if (viewModeBtn) viewModeBtn.textContent = _calViewMode === 'crew' ? 'Job View' : 'Crew View';
+
+  // Render: job view, compact month, or crew swimlane
+  if (_calViewMode === 'jobs') {
+    renderJobView(container, range);
+  } else if (_calRangeMode === 'month' && _calMonthView === 'compact') {
     renderCompactMonth(container, range);
   } else {
     renderSwimlaneView(container, range);
@@ -4883,7 +4892,14 @@ function renderSwimlaneView(container, range) {
   // Group events by crew, handle multi-day
   var crewMap = {};
   _calEvents.forEach(function(ev) {
-    var crew = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+    // Match by user_id first (reliable), fallback to name matching
+    var crew = 'Unassigned';
+    if (ev.user_id) {
+      var _match = _crewList.find(function(u) { return u.id === ev.user_id; });
+      crew = _match ? _match.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+    } else {
+      crew = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+    }
     if (!crewMap[crew]) crewMap[crew] = { division: guessDivision(ev), events: {} };
     var startDate = ev.scheduled_date;
     var endDate = ev.scheduled_end || ev.scheduled_date;
@@ -5329,6 +5345,126 @@ function toggleMonthView() {
   var btn = document.getElementById('btnMonthViewToggle');
   btn.textContent = _calMonthView === 'swimlane' ? 'Day View' : 'Crew View';
   loadCalendar();
+}
+
+function toggleCalViewMode() {
+  _calViewMode = _calViewMode === 'crew' ? 'jobs' : 'crew';
+  localStorage.setItem('sw_cal_view_mode', _calViewMode);
+  var btn = document.getElementById('btnCalViewMode');
+  btn.textContent = _calViewMode === 'crew' ? 'Job View' : 'Crew View';
+  renderCalendar();
+}
+
+// ── Job Date View — rows=jobs, columns=dates, shows crew per day ──
+function renderJobView(container, range) {
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var dates = getCalDays(range);
+  var numDays = dates.length;
+  var isMonthMode = _calRangeMode === 'month';
+
+  // Group events by job
+  var jobMap = {};
+  _calEvents.forEach(function(ev) {
+    var jid = ev.job_id;
+    if (!jid) return;
+    if (!jobMap[jid]) {
+      jobMap[jid] = {
+        job_number: ev.job_number || '?',
+        client_name: ev.client_name || '?',
+        site_suburb: ev.site_suburb || '',
+        job_type: ev.job_type || 'patio',
+        job_status: ev.job_status || '',
+        events: {}
+      };
+    }
+    // Get crew name for this event
+    var crewName = 'Unassigned';
+    if (ev.user_id) {
+      var m = _crewList.find(function(u) { return u.id === ev.user_id; });
+      crewName = m ? m.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+    } else {
+      crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+    }
+    var startDate = ev.scheduled_date;
+    var endDate = ev.scheduled_end || ev.scheduled_date;
+    dates.forEach(function(dateStr) {
+      if (dateStr >= startDate && dateStr <= endDate) {
+        if (!jobMap[jid].events[dateStr]) jobMap[jid].events[dateStr] = [];
+        if (jobMap[jid].events[dateStr].indexOf(crewName) === -1) {
+          jobMap[jid].events[dateStr].push(crewName);
+        }
+      }
+    });
+  });
+
+  // Sort jobs by earliest scheduled date
+  var jobIds = Object.keys(jobMap).sort(function(a, b) {
+    var datesA = Object.keys(jobMap[a].events);
+    var datesB = Object.keys(jobMap[b].events);
+    var minA = datesA.length > 0 ? datesA.sort()[0] : 'z';
+    var minB = datesB.length > 0 ? datesB.sort()[0] : 'z';
+    return minA.localeCompare(minB);
+  });
+
+  if (jobIds.length === 0) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:var(--sw-mid);">No scheduled jobs in this period.</div>';
+    return;
+  }
+
+  var html = '<div class="cal-swimlane-grid' + (isMonthMode ? ' month-mode' : '') + '" style="grid-template-columns: 180px repeat(' + numDays + ', 1fr);">';
+
+  // Header row
+  html += '<div class="cal-swimlane-corner">Job</div>';
+  dates.forEach(function(dateStr) {
+    var dd = new Date(dateStr + 'T00:00:00');
+    var dayIdx = (dd.getDay() + 6) % 7;
+    var isToday = dateStr === todayStr;
+    html += '<div class="cal-swimlane-day-header' + (isToday ? ' today' : '') + '">';
+    html += '<div class="day-name">' + DAYS[dayIdx] + '</div>';
+    html += '<div class="day-num">' + dd.getDate() + '</div>';
+    if (!isMonthMode) html += weatherBadgeHtml(dateStr, true);
+    html += '</div>';
+  });
+
+  // Job rows
+  jobIds.forEach(function(jid) {
+    var job = jobMap[jid];
+    var typeColor = job.job_type === 'fencing' ? 'var(--sw-mid)' : 'var(--sw-orange)';
+    var typeBadge = job.job_type === 'fencing' ? 'F' : 'P';
+
+    // Row label
+    html += '<div class="cal-crew-label" style="padding:6px 8px;">';
+    html += '<span class="crew-initial" style="background:' + typeColor + ';font-size:10px;">' + typeBadge + '</span>';
+    html += '<span style="overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:1.2;">';
+    html += '<strong>' + job.job_number + '</strong><br>';
+    html += '<span style="opacity:0.7;font-size:11px;">' + job.client_name + '</span>';
+    html += '</span>';
+    html += '</div>';
+
+    // Day cells
+    dates.forEach(function(dateStr) {
+      var dd = new Date(dateStr + 'T00:00:00');
+      var dayIdx = (dd.getDay() + 6) % 7;
+      var isToday = dateStr === todayStr;
+      var isWeekend = dayIdx >= 5;
+      var crew = job.events[dateStr] || [];
+
+      html += '<div class="cal-day-cell' + (isToday ? ' today' : '') + (isWeekend ? ' weekend' : '') + '" data-date="' + dateStr + '">';
+      if (crew.length > 0) {
+        var bgColor = job.job_type === 'fencing' ? 'rgba(76,106,124,0.15)' : 'rgba(241,90,41,0.12)';
+        var borderColor = job.job_type === 'fencing' ? 'var(--sw-mid)' : 'var(--sw-orange)';
+        html += '<div style="background:' + bgColor + ';border-left:3px solid ' + borderColor + ';border-radius:3px;padding:3px 5px;font-size:10px;line-height:1.3;">';
+        crew.forEach(function(c) {
+          html += '<div>' + c + '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 function handleCompactDayClick(dateStr) {
