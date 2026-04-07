@@ -5362,7 +5362,7 @@ function renderJobView(container, range) {
   var numDays = dates.length;
   var isMonthMode = _calRangeMode === 'month';
 
-  // Group events by job
+  // Group events by job — track crew + assignment IDs per date
   var jobMap = {};
   _calEvents.forEach(function(ev) {
     var jid = ev.job_id;
@@ -5371,13 +5371,15 @@ function renderJobView(container, range) {
       jobMap[jid] = {
         job_number: ev.job_number || '?',
         client_name: ev.client_name || '?',
-        site_suburb: ev.site_suburb || '',
+        site_suburb: ev.site_suburb || ev.site_address || '',
         job_type: ev.job_type || 'patio',
         job_status: ev.job_status || '',
-        events: {}
+        confirmation: ev.confirmation_status || 'tentative',
+        allCrew: {},
+        events: {},
+        assignmentIds: {}
       };
     }
-    // Get crew name for this event
     var crewName = 'Unassigned';
     if (ev.user_id) {
       var m = _crewList.find(function(u) { return u.id === ev.user_id; });
@@ -5385,6 +5387,7 @@ function renderJobView(container, range) {
     } else {
       crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
     }
+    jobMap[jid].allCrew[crewName] = true;
     var startDate = ev.scheduled_date;
     var endDate = ev.scheduled_end || ev.scheduled_date;
     dates.forEach(function(dateStr) {
@@ -5393,17 +5396,20 @@ function renderJobView(container, range) {
         if (jobMap[jid].events[dateStr].indexOf(crewName) === -1) {
           jobMap[jid].events[dateStr].push(crewName);
         }
+        if (!jobMap[jid].assignmentIds[dateStr] && ev.assignment_id) {
+          jobMap[jid].assignmentIds[dateStr] = ev.assignment_id;
+        }
       }
     });
   });
 
-  // Sort jobs by earliest scheduled date
+  // Sort by earliest date, then job number
   var jobIds = Object.keys(jobMap).sort(function(a, b) {
-    var datesA = Object.keys(jobMap[a].events);
-    var datesB = Object.keys(jobMap[b].events);
-    var minA = datesA.length > 0 ? datesA.sort()[0] : 'z';
-    var minB = datesB.length > 0 ? datesB.sort()[0] : 'z';
-    return minA.localeCompare(minB);
+    var datesA = Object.keys(jobMap[a].events).sort();
+    var datesB = Object.keys(jobMap[b].events).sort();
+    var minA = datesA[0] || 'z', minB = datesB[0] || 'z';
+    if (minA !== minB) return minA.localeCompare(minB);
+    return (jobMap[a].job_number || '').localeCompare(jobMap[b].job_number || '');
   });
 
   if (jobIds.length === 0) {
@@ -5411,7 +5417,10 @@ function renderJobView(container, range) {
     return;
   }
 
-  var html = '<div class="cal-swimlane-grid' + (isMonthMode ? ' month-mode' : '') + '" style="grid-template-columns: 180px repeat(' + numDays + ', 1fr);">';
+  // Get readiness data
+  var readinessMap = _calReadiness || {};
+
+  var html = '<div class="cal-swimlane-grid' + (isMonthMode ? ' month-mode' : '') + '" style="grid-template-columns: 200px repeat(' + numDays + ', 1fr);">';
 
   // Header row
   html += '<div class="cal-swimlane-corner">Job</div>';
@@ -5429,16 +5438,32 @@ function renderJobView(container, range) {
   // Job rows
   jobIds.forEach(function(jid) {
     var job = jobMap[jid];
-    var typeColor = job.job_type === 'fencing' ? 'var(--sw-mid)' : 'var(--sw-orange)';
-    var typeBadge = job.job_type === 'fencing' ? 'F' : 'P';
+    var isFencing = job.job_type === 'fencing';
+    var typeColor = isFencing ? 'var(--sw-mid)' : 'var(--sw-orange)';
+    var crewNames = Object.keys(job.allCrew).filter(function(c) { return c !== 'Unassigned'; });
+    var scheduledDates = Object.keys(job.events).sort();
 
-    // Row label
-    html += '<div class="cal-crew-label" style="padding:6px 8px;">';
-    html += '<span class="crew-initial" style="background:' + typeColor + ';font-size:10px;">' + typeBadge + '</span>';
-    html += '<span style="overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:1.2;">';
-    html += '<strong>' + job.job_number + '</strong><br>';
-    html += '<span style="opacity:0.7;font-size:11px;">' + job.client_name + '</span>';
-    html += '</span>';
+    // Readiness
+    var readiness = readinessMap[jid];
+    var readinessStatus = readiness ? readiness.status : '';
+
+    // Row label — type icon + job number + client + suburb + crew chips
+    html += '<div class="cal-crew-label" style="min-height:48px;padding:6px 8px;flex-direction:column;align-items:flex-start;gap:3px;">';
+    html += '<div style="display:flex;align-items:center;gap:5px;width:100%;">';
+    html += calTypeIconSvg(job.job_type);
+    html += '<div style="overflow:hidden;flex:1;">';
+    html += '<strong style="font-size:11px;">' + job.job_number + '</strong>';
+    html += '<span style="font-size:10px;opacity:0.55;margin-left:4px;">' + job.client_name + '</span>';
+    html += '</div>';
+    // Crew count
+    if (crewNames.length > 0) {
+      html += '<span style="font-size:9px;background:var(--sw-light);padding:1px 5px;border-radius:8px;font-weight:600;color:var(--sw-mid);">' + crewNames.length + '</span>';
+    }
+    html += '</div>';
+    // Suburb
+    if (job.site_suburb) {
+      html += '<div style="font-size:9px;color:var(--sw-text-sec);padding-left:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">' + job.site_suburb + '</div>';
+    }
     html += '</div>';
 
     // Day cells
@@ -5448,14 +5473,32 @@ function renderJobView(container, range) {
       var isToday = dateStr === todayStr;
       var isWeekend = dayIdx >= 5;
       var crew = job.events[dateStr] || [];
+      var assignId = job.assignmentIds[dateStr] || '';
 
-      html += '<div class="cal-day-cell' + (isToday ? ' today' : '') + (isWeekend ? ' weekend' : '') + '" data-date="' + dateStr + '">';
+      html += '<div class="cal-swim-cell' + (isToday ? ' today-col' : '') + (isWeekend ? ' weekend' : '') + '">';
       if (crew.length > 0) {
-        var bgColor = job.job_type === 'fencing' ? 'rgba(76,106,124,0.15)' : 'rgba(241,90,41,0.12)';
-        var borderColor = job.job_type === 'fencing' ? 'var(--sw-mid)' : 'var(--sw-orange)';
-        html += '<div style="background:' + bgColor + ';border-left:3px solid ' + borderColor + ';border-radius:3px;padding:3px 5px;font-size:10px;line-height:1.3;">';
+        // Multi-day position
+        var isFirst = scheduledDates[0] === dateStr;
+        var isLast = scheduledDates[scheduledDates.length - 1] === dateStr;
+        var isOnly = scheduledDates.length === 1;
+        var multiClass = isOnly ? 'multi-single' : (isFirst ? 'multi-start' : (isLast ? 'multi-end' : 'multi-mid'));
+        if (scheduledDates.length > 1) multiClass += ' multi';
+
+        // Readiness + confirmation classes
+        var blockClasses = 'cal-job-block ' + multiClass;
+        if (readinessStatus) blockClasses += ' readiness-' + readinessStatus;
+        var conf = job.confirmation || 'tentative';
+        blockClasses += ' ' + conf;
+
+        var clickAttr = assignId ? ' onclick="openCalJobPopup(event,\'' + assignId + '\')" style="cursor:pointer;"' : '';
+
+        html += '<div class="' + blockClasses + '"' + clickAttr + '>';
+        // Crew initial chips
         crew.forEach(function(c) {
-          html += '<div>' + c + '</div>';
+          if (c === 'Unassigned') return;
+          var bg = crewColor(c);
+          var initial = c.charAt(0).toUpperCase();
+          html += '<span title="' + c + '" style="display:inline-block;width:20px;height:20px;border-radius:50%;background:' + bg + ';color:#fff;font-size:9px;font-weight:700;text-align:center;line-height:20px;margin-right:2px;">' + initial + '</span>';
         });
         html += '</div>';
       }
