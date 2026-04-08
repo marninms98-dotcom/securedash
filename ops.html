@@ -8115,10 +8115,35 @@ async function renderJarvisView(job) {
       html += '<div style="text-align:right;font-size:11px;color:var(--sw-text-sec);margin-top:12px">Last assessed: ' + new Date(intel.computed_at).toLocaleString() + '</div>';
     }
 
+    // Manual context input — "Tell JARVIS something about this job"
+    html += '<div style="margin-top:20px;border-top:1px solid var(--sw-border);padding-top:16px">';
+    html += '<div style="font-weight:700;margin-bottom:8px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Tell JARVIS</div>';
+    html += '<div style="display:flex;gap:8px">';
+    html += '<input type="text" id="jarvisContextInput" placeholder="e.g. Don\'t chase — payment plan agreed" style="flex:1;padding:8px 12px;border:1px solid var(--sw-border);border-radius:3px;font-size:13px">';
+    html += '<button onclick="submitJarvisContext(\'' + job.id + '\')" style="background:var(--sw-orange);color:#fff;border:none;padding:8px 16px;border-radius:3px;font-size:12px;font-weight:700;cursor:pointer">Save</button>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">All automations will respect this for 30 days. Use for payment plans, disputes, holds, etc.</div>';
+    html += '</div>';
+
     html += '</div>';
     el.innerHTML = html;
   } catch (err) {
     el.innerHTML = '<div style="padding:20px;color:#e74c3c">Failed to load JARVIS context: ' + err.message + '</div>';
+  }
+}
+
+async function submitJarvisContext(jobId) {
+  var input = document.getElementById('jarvisContextInput');
+  var text = (input && input.value || '').trim();
+  if (!text) return showToast('Enter some context first', 'warning');
+  try {
+    await opsPost('add_manual_context', { job_id: jobId, body: text });
+    input.value = '';
+    showToast('Context saved — automations will respect this for 30 days', 'success');
+    // Refresh the JARVIS view to show the new annotation
+    if (_currentJobData) renderJarvisView(_currentJobData);
+  } catch (err) {
+    showToast('Failed to save: ' + err.message, 'error');
   }
 }
 
