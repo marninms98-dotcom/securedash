@@ -8029,9 +8029,11 @@ async function renderJarvisView(job) {
 
   try {
     // Fetch job intelligence + job context in parallel
+    var reportBase = window.SUPABASE_URL + '/functions/v1/reporting-api';
+    var headers = { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY };
     var [intelResp, ctxResp] = await Promise.all([
-      swFetch('reporting-api?action=job_intelligence&job_id=' + job.id),
-      swFetch('reporting-api?action=job_context&job_id=' + job.id),
+      fetch(reportBase + '?action=job_intelligence&job_id=' + job.id, { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; }).catch(function() { return {}; }),
+      fetch(reportBase + '?action=job_context&job_id=' + job.id, { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; }).catch(function() { return {}; }),
     ]);
 
     var intel = intelResp || {};
