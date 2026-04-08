@@ -9264,7 +9264,7 @@
       var draft = JSON.parse(sessionStorage.getItem('sw_inv_draft') || 'null');
       if (draft && draft.rows && draft.rows.length > 0) {
         _invRows = draft.rows;
-        _invGst = draft.gst !== undefined ? draft.gst : true;
+        _invGst = draft.gst === true;
         _invNotes = draft.notes || '';
         _invoiceBuilderMode = draft.mode || 'weekly';
         _hoursWeekStart = draft.weekStart || _hoursWeekStart;
@@ -9554,8 +9554,9 @@
     var rate = parseFloat(input ? input.value : 0) || 0;
 
     var subtotal = rate * _hoursData.total_hours;
-    var gst = subtotal * 0.1;
-    var total = subtotal + gst;
+    var details = loadTradeDetails();
+    var gst = details.gstRegistered === true ? Math.round(subtotal * 0.1 * 100) / 100 : 0;
+    var total = Math.round((subtotal + gst) * 100) / 100;
 
     // Update cached data so submit uses correct figures
     _hoursData.rate = rate;
@@ -9855,7 +9856,7 @@
     _draftInvoiceId = null;
     _invoiceBuilderMode = opts.expenseOnly ? 'expense' : 'weekly';
     var details = loadTradeDetails();
-    _invGst = details.gstRegistered !== false;
+    _invGst = details.gstRegistered === true;
 
     if (!opts.expenseOnly) {
       autoPopulateFromHours();
@@ -9881,7 +9882,7 @@
       _invExtraLines = [];
       _invoiceBuilderMode = inv.week_start ? 'weekly' : 'expense';
       var details = loadTradeDetails();
-      _invGst = details.gstRegistered !== false;
+      _invGst = details.gstRegistered === true;
       // Restore all lines into _invRows
       (inv.lines || []).forEach(function(l) {
         _invRows.push({
@@ -10048,7 +10049,7 @@
   // ── Invoice row data ──
   var _invRows = []; // { date, job_id, job_text, description, division, hours, rate, amount, client_name, site_address }
   var _knownJobNumbers = []; // populated from search_all_jobs
-  var _invGst = true; // GST toggle state
+  var _invGst = false; // GST toggle state — default OFF (most trades not GST registered)
 
   // Persist invoice draft to sessionStorage (survives background kill)
   function _saveInvDraft() {
