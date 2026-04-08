@@ -2610,6 +2610,7 @@
         <button class="jd-tab" data-jd-tab="files" onclick="showJobSubView('files')">Files</button>
         <button class="jd-tab" data-jd-tab="comms" onclick="showJobSubView('comms')">Comms</button>
         <button class="jd-tab" data-jd-tab="history" onclick="showJobSubView('history')">History</button>
+        <button class="jd-tab" data-jd-tab="jarvis" onclick="showJobSubView('jarvis')" style="color:var(--sw-orange)">JARVIS</button>
       </div>
       <div class="jd-sub-view active" id="jdOverview"></div>
       <div class="jd-sub-view" id="jdMoney"></div>
@@ -2617,6 +2618,7 @@
       <div class="jd-sub-view" id="jdFiles"></div>
       <div class="jd-sub-view" id="jdComms"></div>
       <div class="jd-sub-view" id="jdHistory"></div>
+      <div class="jd-sub-view" id="jdJarvis"></div>
     </div>
     <!-- Action drawer removed — actions are contextual in tabs -->
     <div class="jd-drawer" id="jdDrawer" style="display:none;"></div>
@@ -7994,8 +7996,8 @@ async function refreshJobDetail() {
 function showJobSubView(tab) {
   // Map legacy tab names
   if (tab === 'timeline') tab = 'history';
-  var tabs = ['overview', 'money', 'build', 'files', 'comms', 'history'];
-  var ids = ['jdOverview', 'jdMoney', 'jdBuild', 'jdFiles', 'jdComms', 'jdHistory'];
+  var tabs = ['overview', 'money', 'build', 'files', 'comms', 'history', 'jarvis'];
+  var ids = ['jdOverview', 'jdMoney', 'jdBuild', 'jdFiles', 'jdComms', 'jdHistory', 'jdJarvis'];
   tabs.forEach(function(t, i) {
     var el = document.getElementById(ids[i]);
     var btn = document.querySelector('[data-jd-tab="' + t + '"]');
@@ -8016,6 +8018,106 @@ function showJobSubView(tab) {
   if (tab === 'files') renderFilesView(_currentJobData);
   if (tab === 'comms') renderCommsView(_currentJobData);
   if (tab === 'history') renderHistoryView(_currentJobData);
+  if (tab === 'jarvis') renderJarvisView(_currentJobData);
+}
+
+// ── JARVIS Context Panel ──
+async function renderJarvisView(job) {
+  var el = document.getElementById('jdJarvis');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec)">Loading JARVIS context...</div>';
+
+  try {
+    // Fetch job intelligence + job context in parallel
+    var [intelResp, ctxResp] = await Promise.all([
+      swFetch('reporting-api?action=job_intelligence&job_id=' + job.id),
+      swFetch('reporting-api?action=job_context&job_id=' + job.id),
+    ]);
+
+    var intel = intelResp || {};
+    var ctx = ctxResp || {};
+    var html = '';
+
+    // Risk badge + health score
+    var risk = intel.risk_level || 'unknown';
+    var riskColor = risk === 'critical' ? '#e74c3c' : risk === 'high' ? '#F15A29' : risk === 'medium' ? '#f39c12' : '#27ae60';
+    var health = intel.health_score || 0;
+
+    html += '<div style="padding:16px">';
+
+    // Header: risk + health
+    html += '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">';
+    html += '<span style="background:' + riskColor + ';color:#fff;padding:4px 10px;border-radius:3px;font-weight:700;font-size:12px;text-transform:uppercase">' + risk + ' RISK</span>';
+    html += '<div style="flex:1;background:var(--sw-border);height:8px;border-radius:4px;overflow:hidden"><div style="width:' + health + '%;height:100%;background:' + riskColor + ';transition:width 0.3s"></div></div>';
+    html += '<span style="font-weight:700;color:' + riskColor + '">' + health + '%</span>';
+    html += '</div>';
+
+    // AI Summary
+    if (intel.ai_summary) {
+      html += '<div style="background:var(--sw-bg);border-left:3px solid var(--sw-orange);padding:12px;margin-bottom:16px;font-size:13px;line-height:1.5">' + intel.ai_summary + '</div>';
+    }
+
+    // Things to know
+    if (intel.things_to_know && intel.things_to_know.length > 0) {
+      html += '<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Things to Know</div>';
+      (intel.things_to_know || []).forEach(function(t) { html += '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--sw-border)">• ' + t + '</div>'; });
+      html += '</div>';
+    }
+
+    // Next actions
+    if (intel.next_actions && intel.next_actions.length > 0) {
+      html += '<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Next Actions</div>';
+      (intel.next_actions || []).forEach(function(a) { html += '<div style="font-size:13px;padding:4px 0">→ ' + a + '</div>'; });
+      html += '</div>';
+    }
+
+    // Margin forecast
+    if (intel.margin_forecast_pct != null) {
+      html += '<div style="margin-bottom:16px;display:flex;gap:16px">';
+      html += '<div><span style="font-size:11px;color:var(--sw-text-sec)">MARGIN FORECAST</span><br><span style="font-size:20px;font-weight:700">' + Math.round(intel.margin_forecast_pct) + '%</span></div>';
+      if (intel.margin_forecast_amount) html += '<div><span style="font-size:11px;color:var(--sw-text-sec)">EST. MARGIN</span><br><span style="font-size:20px;font-weight:700">$' + Math.round(intel.margin_forecast_amount).toLocaleString() + '</span></div>';
+      html += '</div>';
+    }
+
+    // Context summary
+    var summary = ctx.summary || {};
+    html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">';
+    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.total_events || 0) + ' events</span>';
+    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.emails_received || 0) + ' emails</span>';
+    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.po_threads || 0) + ' PO threads</span>';
+    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.documents || 0) + ' docs</span>';
+    html += '</div>';
+
+    // Recent timeline (last 10)
+    var timeline = (ctx.timeline || []).slice(0, 10);
+    if (timeline.length > 0) {
+      html += '<div><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Recent Activity</div>';
+      timeline.forEach(function(e) {
+        var ago = timeAgo(e.when);
+        html += '<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--sw-border);display:flex;gap:8px">';
+        html += '<span style="color:var(--sw-text-sec);min-width:60px">' + ago + '</span>';
+        html += '<span style="color:var(--sw-orange);min-width:50px">' + (e.source || '') + '</span>';
+        html += '<span>' + (e.type || '') + ': ' + ((e.detail || '').slice(0, 100)) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // No intelligence placeholder
+    if (!intel.risk_level && !intel.ai_summary) {
+      html += '<div style="text-align:center;padding:30px;color:var(--sw-text-sec)">No AI assessment yet for this job.<br><span style="font-size:12px">Intelligence is generated when sw_job_intelligence is called.</span></div>';
+    }
+
+    // Computed timestamp
+    if (intel.computed_at) {
+      html += '<div style="text-align:right;font-size:11px;color:var(--sw-text-sec);margin-top:12px">Last assessed: ' + new Date(intel.computed_at).toLocaleString() + '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = '<div style="padding:20px;color:#e74c3c">Failed to load JARVIS context: ' + err.message + '</div>';
+  }
 }
 
 // ── Health Bar (Zone 1) ──
