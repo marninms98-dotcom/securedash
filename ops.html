@@ -2220,6 +2220,15 @@
         <div id="aiAmberAlerts" style="display:none;"></div>
       </div>
 
+      <!-- Smart Nudges Panel -->
+      <div id="nudgesPanel" class="panel" style="display:none;margin-bottom:16px;">
+        <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Smart Nudges</span>
+          <span id="nudgeCount" class="badge" style="background:#F15A29;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px;">0</span>
+        </div>
+        <div id="nudgesList" style="max-height:300px;overflow-y:auto;"></div>
+      </div>
+
       <!-- Weather Banner -->
       <div id="weatherBanner" style="display:none;margin-bottom:12px;"></div>
 
@@ -4140,7 +4149,7 @@ function showView(view) {
   if (history.replaceState) history.replaceState(null, '', '#' + view);
   localStorage.setItem('sw_ops_tab', view);
 
-  if (view === 'today') loadToday();
+  if (view === 'today') { loadToday(); loadNudges(); }
   if (view === 'calendar') loadCalendar();
   if (view === 'jobs') loadJobs();
   if (view === 'financials') loadFinancials();
@@ -4329,6 +4338,40 @@ function dismissAlert(btn, alertId) {
     // Fire-and-forget dismiss to ai_alerts table via ops-api
     opsPost('dismiss_alert', { alert_id: alertId }).catch(function() {});
   }
+}
+
+async function loadNudges() {
+  try {
+    var result = await opsFetch('list_nudges', { status: 'pending' });
+    var nudges = result.nudges || [];
+    var panel = document.getElementById('nudgesPanel');
+    var list = document.getElementById('nudgesList');
+    var countEl = document.getElementById('nudgeCount');
+    if (!nudges.length) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    countEl.textContent = nudges.length;
+    list.innerHTML = nudges.slice(0, 20).map(function(n) {
+      var age = n.created_at ? Math.floor((Date.now() - new Date(n.created_at).getTime()) / 86400000) + 'd ago' : '';
+      var type = (n.nudge_type || n.trigger_rule || '').replace(/_/g, ' ');
+      return '<div class="attention-item amber" style="margin-bottom:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<div><strong>' + (n.contact_name || 'Unknown') + '</strong>' +
+        (n.job_number ? ' <span style="opacity:0.6;font-size:12px;">' + n.job_number + '</span>' : '') +
+        '<br><span style="font-size:12px;">' + type + '</span></div>' +
+        '<div style="text-align:right;font-size:11px;opacity:0.6;">' + age +
+        '<br><button onclick="dismissNudge(\'' + n.id + '\')" style="font-size:11px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;border-radius:3px;background:#fff;">Dismiss</button></div>' +
+        '</div>';
+    }).join('');
+  } catch (err) {
+    console.warn('[ops] loadNudges failed:', err.message);
+  }
+}
+
+function dismissNudge(nudgeId) {
+  opsPost('act_nudge', { nudge_id: nudgeId, action: 'dismiss' }).then(function() {
+    loadNudges();
+  }).catch(function(err) {
+    console.warn('[ops] dismissNudge failed:', err.message);
+  });
 }
 
 async function loadToday() {
@@ -10962,7 +11005,7 @@ setInterval(function() { updateJarvisSummary(); }, 30000);
 // Auto-refresh active tab data every 5 minutes (keeps dashboard live all day)
 setInterval(function() {
   var view = localStorage.getItem('sw_ops_tab') || 'today';
-  if (view === 'today') loadToday();
+  if (view === 'today') { loadToday(); loadNudges(); }
   else if (view === 'calendar') loadCalendar();
   else if (view === 'jobs') loadJobs();
   else if (view === 'financials') loadFinancials();
