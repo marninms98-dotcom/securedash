@@ -1494,9 +1494,12 @@
       background: var(--sw-mid); border: 2px solid var(--sw-bg);
     }
     .jd-tl-item.future .jd-tl-dot { background: var(--sw-border); border-style: dashed; }
-    .jd-tl-label { font-size: 13px; font-weight: 600; color: var(--sw-text); }
+    .jd-tl-label { font-size: 13px; font-weight: 600; color: var(--sw-text); cursor: pointer; }
     .jd-tl-meta { font-size: 11px; color: var(--sw-text-sec); margin-top: 2px; }
-    .jd-tl-detail { font-size: 12px; color: var(--sw-text-sec); margin-top: 4px; padding: 6px 10px; background: var(--sw-light); border-radius: 6px; }
+    .jd-tl-detail { font-size: 12px; color: var(--sw-text-sec); margin-top: 4px; padding: 6px 10px; background: var(--sw-light); border-radius: 6px; display: none; }
+    .jd-tl-detail.expanded { display: block; }
+    .jd-tl-source { font-size: 10px; color: var(--sw-text-sec); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7; }
+    .jd-tl-icon { margin-right: 4px; font-size: 12px; }
     .jd-tl-divider {
       padding: 8px 0; font-size: 11px; font-weight: 700; color: var(--sw-orange);
       text-transform: uppercase; letter-spacing: 1px;
@@ -7748,7 +7751,7 @@ function renderJobPeek(data) {
   if (data.events && data.events.length > 0) {
     html += '<div class="panel-title" style="margin-top:16px;">Timeline</div>';
     html += '<div style="border-left:2px solid var(--sw-border); margin-left:8px; padding-left:12px;">';
-    data.events.slice(0, 20).forEach(function(ev) {
+    data.events.slice(0, 30).forEach(function(ev) {
       var label = formatEventType(ev.event_type, ev.detail_json);
       var dot = '&#9679;';
       html += '<div style="padding:4px 0; font-size:12px; position:relative;">';
@@ -8134,7 +8137,7 @@ async function renderJarvisView(job) {
     html += '</div>';
 
     // Recent timeline (last 10)
-    var timeline = (ctx.timeline || []).slice(0, 10);
+    var timeline = (ctx.timeline || []).slice(0, 20);
     if (timeline.length > 0) {
       html += '<div><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Recent Activity</div>';
       timeline.forEach(function(e) {
@@ -8606,13 +8609,122 @@ function buildTimelineEvents(data) {
     });
   });
 
+  // Business events (enriched timeline from AI intelligence layer)
+  var existingEventIds = {};
+  events.forEach(function(e) { if (e.type) existingEventIds[e.type + '_' + (e.datetime || '').slice(0, 16)] = true; });
+  (data.business_events || []).forEach(function(be) {
+    // Skip if we already have this event from job_events (avoid duplicates)
+    var dedupKey = be.event_type.replace(/\./g, '_') + '_' + (be.occurred_at || '').slice(0, 16);
+    if (existingEventIds[dedupKey]) return;
+    var label = formatBusinessEventType(be.event_type, be.payload);
+    var detailStr = '';
+    var p = be.payload;
+    if (p && typeof p === 'object') {
+      var parts = [];
+      if (p.summary) parts.push(p.summary);
+      if (p.message) parts.push(p.message);
+      if (p.amount) parts.push('$' + Number(p.amount).toFixed(2));
+      if (p.supplier) parts.push(p.supplier);
+      if (p.subject) parts.push(p.subject);
+      if (parts.length === 0) {
+        parts = Object.entries(p).filter(function(e) { return e[1] && typeof e[1] !== 'object'; }).slice(0, 4).map(function(e) { return e[0] + ': ' + e[1]; });
+      }
+      detailStr = parts.join(' | ');
+    }
+    var who = '';
+    if (be.metadata && be.metadata.actor) who = be.metadata.actor;
+    else if (be.payload && be.payload.actor) who = be.payload.actor;
+    var src = 'business';
+    if (be.event_type.startsWith('client.') || be.event_type.includes('sms') || be.event_type.includes('email') && !be.event_type.includes('po')) src = 'comms';
+    if (be.event_type.startsWith('trade.') || be.event_type.includes('clock')) src = 'trade';
+    events.push({
+      date: (be.occurred_at || '').slice(0, 10),
+      datetime: be.occurred_at,
+      label: label,
+      by: '',
+      who: who,
+      type: be.event_type,
+      detail: detailStr,
+      source: src
+    });
+  });
+
   return events;
 }
 
+function formatBusinessEventType(type, payload) {
+  var labels = {
+    'job.status_changed': 'Status changed' + (payload?.new_status ? ' to ' + payload.new_status : ''),
+    'job.completed_and_invoiced': 'Job completed and invoiced',
+    'job.phase_changed': 'Phase changed' + (payload?.new_phase ? ' to ' + payload.new_phase : ''),
+    'invoice.created': 'Invoice created',
+    'invoice.paid': 'Invoice paid',
+    'invoice.manually_marked_paid': 'Invoice marked paid',
+    'invoice.deleted': 'Invoice deleted',
+    'invoice.voided': 'Invoice voided',
+    'po.created': 'PO created',
+    'po.sent': 'PO sent to supplier',
+    'wo.created': 'Work order created',
+    'schedule.assignment_created': 'Crew assigned',
+    'schedule.assignment_deleted': 'Assignment removed',
+    'schedule.locked': 'Schedule locked',
+    'schedule.confirmation_changed': 'Confirmation updated',
+    'trade.clock_on': 'Crew clocked on',
+    'trade.clock_off': 'Crew clocked off',
+    'trade.start_travel': 'Crew travelling',
+    'trade.undo_travel': 'Travel undone',
+    'trade.invoice_submitted': 'Trade invoice submitted',
+    'trade.issue_reported': 'Issue reported on site',
+    'note.added': 'Note added',
+    'document.uploaded': 'Document uploaded',
+    'document.deleted': 'Document deleted',
+    'client.sms_in': 'Client SMS received',
+    'client.sms_out': 'SMS sent to client',
+    'client.email_in': 'Client email received',
+    'client.email_out': 'Email sent to client',
+    'client.reply': 'Client replied',
+    'supplier.email_in': 'Supplier email received',
+    'supplier.email_out': 'Email sent to supplier',
+    'crew.message': 'Crew message',
+    'action_executed': 'Action executed',
+    'transaction.reconciled': 'Transaction reconciled',
+  };
+  return labels[type] || type.replace(/[._]/g, ' ');
+}
+
+function getTimelineIcon(type) {
+  if (!type) return '\u2022';
+  if (type.includes('sms')) return '\uD83D\uDCAC';
+  if (type.includes('email') || type.includes('po_email')) return '\uD83D\uDCE7';
+  if (type.includes('call')) return '\uD83D\uDCDE';
+  if (type.includes('note')) return '\uD83D\uDCDD';
+  if (type.includes('invoice') || type.includes('payment') || type.includes('reconcil')) return '\uD83D\uDCB0';
+  if (type.includes('po') || type.includes('delivery')) return '\uD83D\uDE9A';
+  if (type.includes('crew') || type.includes('assign') || type.includes('schedule') || type.includes('clock')) return '\uD83D\uDC77';
+  if (type.includes('status') || type.includes('phase')) return '\uD83D\uDD04';
+  if (type.includes('quote')) return '\uD83D\uDCCB';
+  if (type.includes('scope')) return '\uD83D\uDCD0';
+  if (type.includes('council')) return '\uD83C\uDFDB\uFE0F';
+  if (type.includes('decision') || type.includes('action')) return '\uD83C\uDFAF';
+  if (type.includes('photo') || type.includes('report')) return '\uD83D\uDCF7';
+  if (type.includes('document') || type.includes('wo.')) return '\uD83D\uDCC4';
+  if (type.includes('variation') || type.includes('issue')) return '\u26A0\uFE0F';
+  if (type.includes('job_created') || type.includes('ghl')) return '\uD83D\uDD17';
+  return '\u2022';
+}
+
 function renderTimelineItem(ev, isFuture) {
+  var icon = getTimelineIcon(ev.type || ev.source || '');
+  var detailId = 'tlDetail_' + Math.random().toString(36).slice(2, 8);
   var html = '<div class="jd-tl-item' + (isFuture ? ' future' : '') + '">';
   html += '<div class="jd-tl-dot" style="background:' + getTimelineColor(ev.source) + '"></div>';
-  html += '<div class="jd-tl-label">' + escapeHtml(ev.label) + '</div>';
+  html += '<div class="jd-tl-label" onclick="var d=document.getElementById(\'' + detailId + '\');if(d)d.classList.toggle(\'expanded\')">';
+  html += '<span class="jd-tl-icon">' + icon + '</span>';
+  html += escapeHtml(ev.label);
+  if (ev.source && ev.source !== 'event') {
+    html += '<span class="jd-tl-source">' + escapeHtml(ev.source) + '</span>';
+  }
+  html += '</div>';
   html += '<div class="jd-tl-meta">';
   if (ev.datetime) {
     html += new Date(ev.datetime).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -8621,9 +8733,10 @@ function renderTimelineItem(ev, isFuture) {
     }
   }
   if (ev.by) html += ' &middot; ' + escapeHtml(ev.by);
+  if (ev.who && ev.who !== 'system') html += ' &middot; ' + escapeHtml(ev.who);
   html += '</div>';
   if (ev.detail) {
-    html += '<div class="jd-tl-detail">' + escapeHtml(String(ev.detail)) + '</div>';
+    html += '<div class="jd-tl-detail" id="' + detailId + '">' + escapeHtml(String(ev.detail)) + '</div>';
   }
   if (ev.photoUrl) {
     html += '<img class="jd-tl-photo" src="' + escapeHtml(ev.photoUrl) + '" onclick="window.open(\'' + escapeHtml(ev.fullUrl || ev.photoUrl) + '\',\'_blank\')" alt="Photo">';
@@ -8636,7 +8749,7 @@ function getTimelineColor(source) {
   var colors = {
     event: 'var(--sw-mid)', po: 'var(--sw-purple)', po_future: 'var(--sw-purple)',
     assignment: 'var(--sw-blue)', invoice: 'var(--sw-green)', invoice_future: 'var(--sw-green)',
-    photo: 'var(--sw-orange)'
+    photo: 'var(--sw-orange)', business: '#8B5CF6', comms: '#0EA5E9', trade: '#F59E0B'
   };
   return colors[source] || 'var(--sw-mid)';
 }
