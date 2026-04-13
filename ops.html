@@ -3504,6 +3504,13 @@ var STATUS_COLORS = {
 var _showDrafts = false;
 var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+// Use local date (not UTC) to avoid timezone day-shift bugs
+function localDateStr(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
 
 // Demo mode removed — all data comes from live API
 
@@ -4914,17 +4921,17 @@ function getCalRange() {
   var d = new Date(_calDate);
   var day = d.getDay() || 7;
   d.setDate(d.getDate() - day + 1); // Monday
-  var from = d.toISOString().slice(0, 10);
+  var from = localDateStr(d);
   if (_calRangeMode === '2w') {
     d.setDate(d.getDate() + 13);
   } else if (_calRangeMode === 'month') {
     var y = _calDate.getFullYear(), m = _calDate.getMonth();
-    from = new Date(y, m, 1).toISOString().slice(0, 10);
+    from = localDateStr(new Date(y, m, 1));
     d = new Date(y, m + 1, 0);
   } else {
     d.setDate(d.getDate() + 6);
   }
-  return { from: from, to: d.toISOString().slice(0, 10) };
+  return { from: from, to: localDateStr(d) };
 }
 
 function getCalDays(range) {
@@ -4932,7 +4939,7 @@ function getCalDays(range) {
   var d = new Date(range.from + 'T00:00:00');
   var end = new Date(range.to + 'T00:00:00');
   while (d <= end) {
-    dates.push(d.toISOString().slice(0, 10));
+    dates.push(localDateStr(d));
     d.setDate(d.getDate() + 1);
   }
   return dates;
@@ -4991,7 +4998,7 @@ function renderCalendar() {
 
 // ── Swimlane View (replaces crew/week/month — unified 3-layer calendar) ──
 function renderSwimlaneView(container, range) {
-  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayStr = localDateStr(new Date());
   var dates = getCalDays(range);
   var numDays = dates.length;
 
@@ -5374,7 +5381,7 @@ function setCalViewMode(mode) {
 
 // ── Schedule View — week-row grid with multi-day spanning bars ──
 function renderScheduleView(container, range) {
-  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayStr = localDateStr(new Date());
   var dates = getCalDays(range);
   var DAYS_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -5392,7 +5399,7 @@ function renderScheduleView(container, range) {
   var allDates = [];
   var cursor = new Date(gridStart);
   while (cursor <= gridEnd) {
-    allDates.push(cursor.toISOString().slice(0, 10));
+    allDates.push(localDateStr(cursor));
     cursor.setDate(cursor.getDate() + 1);
   }
 
