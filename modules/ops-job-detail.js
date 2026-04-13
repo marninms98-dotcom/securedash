@@ -3252,10 +3252,10 @@ async function submitJobNote() {
   if (!text || !_currentJobId) return;
 
   try {
-    await opsPost('add_event', {
+    await opsPost('add_note', {
       job_id: _currentJobId,
+      note: text,
       event_type: 'note_added',
-      detail_json: { note: text }
     });
     input.value = '';
     showToast('Note added', 'success');
@@ -3345,10 +3345,10 @@ async function submitSheetNote() {
   var text = ta ? ta.value.trim() : '';
   if (!text || !_currentJobId) return;
   try {
-    await opsPost('add_event', {
+    await opsPost('add_note', {
       job_id: _currentJobId,
+      note: text,
       event_type: 'note_added',
-      detail_json: { note: text }
     });
     showToast('Note added', 'success');
     closeActionSheet();

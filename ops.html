@@ -7572,6 +7572,7 @@ function renderJobPeek(data) {
     var scopeToolUrl = j.type === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
     html += '<a href="' + scopeToolUrl + '?jobId=' + j.id + '" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 8px; text-decoration:none;">Open Scope &#8599;</a>';
   }
+  html += '<button class="btn btn-primary btn-sm" style="font-size:11px; padding:3px 8px;" onclick="closeSlidePanel(); openJobDetail(\'' + j.id + '\')">Open Record</button>';
   html += '</div>';
   if (j.site_address) html += '<div style="font-size:13px; margin-bottom:4px;">' + j.site_address + '</div>';
   if (j.client_phone) html += '<div style="font-size:13px; color:var(--sw-text-sec);">Phone: <a href="tel:' + j.client_phone + '">' + j.client_phone + '</a></div>';
@@ -9577,10 +9578,10 @@ async function submitJobNote() {
   if (!text || !_currentJobId) return;
 
   try {
-    await opsPost('add_event', {
+    await opsPost('add_note', {
       job_id: _currentJobId,
+      note: text,
       event_type: 'note_added',
-      detail_json: { note: text }
     });
     input.value = '';
     showToast('Note added', 'success');
