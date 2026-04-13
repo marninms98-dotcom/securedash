@@ -5946,9 +5946,14 @@ function openCalJobPopup(event, assignmentId) {
   });
   html += '</select>';
   if (readiness) {
-    var unmetCount = ((readiness.blockers || []).filter(function(b) { return !b.met; }).length) + ((readiness.warnings || []).filter(function(w) { return !w.met; }).length);
+    var unmetBlockers = (readiness.blockers || []).filter(function(b) {
+      // If frontend knows crew is assigned, suppress stale backend crew_assigned blocker
+      if (!b.met && b.key === 'crew_assigned' && crewForJob.length > 0) return false;
+      return !b.met;
+    });
+    var unmetCount = unmetBlockers.length + ((readiness.warnings || []).filter(function(w) { return !w.met; }).length);
     var rdText = '';
-    if (readiness.status === 'blocked') rdText = 'Not Ready — ' + unmetCount + ' item' + (unmetCount !== 1 ? 's' : '') + ' to do';
+    if (readiness.status === 'blocked') rdText = unmetCount > 0 ? 'Not Ready — ' + unmetCount + ' item' + (unmetCount !== 1 ? 's' : '') + ' to do' : '✓ Ready';
     else if (readiness.status === 'at_risk') rdText = unmetCount + ' item' + (unmetCount !== 1 ? 's' : '') + ' to do';
     else rdText = '✓ Ready';
     html += '<span style="font-size:12px;font-weight:600;color:' + (rdColors[readiness.status] || '#6B7280') + '">' + rdText + '</span>';
@@ -5956,7 +5961,10 @@ function openCalJobPopup(event, assignmentId) {
   html += '</div>';
 
   // 5. Blockers (prominent, boxed, with fix actions inline)
-  var unmetBlockers = readiness ? (readiness.blockers || []).filter(function(b) { return !b.met; }) : [];
+  var unmetBlockers = readiness ? (readiness.blockers || []).filter(function(b) {
+    if (!b.met && b.key === 'crew_assigned' && crewForJob.length > 0) return false;
+    return !b.met;
+  }) : [];
   var unmetWarnings = readiness ? (readiness.warnings || []).filter(function(w) { return !w.met; }) : [];
 
   if (unmetBlockers.length > 0) {
