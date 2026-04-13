@@ -2377,7 +2377,6 @@
         <button class="filter-chip" onclick="filterJobs('miscellaneous')" data-filter="miscellaneous">Misc</button>
         <input type="text" class="filter-search" placeholder="Search jobs..." oninput="searchJobs(this.value)">
         <button class="btn btn-sm" onclick="openQuickQuote()" style="background:#8E44AD;color:#fff;font-weight:600;font-size:11px;padding:4px 12px;border:none;border-radius:4px;cursor:pointer;">+ Quick Quote</button>
-        <button class="btn btn-secondary btn-sm" id="btnShowDrafts" onclick="toggleDrafts()" style="opacity:0.6;font-size:11px;">Show Drafts</button>
         <div style="flex:1;"></div>
         <button class="btn btn-secondary btn-sm" id="btnKanban" onclick="setJobView('kanban')" style="font-weight:600;">Kanban</button>
         <button class="btn btn-secondary btn-sm" id="btnListView" onclick="setJobView('list')">List</button>
@@ -6431,9 +6430,7 @@ function getNextAction(j) {
 }
 
 function renderKanban(container, columns) {
-  var order = _showDrafts
-    ? ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced']
-    : ['quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
+  var order = ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
@@ -6571,7 +6568,6 @@ async function kanbanDrop(e) {
 function renderJobList(container, columns) {
   var allJobs = [];
   Object.keys(columns).forEach(function(status) {
-    if (status === 'draft' && !_showDrafts) return;
     allJobs = allJobs.concat(columns[status]);
   });
 
