@@ -2379,6 +2379,7 @@ function renderMoneyView(data) {
           html += '</div>';
         });
       }
+      html += '<div style="margin-top:8px;"><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openPOEdit(\'' + po.id + '\')">Open PO</button></div>';
       html += '</div></div>';
     });
   }
