@@ -64,6 +64,7 @@
       background: var(--sw-bg);
       color: var(--sw-text);
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
 
     /* ── Header ── */
@@ -873,6 +874,27 @@
     .kanban-col[data-status="complete"] .kanban-col-header { border-bottom-color: var(--sw-green); }
     .kanban-col[data-status="invoiced"] .kanban-col-header { border-bottom-color: var(--sw-mid); }
     .kanban-body { padding: 8px; max-height: 600px; overflow-y: auto; }
+
+    /* ── Jobs kanban: full viewport width + remaining screen height ── */
+    #jobsBody .kanban-container {
+      position: relative;
+      left: 50%;
+      margin-left: -50vw;
+      width: 100vw;
+      padding-left: 24px;
+      padding-right: 24px;
+      box-sizing: border-box;
+      height: calc(100vh - 116px); /* 48px header + 24px container-pt + 44px filter-bar */
+      align-items: stretch;
+    }
+    #jobsBody .kanban-col {
+      display: flex;
+      flex-direction: column;
+    }
+    #jobsBody .kanban-body {
+      flex: 1;
+      max-height: none;
+    }
     .kanban-card {
       background: var(--sw-card);
       border-radius: 0;
