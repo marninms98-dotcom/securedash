@@ -8844,9 +8844,10 @@ function renderMoneyView(data) {
       if (snapTotal) html += '<strong>' + fmt$(snapTotal) + '</strong>';
       html += '</div>';
       // Always-visible links: View Scope + Quote PDF
-      html += '<div class="jd-money-card-sub" onclick="event.stopPropagation();" style="display:flex;gap:10px;">';
+      html += '<div class="jd-money-card-sub" onclick="event.stopPropagation();" style="display:flex;gap:10px;flex-wrap:wrap;">';
       if (j.type !== 'miscellaneous') html += '<a href="' + scopeToolUrl + '?jobId=' + j.id + '&mode=readonly" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">View Scope &#8599;</a>';
       if (pdfUrl) html += '<a href="' + escapeHtml(pdfUrl) + '" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">Quote PDF &#8599;</a>';
+      if (doc.share_token && doc.sent_to_client) html += '<a href="https://kevgrhcjxspbxgovpmfl.supabase.co/functions/v1/send-quote/view?token=' + doc.share_token + '" target="_blank" style="font-size:11px;color:#F15A29;font-weight:600;text-decoration:none;">Client View &#8599;</a>';
       html += '</div>';
       // Expandable detail
       html += '<div id="quoteDetail_' + doc.id + '" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--sw-border);font-size:11px;" onclick="event.stopPropagation();">';
