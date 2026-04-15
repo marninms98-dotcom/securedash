@@ -897,7 +897,7 @@ function renderScopeSummary(scope_json, jobType, jobId) {
   var scopeToolUrl = jobType === 'fencing' ? 'https://marninms98-dotcom.github.io/fence-designer/' : 'https://marninms98-dotcom.github.io/patio/';
   var linkId = jobId || scope.jobId || '';
   if (linkId) {
-    html += '<div style="margin-top:6px;"><a href="' + scopeToolUrl + '?jobId=' + linkId + '&mode=readonly" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">&#128279; View in Scope Tool &#8599;</a></div>';
+    html += '<div style="margin-top:6px;"><a href="' + scopeToolUrl + '?jobId=' + linkId + '" target="_blank" style="font-size:11px;color:var(--sw-mid);font-weight:600;text-decoration:none;">&#128279; View in Scope Tool &#8599;</a></div>';
   }
 
   html += '</div>';
@@ -2619,7 +2619,7 @@ function renderBuildView(data) {
       html += '<div style="margin-bottom:12px;position:relative;">';
       html += '<div id="scopeViewerLoading" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:var(--sw-bg-card,#f8fafc);border:1px solid #e2e8f0;border-radius:8px;z-index:1;font-size:12px;color:var(--sw-text-sec,#86868B);">';
       html += '<span>Loading 3D scope viewer...</span></div>';
-      html += '<iframe src="' + viewerBaseUrl + '?jobId=' + viewerJobId + '&mode=view" ';
+      html += '<iframe src="' + viewerBaseUrl + '?jobId=' + viewerJobId + '" ';
       html += 'style="width:100%;height:400px;border:1px solid #e2e8f0;border-radius:8px;display:block;background:#f0f0f0;" ';
       html += 'frameborder="0" allowfullscreen ';
       html += 'onload="var el=document.getElementById(\'scopeViewerLoading\');if(el)el.style.display=\'none\';">';
