@@ -2999,7 +2999,7 @@ async function pipeline(client: any, params: URLSearchParams) {
   if (statusFilter) {
     query = query.eq('status', statusFilter)
   } else {
-    query = query.in('status', ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced'])
+    query = query.in('status', ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced', 'awaiting_deposit', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'rectification', 'final_payment', 'get_review', 'archived'])
   }
   if (typeFilter) query = query.eq('type', typeFilter)
 
@@ -3007,7 +3007,7 @@ async function pipeline(client: any, params: URLSearchParams) {
   if (error) throw error
 
   if (!jobs || jobs.length === 0) {
-    return { columns: { draft: [], quoted: [], accepted: [], approvals: [], processing: [], in_progress: [], complete: [], invoiced: [] }, total: 0 }
+    return { columns: { draft: [], quoted: [], accepted: [], approvals: [], processing: [], in_progress: [], complete: [], invoiced: [], awaiting_deposit: [], order_materials: [], awaiting_supplier: [], order_confirmed: [], schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [] }, total: 0 }
   }
 
   // Only enrich non-draft jobs (drafts have no assignments/POs/invoices)
@@ -3074,6 +3074,15 @@ async function pipeline(client: any, params: URLSearchParams) {
 
   const enriched = jobs.map((j: any) => {
     const value = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0
+    // Neighbour count for fencing shared fence badge
+    let neighbourCount = 0
+    if (j.type === 'fencing' && j.pricing_json) {
+      try {
+        const pj = typeof j.pricing_json === 'string' ? JSON.parse(j.pricing_json) : j.pricing_json
+        const ns = pj?.neighbour_splits?.neighbours || pj?.job?.neighbours
+        if (Array.isArray(ns)) neighbourCount = ns.length
+      } catch (_) {}
+    }
     const stageStart = j.status === 'accepted' ? j.accepted_at
       : j.status === 'approvals' ? j.approvals_at
       : j.status === 'deposit' ? j.deposit_at
@@ -3090,7 +3099,7 @@ async function pipeline(client: any, params: URLSearchParams) {
     // Strip pricing_json from response — value already extracted
     const { pricing_json: _p, ...jLite } = j
     return {
-      ...jLite, value, days_in_stage: daysInStage,
+      ...jLite, value, days_in_stage: daysInStage, neighbour_count: neighbourCount,
       assignment_count: assignMap[j.id] || 0,
       po_count: poMap[j.id] || 0,
       wo_count: woMap[j.id] || 0,
@@ -3119,13 +3128,15 @@ async function pipeline(client: any, params: URLSearchParams) {
 
   const columns: Record<string, any[]> = {
     draft: [], quoted: [], accepted: [], approvals: [], processing: [], in_progress: [], complete: [], invoiced: [],
+    awaiting_deposit: [], order_materials: [], awaiting_supplier: [], order_confirmed: [],
+    schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [],
   }
   for (const j of enriched) {
-    // Merge deposit → accepted column, scheduled → processing column
+    // Merge deposit → accepted (old status). Scheduled: own column for fencing, merge to processing for others.
     const col = j.status === 'deposit' ? 'accepted'
-      : j.status === 'scheduled' ? 'processing'
+      : (j.status === 'scheduled' && j.type !== 'fencing') ? 'processing'
       : j.status
-    if (columns[col]) columns[col].push(j)
+    if (columns[col] !== undefined) columns[col].push(j)
   }
 
   return { columns, total: enriched.length }
@@ -3796,7 +3807,7 @@ async function updateJobStatus(client: any, body: any) {
   const status = body.status
   if (!jId || !status) throw new Error('jobId and status required')
 
-  const validStatuses = ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced', 'cancelled', 'lost']
+  const validStatuses = ['draft', 'quoted', 'accepted', 'approvals', 'deposit', 'processing', 'scheduled', 'in_progress', 'complete', 'invoiced', 'cancelled', 'lost', 'awaiting_deposit', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'rectification', 'final_payment', 'get_review', 'archived']
   if (!validStatuses.includes(status)) throw new Error('Invalid status: ' + status)
 
   // Capture old status + job data for business_events dual-write
