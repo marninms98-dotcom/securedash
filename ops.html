@@ -10078,6 +10078,9 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   syncAssignEndDate();
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
+  document.getElementById('assignLabel').value = '';
+  // Show label field by default (hide it only when a job is selected)
+  document.getElementById('assignLabelGroup').style.display = preSelectJobId ? 'none' : '';
   await loadPOJobList();
   await loadCrewList();
   // Render crew dropdown — preCrew can be a user ID or a name
