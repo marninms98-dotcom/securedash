@@ -3007,7 +3007,7 @@ async function pipeline(client: any, params: URLSearchParams) {
   if (error) throw error
 
   if (!jobs || jobs.length === 0) {
-    return { columns: { draft: [], quoted: [], accepted: [], approvals: [], processing: [], in_progress: [], complete: [], invoiced: [], awaiting_deposit: [], order_materials: [], awaiting_supplier: [], order_confirmed: [], schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [] }, total: 0 }
+    return { columns: { draft: [], quoted: [], accepted: [], approvals: [], processing: [], scheduled: [], in_progress: [], complete: [], invoiced: [], awaiting_deposit: [], order_materials: [], awaiting_supplier: [], order_confirmed: [], schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [] }, total: 0 }
   }
 
   // Only enrich non-draft jobs (drafts have no assignments/POs/invoices)
@@ -3127,7 +3127,7 @@ async function pipeline(client: any, params: URLSearchParams) {
   })
 
   const columns: Record<string, any[]> = {
-    draft: [], quoted: [], accepted: [], approvals: [], processing: [], in_progress: [], complete: [], invoiced: [],
+    draft: [], quoted: [], accepted: [], approvals: [], processing: [], scheduled: [], in_progress: [], complete: [], invoiced: [],
     awaiting_deposit: [], order_materials: [], awaiting_supplier: [], order_confirmed: [],
     schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [],
   }
