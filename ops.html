@@ -2748,11 +2748,18 @@
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Start Date</label>
-        <input type="date" class="form-input" id="assignDate">
+        <input type="date" class="form-input" id="assignDate" onchange="syncAssignEndDate()">
       </div>
       <div class="form-group">
-        <label class="form-label">End Date (optional)</label>
-        <input type="date" class="form-input" id="assignEndDate">
+        <label class="form-label">Duration</label>
+        <select class="form-select" id="assignDuration" onchange="syncAssignEndDate()">
+          <option value="1">1 day</option>
+          <option value="2" selected>2 days</option>
+          <option value="3">3 days</option>
+          <option value="4">4 days</option>
+          <option value="5">5 days</option>
+        </select>
+        <input type="hidden" id="assignEndDate">
       </div>
     </div>
     <div class="form-row">
@@ -9853,6 +9860,17 @@ async function submitSheetNote() {
   }
 }
 
+// Auto-calculate end date from start date + duration
+function syncAssignEndDate() {
+  var startDate = document.getElementById('assignDate').value;
+  var dur = parseInt(document.getElementById('assignDuration').value) || 1;
+  if (startDate) {
+    var end = new Date(startDate + 'T00:00:00');
+    end.setDate(end.getDate() + dur - 1);
+    document.getElementById('assignEndDate').value = end.toISOString().slice(0, 10);
+  }
+}
+
 // Helper to open assignment modal pre-filled for a specific job
 function openAssignmentModalForJob(jobId) {
   openAssignmentModal();
@@ -10038,6 +10056,8 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   document.getElementById('assignmentModal').classList.add('active');
   document.getElementById('assignModalTitle').textContent = 'Schedule Assignment';
   document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
+  document.getElementById('assignDuration').value = '2'; // Default 2 days
+  syncAssignEndDate();
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
   await loadPOJobList();
@@ -10075,6 +10095,14 @@ async function openEditAssignmentModal(assignmentId) {
 
   document.getElementById('assignmentModal').classList.add('active');
   document.getElementById('assignDate').value = ev.scheduled_date || '';
+  // Calculate duration from dates and set dropdown
+  var editDur = 1;
+  if (ev.scheduled_date && ev.scheduled_end) {
+    var ds = new Date(ev.scheduled_date + 'T00:00:00');
+    var de = new Date(ev.scheduled_end + 'T00:00:00');
+    editDur = Math.max(1, Math.round((de - ds) / 86400000) + 1);
+  }
+  document.getElementById('assignDuration').value = String(Math.min(editDur, 5));
   document.getElementById('assignEndDate').value = ev.scheduled_end || '';
   document.getElementById('assignStartTime').value = ev.start_time || '07:00';
   document.getElementById('assignEndTime').value = ev.end_time || '15:00';
@@ -10320,6 +10348,8 @@ async function submitAssignment() {
   if (!crewUserId) { alert('Please select a Team Lead.'); return; }
 
   try {
+    // Always calculate end date from start date + duration to prevent mismatch
+    syncAssignEndDate();
     var endDate = document.getElementById('assignEndDate').value || null;
     var startTime = document.getElementById('assignStartTime').value || null;
     var endTime = document.getElementById('assignEndTime').value || null;
