@@ -13,9 +13,6 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   document.getElementById('assignDate').value = preDate || new Date().toISOString().slice(0, 10);
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
-  document.getElementById('assignLabel').value = '';
-  // Show label field by default (hide only when a job is pre-selected)
-  document.getElementById('assignLabelGroup').style.display = preSelectJobId ? 'none' : '';
   await loadPOJobList();
   await loadCrewList();
   // Render crew dropdown — preCrew can be a user ID or a name
@@ -73,13 +70,11 @@ async function openEditAssignmentModal(assignmentId) {
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
   };
 
-  // Pre-select job or show label field
+  // Pre-select job or populate label into search box
   if (ev.job_id) {
     selectJobPicker('assign', ev.job_id);
-    document.getElementById('assignLabelGroup').style.display = 'none';
   } else {
-    document.getElementById('assignLabel').value = ev.label || '';
-    document.getElementById('assignLabelGroup').style.display = '';
+    document.getElementById('assignJobSearch').value = ev.label || '';
   }
 }
 
@@ -310,8 +305,8 @@ async function submitAssignment() {
 
   var label = null;
   if (!jobId) {
-    label = (document.getElementById('assignLabel').value || '').trim();
-    if (!label) { alert('Please enter a label or select a job.'); return; }
+    label = (document.getElementById('assignJobSearch').value || '').trim();
+    if (!label) { alert('Please select a job or type a label (e.g. Team meeting).'); return; }
   }
 
   var crewUserId = getCrewSelectId('assignCrew');
@@ -401,8 +396,7 @@ async function submitAssignment() {
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
-    document.getElementById('assignLabel').value = '';
-    document.getElementById('assignLabelGroup').style.display = 'none';
+    document.getElementById('assignJobSearch').value = '';
     document.getElementById('assignNotes').value = '';
     document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes('');

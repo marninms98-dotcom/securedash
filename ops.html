@@ -2738,16 +2738,12 @@
   <div class="modal">
     <div class="modal-title" id="assignModalTitle">Schedule Assignment</div>
     <div class="form-group">
-      <label class="form-label">Job <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px;">(optional)</span></label>
+      <label class="form-label">Job / Event <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px;">(select a job or type any label e.g. Team meeting)</span></label>
       <div style="position:relative;">
-        <input type="text" class="form-input" id="assignJobSearch" placeholder="Type client name, job number, or suburb..." autocomplete="off" oninput="filterJobPicker('assign', this.value);toggleAssignLabelField()" onfocus="filterJobPicker('assign', this.value)" />
+        <input type="text" class="form-input" id="assignJobSearch" placeholder="Search job — or type a label e.g. Team meeting, Training day…" autocomplete="off" oninput="filterJobPicker('assign', this.value)" onfocus="filterJobPicker('assign', this.value)" />
         <input type="hidden" id="assignJobSelect" />
         <div id="assignJobDropdown" class="job-picker-dropdown"></div>
       </div>
-    </div>
-    <div class="form-group" id="assignLabelGroup" style="display:none;">
-      <label class="form-label">Event Label</label>
-      <input type="text" class="form-input" id="assignLabel" placeholder="e.g. Team meeting, Training day, Warehouse stocktake…" />
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -10078,9 +10074,6 @@ async function openAssignmentModal(preSelectJobId, preDate, preCrew) {
   syncAssignEndDate();
   document.getElementById('assignJobSearch').value = '';
   document.getElementById('assignJobSelect').value = '';
-  document.getElementById('assignLabel').value = '';
-  // Show label field by default (hide it only when a job is selected)
-  document.getElementById('assignLabelGroup').style.display = preSelectJobId ? 'none' : '';
   await loadPOJobList();
   await loadCrewList();
   // Render crew dropdown — preCrew can be a user ID or a name
@@ -10146,13 +10139,11 @@ async function openEditAssignmentModal(assignmentId) {
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
   };
 
-  // Pre-select job or show label field
+  // Pre-select job or populate label into search box
   if (ev.job_id) {
     selectJobPicker('assign', ev.job_id);
-    document.getElementById('assignLabelGroup').style.display = 'none';
   } else {
-    document.getElementById('assignLabel').value = ev.label || '';
-    document.getElementById('assignLabelGroup').style.display = '';
+    document.getElementById('assignJobSearch').value = ev.label || '';
   }
 }
 
@@ -10284,17 +10275,6 @@ function selectJobPicker(prefix, jobId) {
   // Picker-specific post-select hooks
   if (prefix === 'po') onPOJobSelect(jobId);
   if (prefix === 'inv') onInvJobSelect(jobId);
-  if (prefix === 'assign') {
-    var labelGroup = document.getElementById('assignLabelGroup');
-    if (labelGroup) labelGroup.style.display = jobId ? 'none' : '';
-  }
-}
-
-function toggleAssignLabelField() {
-  var jobId = document.getElementById('assignJobSelect').value;
-  var search = (document.getElementById('assignJobSearch').value || '').trim();
-  var labelGroup = document.getElementById('assignLabelGroup');
-  if (labelGroup) labelGroup.style.display = (!jobId && !search) ? '' : 'none';
 }
 
 // Legacy wrappers for PO modal (existing code calls these)
@@ -10381,8 +10361,8 @@ async function submitAssignment() {
 
   var label = null;
   if (!jobId) {
-    label = (document.getElementById('assignLabel').value || '').trim();
-    if (!label) { alert('Please enter a label or select a job.'); return; }
+    label = (document.getElementById('assignJobSearch').value || '').trim();
+    if (!label) { alert('Please select a job or type a label (e.g. Team meeting).'); return; }
   }
 
   var crewUserId = getCrewSelectId('assignCrew');
@@ -10474,8 +10454,7 @@ async function submitAssignment() {
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
-    document.getElementById('assignLabel').value = '';
-    document.getElementById('assignLabelGroup').style.display = 'none';
+    document.getElementById('assignJobSearch').value = '';
     document.getElementById('assignNotes').value = '';
     document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes('');
