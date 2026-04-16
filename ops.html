@@ -2738,12 +2738,16 @@
   <div class="modal">
     <div class="modal-title" id="assignModalTitle">Schedule Assignment</div>
     <div class="form-group">
-      <label class="form-label">Job</label>
+      <label class="form-label">Job <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px;">(optional)</span></label>
       <div style="position:relative;">
-        <input type="text" class="form-input" id="assignJobSearch" placeholder="Type client name, job number, or suburb..." autocomplete="off" oninput="filterJobPicker('assign', this.value)" onfocus="filterJobPicker('assign', this.value)" />
+        <input type="text" class="form-input" id="assignJobSearch" placeholder="Type client name, job number, or suburb..." autocomplete="off" oninput="filterJobPicker('assign', this.value);toggleAssignLabelField()" onfocus="filterJobPicker('assign', this.value)" />
         <input type="hidden" id="assignJobSelect" />
         <div id="assignJobDropdown" class="job-picker-dropdown"></div>
       </div>
+    </div>
+    <div class="form-group" id="assignLabelGroup" style="display:none;">
+      <label class="form-label">Event Label</label>
+      <input type="text" class="form-input" id="assignLabel" placeholder="e.g. Team meeting, Training day, Warehouse stocktake…" />
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -6667,22 +6671,9 @@ var _kanbanDragFromStatus = null;
 function kanbanDragAllowed(fromStatus, toStatus) {
   if (fromStatus === toStatus) return false;
   if (_pipelineTab === 'fencing') {
-    var fencingAllowed = {
-      'quoted': ['accepted', 'cancelled'],
-      'accepted': ['awaiting_deposit', 'cancelled'],
-      'awaiting_deposit': ['order_materials'],
-      'order_materials': ['awaiting_supplier'],
-      'awaiting_supplier': ['order_confirmed'],
-      'order_confirmed': ['schedule_install'],
-      'schedule_install': ['scheduled'],
-      'scheduled': ['in_progress', 'cancelled'],
-      'in_progress': ['rectification', 'final_payment', 'cancelled'],
-      'rectification': ['final_payment', 'in_progress'],
-      'final_payment': ['get_review'],
-      'get_review': ['complete'],
-      'complete': ['archived'],
-    };
-    return (fencingAllowed[fromStatus] || []).indexOf(toStatus) !== -1;
+    // Free movement: any fencing stage → any other fencing stage (incl. archived). No cancelled.
+    var allFencing = FENCING_STAGES.concat(['archived']);
+    return allFencing.indexOf(fromStatus) !== -1 && allFencing.indexOf(toStatus) !== -1;
   }
   var allowed = {
     'draft': ['quoted'],
@@ -6734,9 +6725,22 @@ async function kanbanDrop(e) {
   if (!col) return;
   col.style.outline = '';
   var toStatus = col.dataset.status;
-  if (!_kanbanDragJobId || !kanbanDragAllowed(_kanbanDragFromStatus, toStatus)) return;
+  var fromStatus = _kanbanDragFromStatus;
+  var jobId = _kanbanDragJobId;
+  if (!jobId || !kanbanDragAllowed(fromStatus, toStatus)) return;
+  // Backwards-move confirmation (fencing pipeline only)
+  if (_pipelineTab === 'fencing') {
+    var order = FENCING_STAGES.concat(['archived']);
+    var fi = order.indexOf(fromStatus);
+    var ti = order.indexOf(toStatus);
+    if (fi > -1 && ti > -1 && ti < fi) {
+      var fromLabel = STATUS_LABELS[fromStatus] || fromStatus;
+      var toLabel = STATUS_LABELS[toStatus] || toStatus;
+      if (!confirm('Move this job backwards from "' + fromLabel + '" to "' + toLabel + '"?')) return;
+    }
+  }
   try {
-    await opsPost('update_job_status', { jobId: _kanbanDragJobId, status: toStatus });
+    await opsPost('update_job_status', { jobId: jobId, status: toStatus });
     showToast('Job moved to ' + (STATUS_LABELS[toStatus] || toStatus), 'success');
     loadJobs();
   } catch (err) {

@@ -70,9 +70,13 @@ async function openEditAssignmentModal(assignmentId) {
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes(this.value);
   };
 
-  // Pre-select job
+  // Pre-select job or show label field
   if (ev.job_id) {
     selectJobPicker('assign', ev.job_id);
+    document.getElementById('assignLabelGroup').style.display = 'none';
+  } else {
+    document.getElementById('assignLabel').value = ev.label || '';
+    document.getElementById('assignLabelGroup').style.display = '';
   }
 }
 
@@ -204,6 +208,11 @@ function selectJobPicker(prefix, jobId) {
   // Picker-specific post-select hooks
   if (prefix === 'po') onPOJobSelect(jobId);
   if (prefix === 'inv') onInvJobSelect(jobId);
+  if (prefix === 'assign') {
+    // Hide label field when a job is selected
+    var labelGroup = document.getElementById('assignLabelGroup');
+    if (labelGroup) labelGroup.style.display = jobId ? 'none' : '';
+  }
 }
 
 // Legacy wrappers for PO modal (existing code calls these)
@@ -283,10 +292,24 @@ async function loadSupplierList() {
   }
 }
 
+function toggleAssignLabelField() {
+  var jobId = document.getElementById('assignJobSelect').value;
+  var search = (document.getElementById('assignJobSearch').value || '').trim();
+  var labelGroup = document.getElementById('assignLabelGroup');
+  // Show label field when job search is empty/cleared and no job selected
+  labelGroup.style.display = (!jobId && !search) ? '' : 'none';
+}
+
 async function submitAssignment() {
   var jobId = document.getElementById('assignJobSelect').value;
   var date = document.getElementById('assignDate').value;
-  if (!jobId || !date) { alert('Please select a job and date.'); return; }
+  if (!date) { alert('Please select a date.'); return; }
+
+  var label = null;
+  if (!jobId) {
+    label = (document.getElementById('assignLabel').value || '').trim();
+    if (!label) { alert('Please enter a label or select a job.'); return; }
+  }
 
   var crewUserId = getCrewSelectId('assignCrew');
   var crewName = getCrewSelectName('assignCrew');
@@ -304,7 +327,7 @@ async function submitAssignment() {
       var editEv = _calEvents.find(function(e) { return e.assignment_id === _editAssignmentId; });
       await opsPost('delete_assignment', { assignmentId: _editAssignmentId });
       await opsPost('create_assignment', {
-        jobId: jobId,
+        jobId: jobId || null,
         scheduledDate: date,
         scheduledEnd: endDate,
         startTime: startTime,
@@ -314,6 +337,7 @@ async function submitAssignment() {
         userId: crewUserId || null,
         role: 'lead_installer',
         notes: notes,
+        label: label,
       });
 
       // Sync dates to sibling assignments (other crew on same job)
@@ -337,7 +361,7 @@ async function submitAssignment() {
     } else {
       // Create lead assignment
       await opsPost('create_assignment', {
-        jobId: jobId,
+        jobId: jobId || null,
         scheduledDate: date,
         scheduledEnd: endDate,
         startTime: startTime,
@@ -347,6 +371,7 @@ async function submitAssignment() {
         userId: crewUserId || null,
         role: 'lead_installer',
         notes: notes,
+        label: label,
       });
 
       // Create helper assignments for checked team members
@@ -355,7 +380,7 @@ async function submitAssignment() {
         var memberId = memberCbs[i].value;
         var memberName = memberCbs[i].getAttribute('data-name');
         await opsPost('create_assignment', {
-          jobId: jobId,
+          jobId: jobId || null,
           scheduledDate: date,
           scheduledEnd: endDate,
           startTime: startTime,
@@ -365,6 +390,7 @@ async function submitAssignment() {
           userId: memberId || null,
           role: 'helper',
           notes: notes,
+          label: label,
         });
       }
       var totalAssigned = 1 + memberCbs.length;
@@ -372,6 +398,8 @@ async function submitAssignment() {
     closeModal('assignmentModal');
     // Reset form
     document.getElementById('assignJobSelect').value = '';
+    document.getElementById('assignLabel').value = '';
+    document.getElementById('assignLabelGroup').style.display = 'none';
     document.getElementById('assignNotes').value = '';
     document.getElementById('assignCrewContainer').innerHTML = renderCrewDropdown('assignCrew', '');
     document.getElementById('assignMembersContainer').innerHTML = renderMemberCheckboxes('');

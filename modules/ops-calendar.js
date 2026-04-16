@@ -466,15 +466,22 @@ function renderSwimlaneView(container, range) {
           html += ' ondragstart="event.preventDefault();showToast(\'Confirmed — use Reschedule in popup\',\'warning\');return false;"';
         }
         html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
-        html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '"';
+        var titleText = ev.client_name ? escapeHtml(ev.client_name) + ' — ' + escapeHtml(ev.site_suburb || '') : escapeHtml(ev.label || 'Internal');
+        html += ' title="' + titleText + '"';
         html += '>';
 
         // Live on-site indicator
         if (isLiveOnSite && !isStaleOnSite) html += '<span style="display:inline-block;width:8px;height:8px;background:#22C55E;border-radius:50%;margin-right:4px;animation:pulse 1.5s infinite;" title="On site now"></span>';
         else if (isStaleOnSite) html += '<span style="display:inline-block;width:8px;height:8px;background:#F59E0B;border-radius:50%;margin-right:4px;" title="Clocked on 14h+ ago — may be stale"></span>';
-        // Job name (skip job_number on month view)
-        if (!isMonthMode && ev.job_number) html += '<strong>' + ev.job_number + '</strong> ';
-        html += escapeHtml(ev.client_name || 'Unknown');
+        // Job name or label
+        if (!ev.job_id) {
+          // Job-less internal entry — grey dot + italic label
+          html += '<span style="display:inline-block;width:8px;height:8px;background:#9CA3AF;border-radius:50%;margin-right:4px;"></span>';
+          html += '<em>' + escapeHtml(ev.label || 'Internal') + '</em>';
+        } else {
+          if (!isMonthMode && ev.job_number) html += '<strong>' + ev.job_number + '</strong> ';
+          html += escapeHtml(ev.client_name || 'Unknown');
+        }
         // Lock icon on confirmed
         if (confStatus === 'confirmed') html += '<span class="cal-lock-icon">&#128274;</span>';
         // Type icon (inline SVG, week view only)
@@ -673,8 +680,9 @@ function renderCompactMonth(container, range) {
       var borderStyle = cs === 'confirmed' ? '2px solid #27AE60' : cs === 'placeholder' ? '1px dashed #ccc' : '1px solid #8FA4B2';
       html += '<div class="cm-pill" style="background:' + bgColor + ';border:' + borderStyle + ';"';
       html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + ev.assignment_id + '\')"';
-      html += ' title="' + escapeHtml(ev.client_name || '') + ' — ' + escapeHtml(ev.site_suburb || '') + '">';
-      html += escapeHtml(ev.client_name || 'Unknown');
+      var cmTitle = ev.client_name ? escapeHtml(ev.client_name) + ' — ' + escapeHtml(ev.site_suburb || '') : escapeHtml(ev.label || 'Internal');
+      html += ' title="' + cmTitle + '">';
+      html += escapeHtml(ev.client_name || ev.label || 'Internal');
       if (cs === 'confirmed') html += ' 🔒';
       html += '</div>';
     });
@@ -912,21 +920,28 @@ async function openCalJobPopup(event, assignmentId) {
   popup.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:start;"><div class="cal-job-popup-title">Loading...</div><button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button></div>';
   document.getElementById('calJobPopupOverlay').classList.add('open');
 
-  // Fetch full job detail
+  // Fetch full job detail (job assignments only)
   var j = null;
   var jobDetail = null;
-  try {
-    jobDetail = await opsFetch('job_detail', { jobId: ev.job_id });
-    j = jobDetail.job;
-  } catch(e) {}
+  if (ev.job_id) {
+    try {
+      jobDetail = await opsFetch('job_detail', { jobId: ev.job_id });
+      j = jobDetail.job;
+    } catch(e) {}
+  }
 
   // ═══ TOP SECTION: Job Info ═══
   var html = '';
 
   // Title + close
   html += '<div style="display:flex;justify-content:space-between;align-items:start;gap:6px;">';
-  html += '<div><strong style="font-size:15px;">' + escapeHtml(j ? j.client_name : ev.client_name || 'Unknown') + '</strong>';
-  html += '<div style="font-size:12px;color:var(--sw-text-sec);">' + (ev.job_number || (j && j.job_number) || '') + ' &middot; ' + escapeHtml(j ? j.site_suburb || '' : ev.site_suburb || '') + '</div>';
+  if (ev.job_id) {
+    html += '<div><strong style="font-size:15px;">' + escapeHtml(j ? j.client_name : ev.client_name || 'Unknown') + '</strong>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec);">' + (ev.job_number || (j && j.job_number) || '') + ' &middot; ' + escapeHtml(j ? j.site_suburb || '' : ev.site_suburb || '') + '</div>';
+  } else {
+    html += '<div><strong style="font-size:15px;">' + escapeHtml(ev.label || 'Internal Event') + '</strong>';
+    html += '<div style="font-size:12px;color:var(--sw-text-sec);">Internal / No Job</div>';
+  }
   html += '</div>';
   html += '<button onclick="closeCalJobPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button>';
   html += '</div>';
@@ -976,7 +991,8 @@ async function openCalJobPopup(event, assignmentId) {
   }
   var crewForJob = [];
   _calEvents.forEach(function(e) {
-    if (e.job_id === ev.job_id) {
+    var sameEntry = ev.job_id ? e.job_id === ev.job_id : e.assignment_id === ev.assignment_id;
+    if (sameEntry) {
       var cn = cleanCrewName(e.crew_name || e.assigned_to);
       if (cn && cn !== 'Unassigned' && crewForJob.indexOf(cn) === -1) crewForJob.push(cn);
     }
