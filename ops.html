@@ -3506,7 +3506,7 @@
 
 <!-- Council modules: loaded BEFORE inline script so inline functions override any conflicts -->
 <script src="modules/ops-council.js?v=2"></script>
-<script src="modules/ops-modals.js?v=2"></script>
+<script src="modules/ops-modals.js?v=3"></script>
 
 <!-- ══════════ JAVASCRIPT ══════════ -->
 <script>
@@ -4953,7 +4953,7 @@ async function loadCalendar() {
     _calEvents = (data.events || []).filter(function(ev) {
       // Filter out legacy GHL imports and completed-without-job-number ghosts
       if (ev.legacy === true) return false;
-      if (ev.job_status === 'complete' && !ev.job_number) return false;
+      if (ev.job_id && ev.job_status === 'complete' && !ev.job_number) return false;
       return true;
     });
     _calDeliveries = data.deliveries || [];
@@ -5482,8 +5482,46 @@ function renderScheduleView(container, range) {
 
   // Group events by job_id — deduplicate crew, compute span
   var jobMap = {};
+  var labelMap = {}; // job-less entries keyed by assignment_id
   _calEvents.forEach(function(ev) {
-    if (!ev.job_id) return;
+    if (!ev.job_id) {
+      // Collect label (internal) events
+      var aid = ev.assignment_id || ('lbl_' + ev.scheduled_date + '_' + (ev.label || ''));
+      if (!labelMap[aid]) {
+        var crewName = 'Unassigned';
+        if (ev.user_id) {
+          var m = _crewList.find(function(u) { return u.id === ev.user_id; });
+          crewName = m ? m.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+        } else {
+          crewName = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+        }
+        var crew = {};
+        if (crewName !== 'Unassigned') crew[crewName] = true;
+        labelMap[aid] = {
+          id: aid,
+          assignmentId: aid,
+          label: ev.label || 'Internal',
+          start: ev.scheduled_date,
+          end: ev.scheduled_end || ev.scheduled_date,
+          crew: crew,
+          isLabel: true
+        };
+      } else {
+        // expand span + add crew
+        if (ev.scheduled_date < labelMap[aid].start) labelMap[aid].start = ev.scheduled_date;
+        var evEnd2 = ev.scheduled_end || ev.scheduled_date;
+        if (evEnd2 > labelMap[aid].end) labelMap[aid].end = evEnd2;
+        var crewName2 = 'Unassigned';
+        if (ev.user_id) {
+          var m2 = _crewList.find(function(u) { return u.id === ev.user_id; });
+          crewName2 = m2 ? m2.name : (cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned');
+        } else {
+          crewName2 = cleanCrewName(ev.crew_name || ev.assigned_to) || 'Unassigned';
+        }
+        if (crewName2 !== 'Unassigned') labelMap[aid].crew[crewName2] = true;
+      }
+      return;
+    }
     // Division filter
     if (_calDivFilter !== 'all') {
       var div = ev.job_type || 'patio';
@@ -5529,9 +5567,16 @@ function renderScheduleView(container, range) {
     j.id = jid;
     j.crewNames = Object.keys(j.crew);
     return j;
-  }).sort(function(a, b) {
+  });
+  // Add label (job-less) entries
+  Object.keys(labelMap).forEach(function(aid) {
+    var l = labelMap[aid];
+    l.crewNames = Object.keys(l.crew);
+    jobs.push(l);
+  });
+  jobs.sort(function(a, b) {
     if (a.start !== b.start) return a.start.localeCompare(b.start);
-    return a.job_number.localeCompare(b.job_number);
+    return (a.job_number || a.label || '').localeCompare(b.job_number || b.label || '');
   });
 
   // Split dates into weeks (arrays of 7)
@@ -5631,43 +5676,62 @@ function renderScheduleView(container, range) {
       var lane = jobLanes[job.id] || 0;
       var topPx = 22 + lane * (barHeight + barGap);
 
-      var typeClass = (job.job_type === 'fencing') ? 'fencing' : (job.job_type === 'decking') ? 'decking' : 'patio';
-      var confClass = job.confirmation || 'tentative';
-      var readiness = _calReadiness[job.id];
-      var readinessClass = readiness ? ' readiness-' + readiness.status : '';
+      if (job.isLabel) {
+        // Internal / job-less bar
+        html += '<div class="cal-schedule-bar"';
+        html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;background:#6B7280;border-color:#6B7280;color:#fff;"';
+        html += ' data-assignment-id="' + job.assignmentId + '"';
+        html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + job.assignmentId + '\')"';
+        html += '>';
+        html += '<span class="bar-dot" style="background:#9CA3AF;"></span>';
+        html += '<em style="overflow:hidden;text-overflow:ellipsis;font-style:italic;">' + escapeHtml(job.label) + '</em>';
+        if (job.crewNames.length > 0) {
+          html += '<span class="bar-crew">';
+          job.crewNames.forEach(function(c) {
+            html += '<span class="crew-initial" style="background:' + crewColor(c) + ';">' + c.charAt(0).toUpperCase() + '</span>';
+          });
+          html += '</span>';
+        }
+        html += '</div>';
+      } else {
+        var typeClass = (job.job_type === 'fencing') ? 'fencing' : (job.job_type === 'decking') ? 'decking' : 'patio';
+        var confClass = job.confirmation || 'tentative';
+        var readiness = _calReadiness[job.id];
+        var readinessClass = readiness ? ' readiness-' + readiness.status : '';
 
-      html += '<div class="cal-schedule-bar ' + typeClass + ' ' + confClass + readinessClass + '"';
-      html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;"';
-      html += ' data-job-id="' + job.id + '"';
-      html += ' data-assignment-id="' + (job.assignmentId || '') + '"';
-      html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + (job.assignmentId || '') + '\')"';
-      html += ' onmouseenter="showScheduleTooltip(event,\'' + job.id + '\')"';
-      html += ' onmouseleave="hideScheduleTooltip()"';
-      html += '>';
+        html += '<div class="cal-schedule-bar ' + typeClass + ' ' + confClass + readinessClass + '"';
+        html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;"';
+        html += ' data-job-id="' + job.id + '"';
+        html += ' data-assignment-id="' + (job.assignmentId || '') + '"';
+        html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + (job.assignmentId || '') + '\')"';
+        html += ' onmouseenter="showScheduleTooltip(event,\'' + job.id + '\')"';
+        html += ' onmouseleave="hideScheduleTooltip()"';
+        html += '>';
 
-      // Readiness dot
-      if (readiness) {
-        var dotColors = { ready: '#22C55E', at_risk: '#F59E0B', blocked: '#EF4444' };
-        html += '<span class="bar-dot" style="background:' + (dotColors[readiness.status] || '#999') + ';"></span>';
+        // Readiness dot
+        if (readiness) {
+          var dotColors = { ready: '#22C55E', at_risk: '#F59E0B', blocked: '#EF4444' };
+          html += '<span class="bar-dot" style="background:' + (dotColors[readiness.status] || '#999') + ';"></span>';
+        }
+
+        // Job number + client
+        if (job.job_number) html += '<strong style="font-size:9px;">' + job.job_number + '</strong> ';
+        html += '<span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.client_name) + '</span>';
+
+        // Lock icon
+        if (confClass === 'confirmed') html += '<span class="bar-lock">&#128274;</span>';
+
+        // Crew chips
+        if (job.crewNames.length > 0) {
+          html += '<span class="bar-crew">';
+          job.crewNames.forEach(function(c) {
+            html += '<span class="crew-initial" style="background:' + crewColor(c) + ';">' + c.charAt(0).toUpperCase() + '</span>';
+          });
+          html += '</span>';
+        }
+
+        html += '</div>';
       }
-
-      // Job number + client
-      if (job.job_number) html += '<strong style="font-size:9px;">' + job.job_number + '</strong> ';
-      html += '<span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.client_name) + '</span>';
-
-      // Lock icon
-      if (confClass === 'confirmed') html += '<span class="bar-lock">&#128274;</span>';
-
-      // Crew chips
-      if (job.crewNames.length > 0) {
-        html += '<span class="bar-crew">';
-        job.crewNames.forEach(function(c) {
-          html += '<span class="crew-initial" style="background:' + crewColor(c) + ';">' + c.charAt(0).toUpperCase() + '</span>';
-        });
-        html += '</span>';
-      }
-
-      html += '</div>';
     });
 
     html += '</div>';
