@@ -5495,7 +5495,8 @@ function renderScheduleView(container, range) {
   _calEvents.forEach(function(ev) {
     if (!ev.job_id) {
       // Collect label (internal) events
-      var aid = ev.assignment_id || ('lbl_' + ev.scheduled_date + '_' + (ev.label || ''));
+      // Group job-less entries by label+date so multiple crew appear on one bar
+      var aid = 'lbl_' + (ev.label || 'internal') + '_' + ev.scheduled_date;
       if (!labelMap[aid]) {
         var crewName = 'Unassigned';
         if (ev.user_id) {
@@ -5508,7 +5509,7 @@ function renderScheduleView(container, range) {
         if (crewName !== 'Unassigned') crew[crewName] = true;
         labelMap[aid] = {
           id: aid,
-          assignmentId: aid,
+          assignmentId: ev.assignment_id,
           label: ev.label || 'Internal',
           job_type: ev.job_type || null,
           start: ev.scheduled_date,
