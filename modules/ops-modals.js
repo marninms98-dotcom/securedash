@@ -298,15 +298,24 @@ function toggleAssignLabelField() {
   labelGroup.style.display = (!jobId && !search) ? '' : 'none';
 }
 
+function toggleAssignTypeField() {
+  var jobId = document.getElementById('assignJobSelect').value;
+  var text = (document.getElementById('assignJobSearch').value || '').trim();
+  var grp = document.getElementById('assignTypeGroup');
+  if (grp) grp.style.display = (!jobId && text) ? 'block' : 'none';
+}
+
 async function submitAssignment() {
   var jobId = document.getElementById('assignJobSelect').value;
   var date = document.getElementById('assignDate').value;
   if (!date) { alert('Please select a date.'); return; }
 
   var label = null;
+  var jobType = null;
   if (!jobId) {
     label = (document.getElementById('assignJobSearch').value || '').trim();
     if (!label) { alert('Please select a job or type a label (e.g. Team meeting).'); return; }
+    jobType = document.getElementById('assignJobType').value || null;
   }
 
   var crewUserId = getCrewSelectId('assignCrew');
@@ -336,6 +345,7 @@ async function submitAssignment() {
         role: 'lead_installer',
         notes: notes,
         label: label,
+        jobType: jobType,
       });
 
       // Sync dates to sibling assignments (other crew on same job)
@@ -370,6 +380,7 @@ async function submitAssignment() {
         role: 'lead_installer',
         notes: notes,
         label: label,
+        jobType: jobType,
       });
 
       // Create helper assignments for checked team members
@@ -389,6 +400,7 @@ async function submitAssignment() {
           role: 'helper',
           notes: notes,
           label: label,
+          jobType: jobType,
         });
       }
       var totalAssigned = 1 + memberCbs.length;

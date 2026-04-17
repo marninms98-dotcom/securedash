@@ -2740,10 +2740,18 @@
     <div class="form-group">
       <label class="form-label">Job / Event <span style="font-weight:400;color:var(--sw-text-sec);font-size:11px;">(select a job or type any label e.g. Team meeting)</span></label>
       <div style="position:relative;">
-        <input type="text" class="form-input" id="assignJobSearch" placeholder="Search job — or type a label e.g. Team meeting, Training day…" autocomplete="off" oninput="filterJobPicker('assign', this.value)" onfocus="filterJobPicker('assign', this.value)" />
+        <input type="text" class="form-input" id="assignJobSearch" placeholder="Search job — or type a label e.g. Team meeting, Training day…" autocomplete="off" oninput="filterJobPicker('assign', this.value);toggleAssignTypeField();" onfocus="filterJobPicker('assign', this.value)" />
         <input type="hidden" id="assignJobSelect" />
         <div id="assignJobDropdown" class="job-picker-dropdown"></div>
       </div>
+    </div>
+    <div class="form-group" id="assignTypeGroup" style="display:none;">
+      <label class="form-label">Job Type</label>
+      <select class="form-select" id="assignJobType">
+        <option value="fencing">Fencing</option>
+        <option value="patio">Patio</option>
+        <option value="decking">Decking</option>
+      </select>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -3506,7 +3514,7 @@
 
 <!-- Council modules: loaded BEFORE inline script so inline functions override any conflicts -->
 <script src="modules/ops-council.js?v=2"></script>
-<script src="modules/ops-modals.js?v=3"></script>
+<script src="modules/ops-modals.js?v=4"></script>
 
 <!-- ══════════ JAVASCRIPT ══════════ -->
 <script>
@@ -5320,7 +5328,8 @@ function renderSwimlaneView(container, range) {
 
         // Job name or internal label
         if (!ev.job_id) {
-          html += '<span style="display:inline-block;width:8px;height:8px;background:#9CA3AF;border-radius:50%;margin-right:4px;"></span>';
+          var lblDotColor = ev.job_type === 'fencing' ? '#F15A29' : ev.job_type === 'decking' ? '#8B5CF6' : ev.job_type === 'patio' ? '#3B82F6' : '#9CA3AF';
+          html += '<span style="display:inline-block;width:8px;height:8px;background:' + lblDotColor + ';border-radius:50%;margin-right:4px;"></span>';
           html += '<em>' + escapeHtml(ev.label || 'Internal') + '</em>';
         } else {
           if (!isMonthMode && ev.job_number) html += '<strong>' + ev.job_number + '</strong> ';
@@ -5501,6 +5510,7 @@ function renderScheduleView(container, range) {
           id: aid,
           assignmentId: aid,
           label: ev.label || 'Internal',
+          job_type: ev.job_type || null,
           start: ev.scheduled_date,
           end: ev.scheduled_end || ev.scheduled_date,
           crew: crew,
@@ -5678,12 +5688,14 @@ function renderScheduleView(container, range) {
 
       if (job.isLabel) {
         // Internal / job-less bar
-        html += '<div class="cal-schedule-bar"';
-        html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;background:#6B7280;border-color:#6B7280;color:#fff;"';
+        var lblTypeClass = job.job_type ? job.job_type : '';
+        var lblStyle = job.job_type ? '' : 'background:#6B7280;border-color:#6B7280;color:#fff;';
+        html += '<div class="cal-schedule-bar ' + lblTypeClass + ' tentative"';
+        html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;' + lblStyle + '"';
         html += ' data-assignment-id="' + job.assignmentId + '"';
         html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + job.assignmentId + '\')"';
         html += '>';
-        html += '<span class="bar-dot" style="background:#9CA3AF;"></span>';
+        html += '<span class="bar-dot" style="background:' + (job.job_type ? '' : '#9CA3AF') + ';"></span>';
         html += '<em style="overflow:hidden;text-overflow:ellipsis;font-style:italic;">' + escapeHtml(job.label) + '</em>';
         if (job.crewNames.length > 0) {
           html += '<span class="bar-crew">';
@@ -9943,6 +9955,13 @@ async function submitSheetNote() {
 }
 
 // Auto-calculate end date from start date + duration
+function toggleAssignTypeField() {
+  var jobId = document.getElementById('assignJobSelect').value;
+  var text = (document.getElementById('assignJobSearch').value || '').trim();
+  var grp = document.getElementById('assignTypeGroup');
+  if (grp) grp.style.display = (!jobId && text) ? 'block' : 'none';
+}
+
 function syncAssignEndDate() {
   var startDate = document.getElementById('assignDate').value;
   var dur = parseInt(document.getElementById('assignDuration').value) || 1;
@@ -10428,9 +10447,11 @@ async function submitAssignment() {
   if (!date) { alert('Please select a date.'); return; }
 
   var label = null;
+  var jobType = null;
   if (!jobId) {
     label = (document.getElementById('assignJobSearch').value || '').trim();
     if (!label) { alert('Please select a job or type a label (e.g. Team meeting).'); return; }
+    jobType = document.getElementById('assignJobType').value || null;
   }
 
   var crewUserId = getCrewSelectId('assignCrew');
@@ -10462,6 +10483,7 @@ async function submitAssignment() {
         role: 'lead_installer',
         notes: notes,
         label: label,
+        jobType: jobType,
       });
 
       // Sync dates to sibling assignments (other crew on same job)
@@ -10496,6 +10518,7 @@ async function submitAssignment() {
         role: 'lead_installer',
         notes: notes,
         label: label,
+        jobType: jobType,
       });
 
       // Create helper assignments for checked team members
@@ -10515,6 +10538,7 @@ async function submitAssignment() {
           role: 'helper',
           notes: notes,
           label: label,
+          jobType: jobType,
         });
       }
       var totalAssigned = 1 + memberCbs.length;
