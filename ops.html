@@ -6087,14 +6087,14 @@ function openCalJobPopup(event, assignmentId) {
   if (crewForJob.length) schedParts.push(crewForJob.join(', '));
   if (schedParts.length) html += '<div class="cal-popup-meta">' + schedParts.join(' &middot; ') + '</div>';
 
-  // 4. Certainty + Readiness row
+  // 4. Certainty + Readiness row (job entries only for readiness; certainty dropdown shown for all)
   html += '<div class="cal-job-popup-row" style="display:flex;gap:8px;align-items:center;margin:8px 0;">';
   html += '<select id="popupCertainty" onchange="updateCertainty(\'' + assignmentId + '\',this.value)" style="font-size:12px;padding:3px 8px;border:1px solid var(--sw-border);border-radius:4px;font-weight:600">';
   ['placeholder','tentative','confirmed'].forEach(function(s) {
     html += '<option value="' + s + '"' + (confStatus === s ? ' selected' : '') + '>' + (statusLabels[s] || s) + '</option>';
   });
   html += '</select>';
-  if (readiness) {
+  if (ev.job_id && readiness) {
     var unmetBlockers = (readiness.blockers || []).filter(function(b) {
       // If frontend knows crew is assigned, suppress stale backend crew_assigned blocker
       if (!b.met && b.key === 'crew_assigned' && crewForJob.length > 0) return false;
@@ -6139,7 +6139,11 @@ function openCalJobPopup(event, assignmentId) {
   // 7. Context-dependent actions
   html += '<div class="cal-job-popup-actions" style="margin-top:10px;">';
 
-  if (!isLocked) {
+  if (!ev.job_id) {
+    // Internal / job-less entry — just edit + delete
+    html += '<button class="btn-secondary-action" onclick="closeCalJobPopup();openEditAssignmentModal(\'' + assignmentId + '\')">Edit</button>';
+    html += '<button class="btn-secondary-action" style="color:#EF4444;" onclick="deleteAssignment(\'' + assignmentId + '\')">Delete</button>';
+  } else if (!isLocked) {
     // Not confirmed (placeholder or planned): show both confirm options
     html += '<button class="btn-primary-action" onclick="confirmAssignment(\'' + assignmentId + '\',true)">Confirm &amp; Notify Client</button>';
     html += '<button class="btn-secondary-action" onclick="confirmAssignment(\'' + assignmentId + '\',false)">Confirm Date</button>';
