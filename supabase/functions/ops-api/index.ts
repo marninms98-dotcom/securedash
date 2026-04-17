@@ -2906,7 +2906,7 @@ async function calendarEvents(client: any, params: URLSearchParams) {
 
   const calSelect = includeFinancials
     ? '*'
-    : 'assignment_id, job_id, user_id, job_number, client_name, site_address, site_suburb, scheduled_date, scheduled_end, start_time, end_time, crew_name, assigned_to, assignment_type, assignment_status, confirmation_status, job_type, job_status, scope_json, ghl_contact_id, org_id'
+    : 'assignment_id, job_id, user_id, job_number, client_name, site_address, site_suburb, scheduled_date, scheduled_end, start_time, end_time, crew_name, assigned_to, assignment_type, assignment_status, confirmation_status, job_type, job_status, scope_json, ghl_contact_id, org_id, label'
 
   let query = client
     .from('calendar_events')
@@ -3513,18 +3513,19 @@ async function getEmailEvents(client: any, params: URLSearchParams) {
 async function createAssignment(client: any, body: any) {
   const { jobId, job_id, userId, user_id, scheduledDate, scheduled_date, date,
           scheduledEnd, scheduled_end, startTime, start_time, endTime, end_time,
-          assignmentType, assignment_type, crewName, crew_name, role, notes } = body
+          assignmentType, assignment_type, crewName, crew_name, role, notes, label } = body
 
   const jId = jobId || job_id
   const sDate = scheduledDate || scheduled_date || date
-  if (!jId || !sDate) throw new Error('jobId and scheduledDate required')
+  if (!sDate) throw new Error('scheduledDate required')
+  if (!jId && !label) throw new Error('Either jobId or label is required')
 
   const confStatus = body.confirmationStatus || body.confirmation_status || 'tentative'
   const validConfStatuses = ['placeholder', 'tentative', 'confirmed']
   const finalConfStatus = validConfStatuses.includes(confStatus) ? confStatus : 'tentative'
 
   const { data, error } = await client.from('job_assignments').insert({
-    job_id: jId,
+    job_id: jId || null,
     user_id: userId || user_id || null,
     scheduled_date: sDate,
     scheduled_end: scheduledEnd || scheduled_end || null,
@@ -3536,24 +3537,26 @@ async function createAssignment(client: any, body: any) {
     crew_name: crewName || crew_name || null,
     status: 'scheduled',
     confirmation_status: finalConfStatus,
+    label: label || null,
+    org_id: jId ? null : DEFAULT_ORG_ID,
   }).select().single()
 
   if (error) throw error
 
-  // Auto-update job status when crew is assigned
-  // processing jobs with crew assigned can auto-advance (kept for backwards compat)
-  // Legacy 'accepted' jobs also auto-advance to 'processing'
-  const { data: currentJob } = await client.from('jobs').select('status').eq('id', jId).single()
-  if (currentJob?.status === 'accepted') {
-    await client.from('jobs').update({ status: 'processing', processing_at: new Date().toISOString() }).eq('id', jId)
-  }
+  // Auto-update job status when crew is assigned (job assignments only)
+  if (jId) {
+    const { data: currentJob } = await client.from('jobs').select('status').eq('id', jId).single()
+    if (currentJob?.status === 'accepted') {
+      await client.from('jobs').update({ status: 'processing', processing_at: new Date().toISOString() }).eq('id', jId)
+    }
 
-  // Log event
-  await client.from('job_events').insert({
-    job_id: jId,
-    event_type: 'assignment_created',
-    detail_json: { assignment_id: data.id, date: sDate, operator: body.operator_email || body.user_email || null },
-  })
+    // Log event
+    await client.from('job_events').insert({
+      job_id: jId,
+      event_type: 'assignment_created',
+      detail_json: { assignment_id: data.id, date: sDate, operator: body.operator_email || body.user_email || null },
+    })
+  }
 
   // ── Telegram DM to assigned trade ──
   try {
@@ -3562,11 +3565,16 @@ async function createAssignment(client: any, body: any) {
       const { data: assignedUser } = await client.from('users')
         .select('telegram_id, name').eq('id', assignedUserId).single()
       if (assignedUser?.telegram_id) {
-        const { data: jobData2 } = await client.from('jobs')
-          .select('job_number, client_name, site_address, site_suburb').eq('id', jId).single()
         const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')
-        if (BOT_TOKEN && jobData2) {
-          const text = `📌 <b>New Assignment</b>\n\n<b>${jobData2.job_number || ''}</b> — ${jobData2.client_name || 'Client'}\n📍 ${jobData2.site_address || ''}${jobData2.site_suburb ? ', ' + jobData2.site_suburb : ''}\n📅 ${sDate}`
+        if (BOT_TOKEN) {
+          let text: string
+          if (jId) {
+            const { data: jobData2 } = await client.from('jobs')
+              .select('job_number, client_name, site_address, site_suburb').eq('id', jId).single()
+            text = `📌 <b>New Assignment</b>\n\n<b>${jobData2?.job_number || ''}</b> — ${jobData2?.client_name || 'Client'}\n📍 ${jobData2?.site_address || ''}${jobData2?.site_suburb ? ', ' + jobData2.site_suburb : ''}\n📅 ${sDate}`
+          } else {
+            text = `📌 <b>New Assignment</b>\n\n<b>${label || 'Internal Event'}</b>\n📅 ${sDate}`
+          }
           fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3574,9 +3582,9 @@ async function createAssignment(client: any, body: any) {
               chat_id: assignedUser.telegram_id,
               text,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[
+              ...(jId ? { reply_markup: { inline_keyboard: [[
                 { text: '🔗 Open in Trade', url: `https://marninms98-dotcom.github.io/securedash/trade.html#job/${jId}` }
-              ]] }
+              ]] } } : {}),
             })
           }).catch(() => {})
         }
@@ -3584,49 +3592,50 @@ async function createAssignment(client: any, body: any) {
     }
   } catch (e) { console.log('[ops-api] assignment notification failed:', e) }
 
-  // Push schedule info to GHL custom fields (non-blocking)
-  // Also grab job_number for business_events dual-write
-  try {
-    const { data: jobData } = await client.from('jobs')
-      .select('ghl_opportunity_id, job_number').eq('id', jId).single()
+  // Push schedule info to GHL custom fields (job assignments only)
+  if (jId) {
+    try {
+      const { data: jobData } = await client.from('jobs')
+        .select('ghl_opportunity_id, job_number').eq('id', jId).single()
 
-    // Dual-write to business_events
-    logBusinessEvent(client, {
-      event_type: 'schedule.assignment_created',
-      entity_type: 'crew_assignment',
-      entity_id: data.id,
-      job_id: jobData?.job_number || jId,
-      correlation_id: jId,
-      payload: {
-        entity: { id: data.id, name: `${data.crew_name || 'Crew'} on ${sDate}` },
-        changes: { status: { from: null, to: 'scheduled' } },
-        confirmation_status: finalConfStatus,
-        crew_name: data.crew_name || '',
-        scheduled_date: sDate,
-        related_entities: [
-          { type: 'job', id: jId },
-          { type: 'crew', id: data.user_id || null, name: data.crew_name || '' },
-        ],
-      },
-      metadata: { operator: body.operator_email || body.user_email || null },
-    })
-    if (jobData?.ghl_opportunity_id) {
-      const ghlUrl = `${SUPABASE_URL}/functions/v1/ghl-proxy?action=update_custom_fields`
-      fetch(ghlUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          opportunityId: jobData.ghl_opportunity_id,
-          fields: {
-            scheduled_date: sDate,
-            assigned_crew: body.crewName || body.crew_name || '',
-            schedule_status: 'scheduled',
-          },
-        }),
-      }).catch(() => {})
+      // Dual-write to business_events
+      logBusinessEvent(client, {
+        event_type: 'schedule.assignment_created',
+        entity_type: 'crew_assignment',
+        entity_id: data.id,
+        job_id: jobData?.job_number || jId,
+        correlation_id: jId,
+        payload: {
+          entity: { id: data.id, name: `${data.crew_name || 'Crew'} on ${sDate}` },
+          changes: { status: { from: null, to: 'scheduled' } },
+          confirmation_status: finalConfStatus,
+          crew_name: data.crew_name || '',
+          scheduled_date: sDate,
+          related_entities: [
+            { type: 'job', id: jId },
+            { type: 'crew', id: data.user_id || null, name: data.crew_name || '' },
+          ],
+        },
+        metadata: { operator: body.operator_email || body.user_email || null },
+      })
+      if (jobData?.ghl_opportunity_id) {
+        const ghlUrl = `${SUPABASE_URL}/functions/v1/ghl-proxy?action=update_custom_fields`
+        fetch(ghlUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            opportunityId: jobData.ghl_opportunity_id,
+            fields: {
+              scheduled_date: sDate,
+              assigned_crew: body.crewName || body.crew_name || '',
+              schedule_status: 'scheduled',
+            },
+          }),
+        }).catch(() => {})
+      }
+    } catch (e) {
+      console.log('[ops-api] GHL custom field push failed (non-blocking):', e)
     }
-  } catch (e) {
-    console.log('[ops-api] GHL custom field push failed (non-blocking):', e)
   }
 
   // Log to jarvis_event_log (non-blocking, fire-and-forget)
@@ -6451,7 +6460,7 @@ async function myJobs(client: any, userId: string, showAll = false) {
       .from('job_assignments')
       .select(`
         id, scheduled_date, scheduled_end, start_time, status, role, notes, assignment_type, crew_name, started_at, completed_at,
-        clocked_on_at, clocked_off_at, travel_started_at, arrived_at, break_minutes, job_phase,
+        clocked_on_at, clocked_off_at, travel_started_at, arrived_at, break_minutes, job_phase, label,
         user:user_id ( id, name ),
         jobs:job_id (
           id, type, status, client_name, client_phone, client_email,
@@ -6469,7 +6478,7 @@ async function myJobs(client: any, userId: string, showAll = false) {
       .from('job_assignments')
       .select(`
         id, scheduled_date, scheduled_end, start_time, status, role, notes, assignment_type, crew_name, started_at, completed_at,
-        clocked_on_at, clocked_off_at, travel_started_at, arrived_at, break_minutes, job_phase,
+        clocked_on_at, clocked_off_at, travel_started_at, arrived_at, break_minutes, job_phase, label,
         jobs:job_id (
           id, type, status, client_name, client_phone, client_email,
           site_address, site_suburb, notes, job_number
