@@ -3660,7 +3660,8 @@
       job.site_address || '',
       job.job_number || '',
       job.type || '',
-      a.crew_name || ''
+      a.crew_name || '',
+      a.label || ''
     ].join(' ').toLowerCase();
     return query.split(' ').every(function(w) { return haystack.indexOf(w) !== -1; });
   }
@@ -3758,9 +3759,29 @@
       html += '<div class="section-label">' + sec.label + ' (' + filtered.length + ')</div>';
       filtered.forEach(function(a) {
         var job = a.jobs || {};
-        var type = job.type || 'patio';
         var statusClass = 'status-' + (a.status || 'scheduled');
         var todayClass = sec.key === 'today' ? ' today-card' : '';
+
+        // Internal / job-less entry
+        if (!job.id) {
+          html += '<div class="job-card' + todayClass + '" data-type="internal" style="border-left-color:#6B7280">';
+          html += '  <div class="job-card-top">';
+          html += '    <div>';
+          html += '      <div class="job-card-client">' + esc(a.label || 'Internal Event') + '</div>';
+          html += '      <div class="job-card-address" style="color:#6B7280;font-style:italic">Internal · No job</div>';
+          html += '    </div>';
+          html += '    <span class="job-card-badge" style="background:#6B7280;color:#fff">internal</span>';
+          html += '  </div>';
+          html += '  <div class="job-card-meta">';
+          html += '    <span>' + formatDate(a.scheduled_date) + '</span>';
+          if (a.start_time) html += '<span style="font-weight:600">' + a.start_time.slice(0, 5) + '</span>';
+          html += '    <span class="status-pill ' + statusClass + '">' + (a.status || 'scheduled').replace(/_/g, ' ') + '</span>';
+          html += '  </div>';
+          html += '</div>';
+          return;
+        }
+
+        var type = job.type || 'patio';
         html += '<div class="job-card' + todayClass + '" data-type="' + type + '" onclick="openJob(\'' + job.id + '\', \'' + a.id + '\')">';
         html += '  <div class="job-card-top">';
         html += '    <div>';
