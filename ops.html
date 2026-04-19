@@ -9744,6 +9744,7 @@ window.handleDocFiles = function(files) {
     if (/\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fname) || fmime.startsWith('image/')) docType = 'site_photo';
     else if (/council|permit|approval/i.test(fname)) docType = 'council_plans';
     else if (/engineer|structural|cert/i.test(fname)) docType = 'engineering';
+    else if (/supplier.*work.?order|work.?order.*supplier|randr|r.?r.*wo|stratco.*wo|bondor.*wo|metroll.*wo/i.test(fname)) docType = 'supplier_work_order';
     else if (/quote|supplier/i.test(fname)) docType = 'supplier_quote';
     else if (/work.?order|wo\b/i.test(fname)) docType = 'work_order';
     else if (/asbestos|hazmat/i.test(fname)) docType = 'asbestos';
@@ -9754,11 +9755,11 @@ window.handleDocFiles = function(files) {
     var rowHtml = '<div id="' + rowId + '" style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px">';
     rowHtml += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(file.name) + '</span>';
     rowHtml += '<select id="' + rowId + '_type" style="font-size:11px;padding:2px 4px;border:1px solid var(--sw-border);border-radius:4px">';
-    ['site_photo','council_plans','engineering','supplier_quote','work_order','approval','client_reference','asbestos','general','other'].forEach(function(t) {
+    ['site_photo','council_plans','engineering','supplier_quote','supplier_work_order','work_order','approval','client_reference','asbestos','general','other'].forEach(function(t) {
       rowHtml += '<option value="' + t + '"' + (t === docType ? ' selected' : '') + '>' + t.replace(/_/g, ' ') + '</option>';
     });
     rowHtml += '</select>';
-    rowHtml += '<label style="font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px"><input type="checkbox" id="' + rowId + '_vis" ' + (['site_photo','council_plans','engineering','work_order','approval'].includes(docType) ? 'checked' : '') + '> Trades</label>';
+    rowHtml += '<label style="font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px"><input type="checkbox" id="' + rowId + '_vis" ' + (['site_photo','council_plans','engineering','work_order','supplier_work_order','supplier_quote','approval'].includes(docType) ? 'checked' : '') + '> Trades</label>';
     rowHtml += '<span id="' + rowId + '_status" style="font-size:11px;color:var(--sw-text-sec)">Ready</span>';
     rowHtml += '</div>';
     queue.innerHTML += rowHtml;

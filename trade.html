@@ -6325,9 +6325,9 @@
     // Trade documents (uploaded docs)
     h += renderTradeDocuments(data, phase);
 
-    // Work order PDF
+    // Work order PDF (internal + supplier)
     var docs = data.documents || [];
-    var workOrderDocs = docs.filter(function(d) { return d.type === 'work_order'; });
+    var workOrderDocs = docs.filter(function(d) { return (d.type === 'work_order' || d.type === 'supplier_work_order') && d.visible_to_trades; });
     if (workOrderDocs.length > 0) {
       h += '<div class="detail-section">';
       h += '  <h3>Work Orders</h3>';
@@ -6345,8 +6345,8 @@
       h += '</div>';
     }
 
-    // Other documents (plans, drawings, council approvals)
-    var otherDocs = docs.filter(function(d) { return d.type !== 'work_order' && d.type !== 'site_photo'; });
+    // Other documents (plans, drawings, council approvals) — trades-visible only
+    var otherDocs = docs.filter(function(d) { return d.type !== 'work_order' && d.type !== 'supplier_work_order' && d.type !== 'site_photo' && d.visible_to_trades; });
     if (otherDocs.length > 0) {
       h += '<div class="detail-section">';
       h += '  <h3>Documents</h3>';
