@@ -8689,7 +8689,7 @@
     });
   }
 
-  async function openCalendarJobPreview(jobId) {
+  window.openCalendarJobPreview = async function(jobId) {
     try {
       var data = await api('trade_job_detail', { jobId: jobId });
       var job = data.job || data;
@@ -8798,7 +8798,7 @@
   }
 
   // ── Request Help (lead_installer only) ──
-  async function openRequestHelpPicker() {
+  window.openRequestHelpPicker = async function() {
     // Show list of own upcoming jobs to pick which one needs help
     var myName = (_user?.name || '').toLowerCase();
     var myJobs = _calEvents.filter(function(ev) {
@@ -8836,7 +8836,7 @@
     document.body.appendChild(overlay);
   }
 
-  async function openRequestHelpForm(jobId) {
+  window.openRequestHelpForm = async function(jobId) {
     // Get job's scheduled dates
     var jobEvents = _calEvents.filter(function(ev) { return ev.job_id === jobId && ev.scheduled_date >= awstDateStr(); });
     var jobDates = [];
