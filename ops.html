@@ -8574,12 +8574,42 @@ function evaluateJobAlerts(data) {
 // OVERVIEW TAB — Job Command Centre
 // ════════════════════════════════════════════════════════════
 
+function editClientName(jobId, currentName) {
+  var row = document.getElementById('jdClientNameRow');
+  if (!row) return;
+  row.innerHTML =
+    '<input id="jdClientNameInput" type="text" value="' + escapeHtml(currentName) + '" style="font-size:16px;font-weight:700;color:var(--sw-dark);border:1px solid var(--sw-border);border-radius:6px;padding:2px 8px;flex:1;min-width:160px;" />' +
+    '<button onclick="saveClientName(\'' + jobId + '\')" class="btn btn-primary btn-sm">Save</button>' +
+    '<button onclick="renderOverviewView(_currentJobData)" class="btn btn-secondary btn-sm">Cancel</button>';
+  var inp = document.getElementById('jdClientNameInput');
+  if (inp) { inp.focus(); inp.select(); }
+}
+
+async function saveClientName(jobId) {
+  var inp = document.getElementById('jdClientNameInput');
+  if (!inp) return;
+  var newName = inp.value.trim();
+  if (!newName) return;
+  try {
+    var res = await opsPost('update_job_field', { job_id: jobId, field: 'client_name', value: newName });
+    if (res && res.error) { alert('Failed to save: ' + res.error); return; }
+    // Update local cache and re-render
+    if (_currentJobData && _currentJobData.job) {
+      _currentJobData.job.client_name = newName;
+    }
+    renderOverviewView(_currentJobData);
+    renderHealthBar(_currentJobData);
+  } catch (e) {
+    alert('Failed to save name.');
+  }
+}
+
 function renderOverviewView(data) {
   var j = data.job;
   var html = '';
   // Section 1: Client Card
   html += '<div style="background:var(--sw-card);padding:14px;margin-bottom:12px;box-shadow:var(--sw-shadow);">';
-  html += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-bottom:6px;">' + escapeHtml(j.client_name || 'Unknown Client') + '</div>';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--sw-dark);margin-bottom:6px;display:flex;align-items:center;gap:8px;" id="jdClientNameRow">' + escapeHtml(j.client_name || 'Unknown Client') + '<button onclick="editClientName(\'' + j.id + '\',\'' + escapeHtml(j.client_name || '').replace(/'/g,"\\'") + '\')" style="background:none;border:none;cursor:pointer;padding:0;color:var(--sw-mid);font-size:12px;opacity:0.6;" title="Edit name">&#9998;</button></div>';
   if (j.site_address) html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:2px;">' + escapeHtml(j.site_address) + '</div>';
   if (j.site_suburb) html += '<div style="font-size:12px;color:var(--sw-mid);">' + escapeHtml(j.site_suburb) + '</div>';
   html += '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">';
