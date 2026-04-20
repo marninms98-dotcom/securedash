@@ -2433,6 +2433,7 @@
         <input type="text" class="filter-search" placeholder="Search jobs..." oninput="searchJobs(this.value)">
         <button class="btn btn-sm" onclick="openQuickQuote()" style="background:#8E44AD;color:#fff;font-weight:600;font-size:11px;padding:4px 12px;border:none;border-radius:4px;cursor:pointer;">+ Quick Quote</button>
         <div style="flex:1;"></div>
+        <div id="jobsDateDisplay" style="font-size:12px;font-weight:600;color:var(--sw-text-sec);letter-spacing:0.3px;white-space:nowrap;"></div>
         <button class="btn btn-secondary btn-sm" id="btnKanban" onclick="setJobView('kanban')" style="font-weight:600;">Kanban</button>
         <button class="btn btn-secondary btn-sm" id="btnListView" onclick="setJobView('list')">List</button>
       </div>
@@ -6436,7 +6437,15 @@ function switchToWeekView(dateStr) { _calDate = new Date(dateStr + 'T00:00:00');
 // JOBS TAB
 // ════════════════════════════════════════════════════════════
 
+function updateJobsDate() {
+  var el = document.getElementById('jobsDateDisplay');
+  if (!el) return;
+  var now = new Date();
+  el.textContent = now.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
 async function loadJobs() {
+  updateJobsDate();
   try {
     var params = {};
     if (_jobFilter) params.type = _jobFilter;
