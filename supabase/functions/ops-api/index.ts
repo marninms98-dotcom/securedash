@@ -739,6 +739,22 @@ serve(async (req: Request) => {
         if (!ALLOWED_FIELDS.includes(ujfField)) return json({ error: 'Field not allowed: ' + ujfField }, 400)
         const { error: ujfErr } = await client.from('jobs').update({ [ujfField]: ujfValue, updated_at: new Date().toISOString() }).eq('id', ujfJobId)
         if (ujfErr) return json({ error: ujfErr.message }, 500)
+        // GHL sync: if client_name changed and job has a ghl_contact_id, update GHL contact (fire-and-forward)
+        if (ujfField === 'client_name' && ujfValue) {
+          try {
+            const { data: ujfJob } = await client.from('jobs').select('ghl_contact_id').eq('id', ujfJobId).single()
+            if (ujfJob?.ghl_contact_id) {
+              const ujfFirst = ujfValue.split(' ')[0]
+              const ujfLast = ujfValue.split(' ').slice(1).join(' ') || ''
+              const ghlToken = Deno.env.get('GHL_API_TOKEN') || ''
+              fetch(`https://services.leadconnectorhq.com/contacts/${ujfJob.ghl_contact_id}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${ghlToken}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
+                body: JSON.stringify({ firstName: ujfFirst, lastName: ujfLast }),
+              }).catch(() => {/* non-blocking */})
+            }
+          } catch (_) { /* non-blocking */ }
+        }
         return json({ success: true })
       }
       case 'update_invoice': return json(await updateInvoice(client, body))
@@ -2993,7 +3009,7 @@ async function pipeline(client: any, params: URLSearchParams) {
     .select('id, type, status, client_name, client_phone, site_address, site_suburb, pricing_json, ghl_contact_id, ghl_opportunity_id, job_number, accepted_at, approvals_at, deposit_at, processing_at, scheduled_at, completed_at, created_at, updated_at, deposit_invoice_id, deposit_amount')
     .eq('org_id', DEFAULT_ORG_ID)
     .or('legacy.is.null,legacy.eq.false')
-    .or('job_number.not.is.null,status.eq.draft')
+    .or('job_number.not.is.null,status.eq.draft,type.eq.fencing')
     .order('updated_at', { ascending: false })
 
   if (statusFilter) {
@@ -3021,7 +3037,7 @@ async function pipeline(client: any, params: URLSearchParams) {
 
   if (jobIds.length > 0) {
     ;[assignRes, poRes, woRes, councilRes, emailRes, invoiceRes] = await Promise.all([
-      client.from('job_assignments').select('job_id').in('job_id', jobIds).neq('status', 'cancelled'),
+      client.from('job_assignments').select('job_id, scheduled_date').in('job_id', jobIds).neq('status', 'cancelled'),
       client.from('purchase_orders').select('job_id').in('job_id', jobIds).neq('status', 'deleted'),
       client.from('work_orders').select('job_id').in('job_id', jobIds).neq('status', 'cancelled'),
       client.from('council_submissions').select('job_id, overall_status, current_step_index, steps').in('job_id', jobIds),
@@ -3036,6 +3052,13 @@ async function pipeline(client: any, params: URLSearchParams) {
     return m
   }
   const assignMap = countMap(assignRes.data || [])
+  // Earliest scheduled_date per job
+  const schedDateMap: Record<string, string> = {}
+  for (const a of (assignRes.data || [])) {
+    if (a.scheduled_date && (!schedDateMap[a.job_id] || a.scheduled_date < schedDateMap[a.job_id])) {
+      schedDateMap[a.job_id] = a.scheduled_date
+    }
+  }
   const poMap = countMap(poRes.data || [])
   const woMap = countMap(woRes.data || [])
 
@@ -3101,6 +3124,7 @@ async function pipeline(client: any, params: URLSearchParams) {
     return {
       ...jLite, value, days_in_stage: daysInStage, neighbour_count: neighbourCount,
       assignment_count: assignMap[j.id] || 0,
+      first_scheduled_date: schedDateMap[j.id] || null,
       po_count: poMap[j.id] || 0,
       wo_count: woMap[j.id] || 0,
       council_count: councilMap[j.id] || 0,
@@ -3513,7 +3537,8 @@ async function getEmailEvents(client: any, params: URLSearchParams) {
 async function createAssignment(client: any, body: any) {
   const { jobId, job_id, userId, user_id, scheduledDate, scheduled_date, date,
           scheduledEnd, scheduled_end, startTime, start_time, endTime, end_time,
-          assignmentType, assignment_type, crewName, crew_name, role, notes, label } = body
+          assignmentType, assignment_type, crewName, crew_name, role, notes, label,
+          jobType, job_type } = body
 
   const jId = jobId || job_id
   const sDate = scheduledDate || scheduled_date || date
@@ -3538,6 +3563,7 @@ async function createAssignment(client: any, body: any) {
     status: 'scheduled',
     confirmation_status: finalConfStatus,
     label: label || null,
+    job_type: jId ? null : (jobType || job_type || null),
     org_id: jId ? null : DEFAULT_ORG_ID,
   }).select().single()
 
