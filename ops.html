@@ -3787,7 +3787,7 @@ function opsFetch(action, params) {
       if (params[k] != null) url += '&' + k + '=' + encodeURIComponent(params[k]);
     });
   }
-  return fetch(url, { headers: { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } }).then(function(resp) {
+  return fetch(url, { cache: 'no-store', headers: { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } }).then(function(resp) {
     if (!resp.ok) throw new Error('API error: ' + resp.status);
     return resp.json();
   });
