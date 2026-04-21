@@ -1533,6 +1533,11 @@
     .comms-template-btn:hover { border-color: var(--sw-orange); color: var(--sw-orange); }
     .comms-char-count { font-size: 10px; color: var(--sw-text-sec); text-align: right; margin-top: 2px; }
     .comms-send-row { display: flex; gap: 8px; margin-top: 8px; align-items: flex-end; }
+    .comms-file-preview { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+    .comms-file-chip { display: flex; align-items: center; gap: 6px; background: #f5f5f7; border-radius: 8px; padding: 4px 10px; font-size: 12px; }
+    .comms-file-chip img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; }
+    .comms-file-chip .remove-file { cursor: pointer; color: #999; font-size: 14px; line-height: 1; }
+    .comms-attach-btn { background: none; border: 1px solid var(--sw-border); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; padding: 6px 10px; color: var(--sw-text-sec); }
     .comms-send-btn {
       padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 4px;
       background: var(--sw-orange); color: #fff; border: none; cursor: pointer;
@@ -3794,7 +3799,7 @@ function opsFetch(action, params) {
 }
 
 function opsPost(action, body) {
-  body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
+  body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || null });
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY },
@@ -8304,6 +8309,7 @@ function closeJobDetail(skipHistory) {
   document.querySelector('.container').style.display = '';
   _currentJobData = null;
   _currentJobId = null;
+  stopCommsPoll();
 
   if (!skipHistory && history.pushState) {
     var savedTab = localStorage.getItem('sw_ops_tab') || 'jobs';
@@ -8349,6 +8355,9 @@ function showJobSubView(tab) {
     }
   });
   localStorage.setItem('sw_jd_tab', tab);
+
+  // Stop comms polling when leaving the comms tab
+  if (tab !== 'comms') stopCommsPoll();
 
   if (!_currentJobData) return;
   if (tab === 'overview') renderOverviewView(_currentJobData);
@@ -12657,6 +12666,11 @@ async function approveAndSendPO(poId, btnEl) {
 
 var _commsMode = 'sms'; // 'sms' | 'email'
 var _commsGHLBase = window.SUPABASE_URL + '/functions/v1/ghl-proxy';
+var _commsSelectedFiles = []; // File objects pending upload
+var _commsPollTimer = null;
+var _commsPollContactId = null;
+var _commsLastMsgCount = 0;
+var _commsLastMsgId = null;
 
 // GHL phone numbers — auto-select by job type
 var SW_PHONE_NUMBERS = [
@@ -12684,6 +12698,7 @@ function renderCommsView(data) {
   var j = data.job;
   var container = document.getElementById('jdComms');
   var pos = data.purchase_orders || [];
+  _commsSelectedFiles = []; // clear pending attachments on re-render
 
   var html = '';
 
@@ -12774,8 +12789,11 @@ function renderCommsView(data) {
     html += '<textarea id="commsEmailBody" class="form-textarea" style="width:100%;min-height:80px;resize:vertical;" placeholder="Email body..."></textarea>';
     html += '</div>';
 
+    html += '<input type="file" id="commsFileInput" multiple style="display:none;" onchange="handleCommsFileSelect(this)">';
+    html += '<div id="commsFilePreview" class="comms-file-preview"></div>';
     html += '<div class="comms-send-row">';
-    html += '<button class="comms-send-btn" onclick="sendCommsMessage()">Send</button>';
+    html += '<button class="comms-attach-btn" title="Attach file" onclick="document.getElementById(\'commsFileInput\').click()">&#43; Attach</button>';
+    html += '<button class="comms-send-btn" id="commsSendBtn" onclick="sendCommsMessage()">Send</button>';
     html += '</div>';
     html += '</div>';
   }
@@ -12822,9 +12840,10 @@ function renderCommsView(data) {
 
   container.innerHTML = html;
 
-  // Load client conversation async
+  // Load client conversation async + start auto-refresh
   if (j.ghl_contact_id) {
     loadConversation(j.ghl_contact_id);
+    startCommsPoll(j.ghl_contact_id);
   }
 
   // Load supplier email threads
@@ -12918,16 +12937,21 @@ async function createCommsGHLContact(jobId) {
   }
 }
 
-async function loadConversation(contactId) {
+async function loadConversation(contactId, skipCache) {
   var cacheKey = 'sw_convo_' + contactId;
-  var cached = sessionStorage.getItem(cacheKey);
 
-  if (cached) {
-    try {
-      var cachedData = JSON.parse(cached);
-      renderMessageThread(cachedData.messages, cachedData.conversationId);
-      return;
-    } catch (e) {}
+  if (!skipCache) {
+    var cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        var cachedData = JSON.parse(cached);
+        var msgs = cachedData.messages || [];
+        _commsLastMsgCount = msgs.length;
+        _commsLastMsgId = msgs.length > 0 ? msgs[msgs.length - 1].id || msgs[msgs.length - 1].timestamp : null;
+        renderMessageThread(msgs, cachedData.conversationId);
+        return;
+      } catch (e) {}
+    }
   }
 
   try {
@@ -12936,10 +12960,21 @@ async function loadConversation(contactId) {
 
     if (data.error) throw new Error(data.error);
 
+    var msgs = data.messages || [];
+    var newLastId = msgs.length > 0 ? msgs[msgs.length - 1].id || msgs[msgs.length - 1].timestamp : null;
+
+    // On poll refresh, skip re-render if nothing changed
+    if (skipCache && msgs.length === _commsLastMsgCount && newLastId === _commsLastMsgId) return;
+
+    _commsLastMsgCount = msgs.length;
+    _commsLastMsgId = newLastId;
+
     // Cache for session
     sessionStorage.setItem(cacheKey, JSON.stringify(data));
-    renderMessageThread(data.messages || [], data.conversationId);
+    renderMessageThread(msgs, data.conversationId);
   } catch (e) {
+    // Only show error on initial load, not on poll failures
+    if (skipCache) return;
     var thread = document.getElementById('commsThread');
     if (thread) {
       var j = _currentJobData?.job;
@@ -12947,6 +12982,21 @@ async function loadConversation(contactId) {
       thread.innerHTML = '<div class="comms-empty">Conversation failed to load.<br><a href="' + ghlLink + '" target="_blank" style="color:var(--sw-orange);">View in GHL &#8599;</a></div>';
     }
   }
+}
+
+function startCommsPoll(contactId) {
+  stopCommsPoll();
+  _commsPollContactId = contactId;
+  _commsPollTimer = setInterval(function() {
+    if (_commsPollContactId) loadConversation(_commsPollContactId, true);
+  }, 15000);
+}
+
+function stopCommsPoll() {
+  if (_commsPollTimer) { clearInterval(_commsPollTimer); _commsPollTimer = null; }
+  _commsPollContactId = null;
+  _commsLastMsgCount = 0;
+  _commsLastMsgId = null;
 }
 
 function renderMessageThread(messages, conversationId) {
@@ -13039,35 +13089,106 @@ function applyCommsTemplate(key) {
   }
 }
 
+function handleCommsFileSelect(input) {
+  Array.from(input.files).forEach(function(f) { _commsSelectedFiles.push(f); });
+  input.value = ''; // reset so same file can be re-added
+  renderCommsFilePreviews();
+}
+
+function removeCommsFile(index) {
+  _commsSelectedFiles.splice(index, 1);
+  renderCommsFilePreviews();
+}
+
+function renderCommsFilePreviews() {
+  var preview = document.getElementById('commsFilePreview');
+  if (!preview) return;
+  if (_commsSelectedFiles.length === 0) { preview.innerHTML = ''; return; }
+  var html = '';
+  _commsSelectedFiles.forEach(function(f, i) {
+    var isImage = f.type.startsWith('image/');
+    html += '<div class="comms-file-chip">';
+    if (isImage) {
+      var url = URL.createObjectURL(f);
+      html += '<img src="' + url + '" alt="">';
+    }
+    html += '<span>' + escapeHtml(f.name) + ' <span style="color:#aaa;">(' + (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB') + ')</span></span>';
+    html += '<span class="remove-file" onclick="removeCommsFile(' + i + ')">&#x2715;</span>';
+    html += '</div>';
+  });
+  preview.innerHTML = html;
+}
+
+async function uploadCommsFile(file, jobId) {
+  var apiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+  // Get signed upload URL
+  var r = await fetch(apiBase + '?action=get_comms_upload_url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+    body: JSON.stringify({ fileName: file.name, mimeType: file.type, jobId: jobId }),
+  });
+  var urlData = await r.json();
+  if (!urlData.signedUrl) throw new Error('Could not get upload URL');
+
+  // PUT file directly to Storage
+  var putResp = await fetch(urlData.signedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!putResp.ok) throw new Error('Upload failed: ' + putResp.status);
+
+  return urlData.publicUrl;
+}
+
 async function sendCommsMessage() {
   var j = _currentJobData?.job;
   if (!j || !j.ghl_contact_id) { showToast('No GHL contact linked', 'warning'); return; }
+
+  var hasAttachments = _commsSelectedFiles.length > 0;
+  var apiBase = window.SUPABASE_URL + '/functions/v1/ops-api';
+  var sendBtn = document.getElementById('commsSendBtn');
 
   if (_commsMode === 'sms') {
     var text = document.getElementById('commsSMSText').value.trim();
     if (!text) { showToast('Message is empty', 'warning'); return; }
 
-    // Optimistic UI: show message immediately
     addOptimisticMessage(text, 'SMS');
     document.getElementById('commsSMSText').value = '';
     updateCommsCharCount();
 
     try {
-      await fetch(_commsGHLBase + '?action=send_sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
-        body: JSON.stringify({
-          contactId: j.ghl_contact_id,
-          message: text,
-          jobId: j.id,
-        }),
-      }).then(function(r) { return r.json(); }).then(function(data) {
+      var attachmentUrls = [];
+      if (hasAttachments) {
+        if (sendBtn) sendBtn.textContent = 'Uploading...';
+        attachmentUrls = await Promise.all(_commsSelectedFiles.map(function(f) { return uploadCommsFile(f, j.id); }));
+        _commsSelectedFiles = [];
+        renderCommsFilePreviews();
+      }
+
+      if (attachmentUrls.length > 0) {
+        // Send via ops-api with attachments
+        if (sendBtn) sendBtn.textContent = 'Sending...';
+        var resp = await fetch(apiBase + '?action=send_comms_message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+          body: JSON.stringify({ contactId: j.ghl_contact_id, type: 'SMS', message: text, attachmentUrls: attachmentUrls }),
+        });
+        var data = await resp.json();
         if (!data.success) throw new Error(data.error || 'Send failed');
-      });
-      // Clear cache so next load gets fresh data
+      } else {
+        // Plain text SMS — existing path
+        await fetch(_commsGHLBase + '?action=send_sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+          body: JSON.stringify({ contactId: j.ghl_contact_id, message: text, jobId: j.id }),
+        }).then(function(r) { return r.json(); }).then(function(d) { if (!d.success) throw new Error(d.error || 'Send failed'); });
+      }
       sessionStorage.removeItem('sw_convo_' + j.ghl_contact_id);
     } catch (e) {
       showToast('SMS failed: ' + e.message + ' — retry?', 'warning');
+    } finally {
+      if (sendBtn) sendBtn.textContent = 'Send';
     }
   } else {
     var subject = document.getElementById('commsEmailSubject').value.trim();
@@ -13079,20 +13200,42 @@ async function sendCommsMessage() {
     document.getElementById('commsEmailBody').value = '';
 
     try {
-      await fetch(_commsGHLBase + '?action=send_email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
-        body: JSON.stringify({
-          contactId: j.ghl_contact_id,
-          subject: subject,
-          htmlBody: '<p>' + body.replace(/\n/g, '<br>') + '</p>',
-        }),
-      }).then(function(r) { return r.json(); }).then(function(data) {
+      var attachmentUrls = [];
+      if (hasAttachments) {
+        if (sendBtn) sendBtn.textContent = 'Uploading...';
+        attachmentUrls = await Promise.all(_commsSelectedFiles.map(function(f) { return uploadCommsFile(f, j.id); }));
+        _commsSelectedFiles = [];
+        renderCommsFilePreviews();
+      }
+
+      if (attachmentUrls.length > 0) {
+        if (sendBtn) sendBtn.textContent = 'Sending...';
+        var resp = await fetch(apiBase + '?action=send_comms_message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+          body: JSON.stringify({
+            contactId: j.ghl_contact_id, type: 'Email', subject: subject,
+            htmlBody: '<p>' + body.replace(/\n/g, '<br>') + '</p>', attachmentUrls: attachmentUrls,
+          }),
+        });
+        var data = await resp.json();
         if (!data.success) throw new Error(data.error || 'Send failed');
-      });
+      } else {
+        await fetch(_commsGHLBase + '?action=send_email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': window.SW_API_KEY },
+          body: JSON.stringify({
+            contactId: j.ghl_contact_id,
+            subject: subject,
+            htmlBody: '<p>' + body.replace(/\n/g, '<br>') + '</p>',
+          }),
+        }).then(function(r) { return r.json(); }).then(function(d) { if (!d.success) throw new Error(d.error || 'Send failed'); });
+      }
       sessionStorage.removeItem('sw_convo_' + j.ghl_contact_id);
     } catch (e) {
       showToast('Email failed: ' + e.message, 'warning');
+    } finally {
+      if (sendBtn) sendBtn.textContent = 'Send';
     }
   }
 }

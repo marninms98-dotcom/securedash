@@ -643,6 +643,8 @@ serve(async (req: Request) => {
       case 'complete_and_invoice': return json(await completeAndInvoice(client, body))
       case 'create_deposit_invoice': return json(await createDepositInvoice(client, body))
       case 'sync_fencing_neighbours': return json(await syncFencingNeighbours(client, body))
+      case 'get_comms_upload_url': return json(await getCommsUploadUrl(client, body))
+      case 'send_comms_message': return json(await sendCommsMessageAction(body))
       case 'create_trade_user': {
         const { email, password, name, role, phone } = body
         if (!email || !password || !name) return json({ error: 'email, password, name required' }, 400)
@@ -771,9 +773,155 @@ serve(async (req: Request) => {
       case 'send_invoice_email': {
         const sid = body.xero_invoice_id
         if (!sid) return json({ error: 'xero_invoice_id required' }, 400)
+        const toEmail = body.to_email
+        if (!toEmail) return json({ error: 'to_email required' }, 400)
+
+        const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || ''
+        if (!RESEND_API_KEY) return json({ error: 'RESEND_API_KEY not configured' }, 500)
+
+        // 1. Get invoice record from DB
+        const { data: sInvRecord } = await client.from('xero_invoices')
+          .select('invoice_number, job_id, total, reference')
+          .eq('xero_invoice_id', sid)
+          .maybeSingle()
+        let sInvNumber = sInvRecord?.invoice_number || ''
+        const sJobId = body.job_id || sInvRecord?.job_id || null
+        let sTotal = sInvRecord?.total || 0
+
+        // If DB lookup missed invoice_number, fetch from Xero directly (avoids UUID in email)
+        if (!sInvNumber) {
+          try {
+            const { accessToken: sLookupAt, tenantId: sLookupTi } = await getToken(client)
+            const sLookupRes = await xeroGet(`/Invoices/${sid}`, sLookupAt, sLookupTi)
+            const sLookupInv = sLookupRes?.Invoices?.[0]
+            if (sLookupInv?.InvoiceNumber) sInvNumber = sLookupInv.InvoiceNumber
+            if (!sTotal && sLookupInv?.Total) sTotal = sLookupInv.Total
+          } catch (_e) { /* non-blocking */ }
+        }
+        if (!sInvNumber) sInvNumber = sid // absolute last resort
+
+        // 2. Get job details if we have a job_id
+        let sClientName = ''
+        let sJobType = ''
+        let sAddress = ''
+        let sGhlContactId: string | null = null
+        if (sJobId) {
+          const { data: sJob } = await client.from('jobs')
+            .select('client_name, type, site_address, site_suburb, ghl_contact_id')
+            .eq('id', sJobId)
+            .maybeSingle()
+          if (sJob) {
+            sClientName = sJob.client_name || ''
+            sJobType = sJob.type || ''
+            sAddress = [sJob.site_address, sJob.site_suburb].filter(Boolean).join(', ')
+            sGhlContactId = sJob.ghl_contact_id || null
+          }
+        }
+
+        // 3. Fetch invoice PDF from Xero
         const { accessToken: sAt, tenantId: sTi } = await getToken(client)
-        await xeroPost(`/Invoices/${sid}/Email`, sAt, sTi, {}, 'POST')
-        return json({ success: true, emailed: true })
+        let sPdfResp: Response | null = null
+        for (let attempt = 0; attempt <= 3; attempt++) {
+          sPdfResp = await fetch(`${XERO_API_BASE}/Invoices/${sid}`, {
+            headers: {
+              'Authorization': `Bearer ${sAt}`,
+              'Xero-tenant-id': sTi,
+              'Accept': 'application/pdf',
+            },
+          })
+          if (sPdfResp.status === 429) {
+            if (attempt >= 3) return json({ error: 'Xero rate limited after retries' }, 429)
+            const retryAfter = parseInt(sPdfResp.headers.get('Retry-After') || '5')
+            await new Promise(r => setTimeout(r, retryAfter * 1000))
+            continue
+          }
+          break
+        }
+        if (!sPdfResp || !sPdfResp.ok) {
+          const errText = sPdfResp ? await sPdfResp.text() : 'No response'
+          return json({ error: `Failed to fetch PDF from Xero: ${sPdfResp?.status} ${errText}` }, 502)
+        }
+
+        const sPdfBuffer = new Uint8Array(await sPdfResp.arrayBuffer())
+        let sPdfB64 = ''
+        for (let i = 0; i < sPdfBuffer.length; i++) {
+          sPdfB64 += String.fromCharCode(sPdfBuffer[i])
+        }
+        sPdfB64 = btoa(sPdfB64)
+
+        // 4. Get online invoice URL for payment link
+        let sPaymentUrl = ''
+        try {
+          const onlineRes = await xeroGet(`/Invoices/${sid}/OnlineInvoice`, sAt, sTi)
+          sPaymentUrl = onlineRes?.OnlineInvoices?.[0]?.OnlineInvoiceUrl || ''
+        } catch (_e) { /* non-blocking */ }
+
+        // 5. Build branded HTML email
+        const sFirstName = (sClientName || '').split(' ')[0] || 'there'
+        const sEmailHtml = `
+<div style="font-family:Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <div style="background:#293C46;padding:20px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:20px;">SecureWorks Group</h1>
+    <p style="color:#8FA4B2;margin:4px 0 0;font-size:12px;">Invoice</p>
+  </div>
+  <div style="padding:24px;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;">
+    <p>Hi ${sFirstName},</p>
+    <p>Please find attached your invoice for the following works:</p>
+    <div style="background:#f8f6f3;padding:16px;border-radius:6px;margin:16px 0;">
+      <p style="margin:0 0 8px;font-weight:600;color:#293C46;">Invoice ${sInvNumber}</p>
+      ${sAddress ? `<p style="margin:0;font-size:14px;color:#4C6A7C;">${sAddress}</p>` : ''}
+      ${sTotal ? `<p style="margin:12px 0 0;font-size:24px;font-weight:700;color:#293C46;">$${Number(sTotal).toLocaleString('en-AU', { minimumFractionDigits: 2 })} <span style="font-size:12px;font-weight:400;color:#4C6A7C;">inc GST</span></p>` : ''}
+    </div>
+    ${sPaymentUrl ? `<p><a href="${sPaymentUrl}" style="display:inline-block;background:#293C46;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Pay Online</a></p>` : ''}
+    <p>If you have any questions, simply reply to this email or give us a call.</p>
+    <p>Thanks,<br><strong>SecureWorks Group</strong><br>
+    <span style="font-size:12px;color:#4C6A7C;">Patios | Fencing | Decking | Screening</span></p>
+  </div>
+</div>`
+
+        // 6. Send via Resend
+        const sEmailPayload: any = {
+          from: 'SecureWorks Group <orders@secureworksgroup.app>',
+          reply_to: getClientReplyTo(sJobType || null),
+          to: [toEmail],
+          subject: `Your Invoice — ${sInvNumber}`,
+          html: sEmailHtml,
+          attachments: [{
+            filename: `${sInvNumber}.pdf`,
+            content: sPdfB64,
+          }],
+        }
+        if (body.cc) {
+          const ccList = Array.isArray(body.cc) ? body.cc : [body.cc]
+          if (ccList.length > 0) sEmailPayload.cc = ccList
+        }
+
+        const sResendResp = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(sEmailPayload),
+        })
+        const sResendResult = await sResendResp.json()
+        if (!sResendResp.ok) return json({ error: 'Email send failed: ' + (sResendResult.message || JSON.stringify(sResendResult)) }, 502)
+
+        // 7. Log email event
+        await client.from('email_events').insert({
+          email_type: 'invoice',
+          entity_type: 'xero_invoice',
+          entity_id: sid,
+          job_id: sJobId,
+          recipient: toEmail,
+          sender: 'orders@secureworksgroup.app',
+          subject: sEmailPayload.subject,
+          resend_message_id: sResendResult.id || null,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+        })
+
+        // 8. Log to GHL if we have a contact
+        logEmailToGHL(sGhlContactId, sEmailPayload.subject, toEmail)
+
+        return json({ success: true, emailed: true, resend_id: sResendResult.id, sent_to: toEmail, invoice_number: sInvNumber })
       }
 
       case 'approve_and_send_invoice': {
@@ -4023,7 +4171,7 @@ async function createPO(client: any, body: any) {
       reference: reference || null,
       notes: (delivery_address ? 'Deliver to: ' + delivery_address + (notes ? '\n' + notes : '') : notes) || null,
       status: body.status || 'draft',
-      created_by: body.operator_email || body.user_email || null,
+      created_by: null,
     })
     .select()
     .single()
@@ -4364,7 +4512,7 @@ async function createWorkOrder(client: any, body: any) {
       scheduled_date: body.scheduled_date || body.scheduledDate || null,
       site_address: address || null,
       status: 'draft',
-      created_by: body.operator_email || body.user_email || null,
+      created_by: null,
     })
     .select()
     .single()
@@ -7122,7 +7270,7 @@ async function confirmDocumentUpload(client: any, body: any) {
     file_name: fileName || path,
     visible_to_trades: isVisible,
     version: 1,
-    uploaded_by: uploaded_by || body.operator_email || null,
+    uploaded_by: uploaded_by || null,
   }
 
   // Set pdf_url for PDF files so existing code can find them
@@ -7250,6 +7398,63 @@ async function getUploadUrl(client: any, body: any, userId: string, isAdmin = fa
     path,
     publicUrl: urlData.publicUrl,
   }
+}
+
+// ── Comms attachment upload URL (ops dashboard → Storage) ──
+async function getCommsUploadUrl(client: any, body: any) {
+  const { fileName, mimeType, jobId } = body
+  if (!fileName || !jobId) throw new Error('fileName and jobId required')
+
+  const bucket = 'comms-attachments'
+  const fileId = crypto.randomUUID()
+  const ext = fileName.includes('.') ? fileName.split('.').pop() : ''
+  const safeName = ext ? `${fileId}.${ext}` : fileId
+  const path = `jobs/${jobId}/${safeName}`
+
+  try { await client.storage.createBucket(bucket, { public: true }) } catch { /* exists */ }
+
+  const { data, error } = await client.storage.from(bucket).createSignedUploadUrl(path)
+  if (error) throw error
+
+  const { data: urlData } = client.storage.from(bucket).getPublicUrl(path)
+
+  return { signedUrl: data.signedUrl, publicUrl: urlData.publicUrl, path }
+}
+
+// ── Send comms message via GHL (with optional attachment URLs) ──
+async function sendCommsMessageAction(body: any) {
+  const { contactId, type, message, attachmentUrls = [], subject, htmlBody } = body
+  if (!contactId || !type) throw new Error('contactId and type required')
+
+  const payload: any = { type, contactId }
+
+  if (type === 'SMS') {
+    if (!message) throw new Error('message required for SMS')
+    payload.message = message
+    if (attachmentUrls.length > 0) payload.attachments = attachmentUrls
+  } else if (type === 'Email') {
+    if (!subject || !htmlBody) throw new Error('subject and htmlBody required for Email')
+    payload.subject = subject
+    payload.html = htmlBody
+    if (attachmentUrls.length > 0) payload.attachments = attachmentUrls
+  } else {
+    throw new Error('type must be SMS or Email')
+  }
+
+  const resp = await fetch('https://services.leadconnectorhq.com/conversations/messages', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GHL_API_TOKEN}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await resp.json()
+  if (!resp.ok) throw new Error(data?.message || `GHL error ${resp.status}`)
+
+  return { success: true, messageId: data.id }
 }
 
 // ── Confirm upload (create media record after direct upload) ──
