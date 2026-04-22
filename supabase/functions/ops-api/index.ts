@@ -6869,7 +6869,7 @@ async function tradeJobDetail(client: any, params: URLSearchParams, userId: stri
       .select('*').eq('job_id', jobId).order('created_at', { ascending: false }).limit(1),
     // Work order data (scope items, instructions)
     client.from('work_orders')
-      .select('id, wo_number, scope_items, special_instructions, scheduled_date, status, estimated_hours, trade_cost, crew_rates')
+      .select('id, wo_number, scope_items, special_instructions, scheduled_date, status')
       .eq('job_id', jobId).neq('status', 'cancelled').order('created_at', { ascending: false }).limit(1),
     // All crew assignments for this job (not filtered by date — user explicitly opened this job)
     client.from('job_assignments')
