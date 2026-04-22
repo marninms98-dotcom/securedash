@@ -1601,13 +1601,36 @@ serve(async (req: Request) => {
           }
 
           case 'my_work_orders': {
-            // Get work orders assigned to this user (as lead trade)
+            // Henry and Isaac see WOs for any job they are crew-assigned to.
+            // All other users only see WOs explicitly assigned to them via assigned_user_id.
+            const CREW_WO_USER_IDS = [
+              'a5ea66d2-ee5f-4537-92ab-f76992df051d', // Isaac
+              'c9a84f70-6d43-43f2-8a5b-3ec6ba9ade8b',  // Henry
+              '9913309f-35ae-4a71-8e1f-f704ecc526ea',  // Shaun
+            ]
             const woStatus = url.searchParams.get('status') // optional filter
+
             let woQuery = client.from('work_orders')
               .select('id, job_id, wo_number, status, trade_name, scope_items, special_instructions, scheduled_date, site_address, sent_at, accepted_at, completed_at, created_at, jobs!inner(job_number, client_name, type, status)')
-              .eq('assigned_user_id', tradeUser.id)
               .not('status', 'in', '("cancelled","deleted")')
               .order('created_at', { ascending: false })
+
+            if (CREW_WO_USER_IDS.includes(tradeUser.id)) {
+              // Show WOs for jobs this user is crew-assigned to
+              const { data: crewAssignments } = await client.from('job_assignments')
+                .select('job_id')
+                .eq('user_id', tradeUser.id)
+                .not('status', 'in', '("cancelled","deleted")')
+              const crewJobIds = (crewAssignments || []).map((a: any) => a.job_id).filter(Boolean)
+              if (crewJobIds.length > 0) {
+                woQuery = woQuery.in('job_id', crewJobIds)
+              } else {
+                woQuery = woQuery.eq('assigned_user_id', tradeUser.id)
+              }
+            } else {
+              woQuery = woQuery.eq('assigned_user_id', tradeUser.id)
+            }
+
             if (woStatus) woQuery = woQuery.eq('status', woStatus)
             const { data: workOrders, error: woErr } = await woQuery.limit(30)
             if (woErr) throw new Error('Failed to load work orders: ' + woErr.message)
@@ -1662,7 +1685,22 @@ serve(async (req: Request) => {
               .eq('id', work_order_id)
               .single()
             if (woFetchErr || !wo) throw new ApiError('Work order not found', 404)
-            if (wo.assigned_user_id !== tradeUser.id) throw new ApiError('Not authorised — you are not assigned to this work order', 403)
+            // Henry and Isaac can access WOs for jobs they are crew-assigned to
+            const CREW_WO_USER_IDS_INVOICE = [
+              'a5ea66d2-ee5f-4537-92ab-f76992df051d', // Isaac
+              'c9a84f70-6d43-43f2-8a5b-3ec6ba9ade8b',  // Henry
+              '9913309f-35ae-4a71-8e1f-f704ecc526ea',  // Shaun
+            ]
+            if (wo.assigned_user_id !== tradeUser.id) {
+              if (CREW_WO_USER_IDS_INVOICE.includes(tradeUser.id)) {
+                const { data: crewCheck } = await client.from('job_assignments')
+                  .select('id').eq('job_id', wo.job_id).eq('user_id', tradeUser.id)
+                  .not('status', 'in', '("cancelled","deleted")').limit(1)
+                if (!crewCheck || crewCheck.length === 0) throw new ApiError('Not authorised — you are not assigned to this work order', 403)
+              } else {
+                throw new ApiError('Not authorised — you are not assigned to this work order', 403)
+              }
+            }
             if (wo.status !== 'complete') throw new ApiError('Work order must be complete before invoicing', 400)
 
             // Check not already invoiced — allow retry if previous attempt failed
@@ -3722,6 +3760,26 @@ async function createAssignment(client: any, body: any) {
     const { data: currentJob } = await client.from('jobs').select('status').eq('id', jId).single()
     if (currentJob?.status === 'accepted') {
       await client.from('jobs').update({ status: 'processing', processing_at: new Date().toISOString() }).eq('id', jId)
+    }
+
+    // Auto-assign job_number if job doesn't have one yet
+    if (!currentJob?.job_number) {
+      try {
+        const { data: jobRow } = await client.from('jobs')
+          .select('job_number, type')
+          .eq('id', jId)
+          .single()
+        if (jobRow && !jobRow.job_number) {
+          const jobType = jobRow.type || 'general'
+          const { data: newJobNum } = await client.rpc('next_job_number', { job_type: jobType })
+          if (newJobNum) {
+            await client.from('jobs').update({ job_number: newJobNum }).eq('id', jId)
+          }
+        }
+      } catch (e) {
+        console.error('[ops-api] auto job_number generation failed:', e)
+        // Non-fatal — assignment was still created
+      }
     }
 
     // Log event
