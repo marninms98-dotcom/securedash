@@ -9433,7 +9433,7 @@ function renderBuildView(data) {
       if (wo.trade_name) html += ' — ' + wo.trade_name;
       html += ' <span class="status-badge ' + wo.status + '">' + wo.status + '</span>';
       html += '</div>';
-      html += '<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="viewWOModal(' + JSON.stringify(wo).replace(/'/g,"&#39;") + ')">View</button>';
+      html += '<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px;" onclick="viewWOModalById(\'' + wo.id + '\')">View</button>';
       html += '</div>';
     });
   }
@@ -9445,6 +9445,14 @@ function renderBuildView(data) {
 
   // Load labour reconciliation data
   loadLabourReconciliation(j.id);
+}
+
+function viewWOModalById(woId) {
+  var data = _currentJobData;
+  if (!data) return;
+  var wo = (data.work_orders || []).find(function(w) { return w.id === woId; });
+  if (!wo) return;
+  viewWOModal(wo);
 }
 
 function viewWOModal(wo) {
