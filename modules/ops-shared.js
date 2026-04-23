@@ -68,12 +68,18 @@ var GHL_LOCATION_ID = '13yKADzN94BRxX4hByYX';
 var STATUS_LABELS = {
   draft: 'Drafts', quoted: 'Quoted', accepted: 'Accepted', approvals: 'Approvals', deposit: 'Deposit', processing: 'Processing',
   scheduled: 'Scheduled', in_progress: 'In Progress',
-  complete: 'Complete', invoiced: 'Invoiced', paid: 'Paid', lost: 'Lost', cancelled: 'Cancelled'
+  complete: 'Complete', invoiced: 'Invoiced', paid: 'Paid', lost: 'Lost', cancelled: 'Cancelled',
+  awaiting_deposit: 'Awaiting Deposit', order_materials: 'Order Materials', awaiting_supplier: 'Awaiting Supplier',
+  order_confirmed: 'Order Confirmed', schedule_install: 'Schedule Install', rectification: 'Rectification',
+  final_payment: 'Final Payment', get_review: 'Get Review'
 };
 var STATUS_COLORS = {
   draft: '#8FA4B2', quoted: '#9B59B6', accepted: '#3498DB', approvals: '#1ABC9C', deposit: '#F39C12', processing: '#E74C3C',
   scheduled: '#E67E22', in_progress: '#F15A29',
-  complete: '#27AE60', invoiced: '#7F8C8D', cancelled: '#E74C3C', lost: '#95A5A6'
+  complete: '#27AE60', invoiced: '#7F8C8D', cancelled: '#E74C3C', lost: '#95A5A6',
+  awaiting_deposit: '#F39C12', order_materials: '#E67E22', awaiting_supplier: '#D35400',
+  order_confirmed: '#2980B9', schedule_install: '#8E44AD', rectification: '#C0392B',
+  final_payment: '#27AE60', get_review: '#16A085'
 };
 var _showDrafts = false;
 var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -286,7 +292,7 @@ async function opsFetch(action, params) {
 }
 
 async function opsPost(action, body) {
-  body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || 'unknown' });
+  body = Object.assign({}, body, { operator_email: (cloud && cloud.user && cloud.user.email) || null });
   var headers = await _getAuthHeaders();
   return fetch(_opsApiBase + '?action=' + action, {
     method: 'POST',

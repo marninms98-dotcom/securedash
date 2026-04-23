@@ -3488,6 +3488,7 @@
       <label class="form-label">Approval Type</label>
       <select class="form-input" id="councilType" onchange="updateCouncilDefaultSteps()">
         <option value="full_building_permit">Full Building Permit</option>
+        <option value="full_building_permit_da">Full Building Permit + DA</option>
         <option value="engineering_only">Engineering Only</option>
         <option value="cdc_only">CDC Only</option>
         <option value="custom">Custom</option>
@@ -6518,11 +6519,17 @@ function toggleDrafts() {
 // ── Fencing Pipeline Stage Order ──
 var FENCING_STAGES = ['quoted', 'accepted', 'awaiting_deposit', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'scheduled', 'in_progress', 'rectification', 'final_payment', 'get_review', 'complete'];
 
+// ── Patio / Decking Pipeline Stage Order (14 stages — fencing + approvals after awaiting_deposit) ──
+var PATIO_STAGES = ['quoted', 'accepted', 'awaiting_deposit', 'approvals', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'scheduled', 'in_progress', 'rectification', 'final_payment', 'get_review', 'complete'];
+var DECKING_STAGES = PATIO_STAGES;
+
 function renderJobs(data) {
   var container = document.getElementById('jobsBody');
   if (_jobView === 'kanban') {
     if (_pipelineTab === 'fencing') {
       renderFencingKanban(container, data.columns);
+    } else if (_pipelineTab === 'patio' || _pipelineTab === 'decking') {
+      renderPatioKanban(container, data.columns);
     } else {
       renderKanban(container, data.columns);
     }
@@ -6538,6 +6545,62 @@ function renderFencingKanban(container, columns) {
     var jobs = columns[status] || [];
     html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
     html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+    html += '<div class="kanban-body">';
+
+    if (jobs.length === 0) {
+      html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">No jobs</div>';
+    } else {
+      // Sub-stage grouping for quoted column
+      if (status === 'quoted') {
+        var fresh = jobs.filter(function(j) { return j.days_in_stage <= 7; });
+        var following = jobs.filter(function(j) { return j.days_in_stage > 7; });
+        if (fresh.length > 0) {
+          html += '<div class="kanban-substage-header" style="color:var(--sw-text-sec);">Quote Sent <span class="count">' + fresh.length + '</span></div>';
+          fresh.forEach(function(j) { html += renderKanbanCard(j, status); });
+        }
+        if (following.length > 0) {
+          html += '<div class="kanban-substage-header" style="color:#E67E22;">Following Up <span class="count">' + following.length + '</span></div>';
+          following.forEach(function(j) { html += renderKanbanCard(j, status); });
+        }
+      } else {
+        jobs.forEach(function(j) { html += renderKanbanCard(j, status); });
+      }
+    }
+
+    html += '</div></div>';
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+  setupKanbanHorizontalScroll();
+  if (_kanbanSavedScroll) {
+    var kcRestore = container.querySelector('.kanban-container');
+    if (kcRestore) { kcRestore.scrollLeft = _kanbanSavedScroll; }
+    _kanbanSavedScroll = 0;
+  }
+}
+
+function renderPatioKanban(container, columns) {
+  var stages = _pipelineTab === 'decking' ? DECKING_STAGES : PATIO_STAGES;
+  var html = '<div class="kanban-container">';
+
+  stages.forEach(function(status) {
+    var jobs = columns[status] || [];
+    html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
+
+    // Approvals column header: show council progress summary
+    if (status === 'approvals') {
+      var inProgress = jobs.filter(function(j) { return j.council_status && j.council_status !== 'complete' && j.council_count > 0; }).length;
+      var blocked = jobs.filter(function(j) { return j.council_status === 'blocked'; }).length;
+      var headerExtra = jobs.length > 0 ? ': ' + inProgress + ' in progress' + (blocked > 0 ? ', ' + blocked + ' blocked' : '') : '';
+      html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+      if (jobs.length > 0) {
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);padding:0 10px 6px;text-align:center;">' + inProgress + ' in progress' + (blocked > 0 ? ' &bull; <span style="color:#E74C3C;">' + blocked + ' blocked</span>' : '') + '</div>';
+      }
+    } else {
+      html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+    }
+
     html += '<div class="kanban-body">';
 
     if (jobs.length === 0) {
@@ -6785,6 +6848,15 @@ function renderKanbanCard(j, status) {
   if (j.po_count > 0) html += '<span class="kanban-meta-badge">' + j.po_count + ' PO</span>';
   if (j.wo_count > 0) html += '<span class="kanban-meta-badge">' + j.wo_count + ' WO</span>';
   if (j.council_count > 0) html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.1);color:var(--sw-blue,#3498DB);">' + j.council_count + ' council</span>';
+  if (status === 'approvals' && j.council_status) {
+    if (j.council_status === 'complete') {
+      html += '<span class="kanban-meta-badge" style="background:rgba(39,174,96,0.15);color:#27AE60;font-weight:600;">Approved</span>';
+    } else if (j.council_status === 'blocked') {
+      html += '<span class="kanban-meta-badge" style="background:rgba(231,76,60,0.15);color:#E74C3C;font-weight:600;">Blocked</span>';
+    } else {
+      html += '<span class="kanban-meta-badge" style="background:rgba(52,152,219,0.15);color:var(--sw-blue,#3498DB);font-weight:600;">Council' + (j.council_step ? ': Step ' + j.council_step : ' In Progress') + '</span>';
+    }
+  }
   if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
   html += '</div>';
   var stale = j.days_in_stage > 14;
@@ -6804,6 +6876,10 @@ function kanbanDragAllowed(fromStatus, toStatus) {
     // Free movement: any fencing stage → any other fencing stage (incl. archived). No cancelled.
     var allFencing = FENCING_STAGES.concat(['archived']);
     return allFencing.indexOf(fromStatus) !== -1 && allFencing.indexOf(toStatus) !== -1;
+  }
+  if (_pipelineTab === 'patio' || _pipelineTab === 'decking') {
+    var allPatio = PATIO_STAGES.concat(['archived']);
+    return allPatio.indexOf(fromStatus) !== -1 && allPatio.indexOf(toStatus) !== -1;
   }
   var allowed = {
     'draft': ['quoted'],

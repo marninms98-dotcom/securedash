@@ -1801,6 +1801,15 @@ var COUNCIL_DEFAULT_STEPS = {
     { name: 'Submit to Council for Building Permit' },
     { name: 'Building Permit Received' },
   ],
+  full_building_permit_da: [
+    { name: 'Get Client House Plans' },
+    { name: 'Drafting (Patio Plans)' },
+    { name: 'Development Approval (DA)' },
+    { name: 'Engineering Certification' },
+    { name: 'CDC (Private Building Surveyor)' },
+    { name: 'Submit to Council for Building Permit' },
+    { name: 'Building Permit Received' },
+  ],
   engineering_only: [
     { name: 'Get Client House Plans' },
     { name: 'Drafting (Patio Plans)' },
