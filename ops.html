@@ -8460,107 +8460,283 @@ function showJobSubView(tab) {
 }
 
 // ── JARVIS Context Panel ──
-async function renderJarvisView(job) {
+// 2026-04-24 v1 — operational intelligence surface.
+// 5-row layout: readiness+context, latest update (deterministic fallback),
+// evidence strip (clickable counts from loaded tabs), pinned context +
+// Tell JARVIS input, rule-based next best actions.
+async function renderJarvisView(data) {
   var el = document.getElementById('jdJarvis');
   if (!el) return;
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--sw-text-sec)">Loading JARVIS context...</div>';
 
+  // Accept either full job_detail response or a bare job row (back-compat)
+  var jd = (data && data.job) ? data : { job: data || {} };
+  var job = jd.job || {};
+  if (!job.id) { el.innerHTML = '<div style="padding:20px;color:#e74c3c">No job loaded.</div>'; return; }
+
+  // Local timeAgo — keeps renderJarvisView self-contained (no shared helper dependency).
+  var _timeAgo = (typeof timeAgo === 'function') ? timeAgo : function(ts) {
+    if (!ts) return '—';
+    var diff = Date.now() - new Date(ts).getTime();
+    if (isNaN(diff) || diff < 0) return '—';
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.floor(hrs / 24);
+    if (days < 30) return days + 'd ago';
+    var months = Math.floor(days / 30);
+    return months + 'mo ago';
+  };
+
   try {
-    // Fetch job intelligence + job context in parallel
     var reportBase = window.SUPABASE_URL + '/functions/v1/reporting-api';
     var headers = { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY };
     var [intelResp, ctxResp] = await Promise.all([
       fetch(reportBase + '?action=job_intelligence&job_id=' + job.id, { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; }).catch(function() { return {}; }),
       fetch(reportBase + '?action=job_context&job_id=' + job.id, { headers: headers }).then(function(r) { return r.ok ? r.json() : {}; }).catch(function() { return {}; }),
     ]);
-
     var intel = intelResp || {};
     var ctx = ctxResp || {};
-    var html = '';
+    var pins = ctx.pins || [];
+    var readiness = jd.readiness || {};
+    var invoices = jd.invoices || [];
+    var documents = jd.documents || [];
+    var events = jd.events || [];
+    var businessEvents = jd.business_events || [];
+    var purchaseOrders = jd.purchase_orders || [];
+    var assignments = jd.assignments || [];
 
-    // Risk badge + health score
-    var risk = intel.risk_level || 'unknown';
-    var riskColor = risk === 'critical' ? '#e74c3c' : risk === 'high' ? '#F15A29' : risk === 'medium' ? '#f39c12' : '#27ae60';
-    var health = intel.health_score || 0;
+    // Pin-derived flags
+    var pinKinds = pins.reduce(function(m, p) { m[p.kind] = (m[p.kind] || 0) + 1; return m; }, {});
+    var hasDoNotChase = !!pinKinds.do_not_chase;
+    var hasSupplierDelay = !!pinKinds.supplier_delay;
+    var hasCouncilHold = !!pinKinds.council_hold;
+    var hasUnusualScope = !!pinKinds.unusual_scope;
+    var hasPaymentAgreement = !!pinKinds.payment_agreement;
 
-    html += '<div style="padding:16px">';
+    // Payment short form (reuse sw_get_payment_truth logic client-side)
+    var pricing = job.pricing_json || {};
+    var expectedTotal = Number(pricing.totalIncGST || 0);
+    var amountInvoiced = invoices.reduce(function(s, i) { return s + Number(i.total || 0); }, 0);
+    var amountPaid = invoices.reduce(function(s, i) { return s + Number(i.amount_paid || 0); }, 0);
+    var outstanding = expectedTotal > 0 ? Math.max(0, expectedTotal - amountPaid) : 0;
+    var paymentLine;
+    if (!invoices.length) paymentLine = 'No invoice yet';
+    else if (amountPaid === 0) paymentLine = '$' + Math.round(amountInvoiced).toLocaleString() + ' invoiced, unpaid';
+    else if (expectedTotal && amountPaid >= expectedTotal - 1) paymentLine = 'Fully paid';
+    else paymentLine = '$' + Math.round(amountPaid).toLocaleString() + ' paid · $' + Math.round(outstanding).toLocaleString() + ' outstanding';
 
-    // Header: risk + health
-    html += '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">';
-    html += '<span style="background:' + riskColor + ';color:#fff;padding:4px 10px;border-radius:3px;font-weight:700;font-size:12px;text-transform:uppercase">' + risk + ' RISK</span>';
-    html += '<div style="flex:1;background:var(--sw-border);height:8px;border-radius:4px;overflow:hidden"><div style="width:' + health + '%;height:100%;background:' + riskColor + ';transition:width 0.3s"></div></div>';
-    html += '<span style="font-weight:700;color:' + riskColor + '">' + health + '%</span>';
+    // Risk derivation — prefer intel, fallback to readiness
+    var risk;
+    if (intel.risk_level) risk = intel.risk_level;
+    else if (readiness.status === 'blocked') risk = 'high';
+    else if (readiness.status === 'at_risk') risk = 'medium';
+    else if (readiness.status === 'ready') risk = 'low';
+    else risk = 'unknown';
+    var riskColor = risk === 'critical' ? '#e74c3c' : risk === 'high' ? '#F15A29' : risk === 'medium' ? '#f39c12' : risk === 'low' ? '#27ae60' : '#95a5a6';
+    var health = intel.health_score != null ? intel.health_score : (readiness.score != null ? readiness.score : 0);
+
+    var html = '<div style="padding:16px">';
+
+    // ═══════════════════════════════════════════════════════════
+    // ROW 1 — Readiness + Context Summary
+    // ═══════════════════════════════════════════════════════════
+    html += '<div style="background:var(--sw-card);border:1px solid var(--sw-border);padding:14px 16px;border-radius:3px;margin-bottom:12px">';
+    html += '<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">';
+    html += '<span style="background:' + riskColor + ';color:#fff;padding:4px 10px;border-radius:3px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.3px">' + risk.toUpperCase() + ' RISK</span>';
+    html += '<div style="flex:1;background:var(--sw-border);height:6px;border-radius:3px;overflow:hidden"><div style="width:' + health + '%;height:100%;background:' + riskColor + ';transition:width 0.3s"></div></div>';
+    html += '<span style="font-weight:700;color:' + riskColor + ';min-width:40px;text-align:right">' + health + '%</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:8px">';
+    html += '<strong style="color:var(--sw-dark)">' + ((typeof STATUS_LABELS !== 'undefined' && STATUS_LABELS[job.status]) || job.status || 'Unknown') + '</strong>';
+    html += ' · ' + paymentLine;
+    if (purchaseOrders.length) html += ' · ' + purchaseOrders.length + ' PO' + (purchaseOrders.length === 1 ? '' : 's');
     html += '</div>';
 
-    // AI Summary
-    if (intel.ai_summary) {
-      html += '<div style="background:var(--sw-bg);border-left:3px solid var(--sw-orange);padding:12px;margin-bottom:16px;font-size:13px;line-height:1.5">' + intel.ai_summary + '</div>';
-    }
-
-    // Things to know
-    if (intel.things_to_know && intel.things_to_know.length > 0) {
-      html += '<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Things to Know</div>';
-      (intel.things_to_know || []).forEach(function(t) { html += '<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--sw-border)">• ' + t + '</div>'; });
-      html += '</div>';
-    }
-
-    // Next actions
-    if (intel.next_actions && intel.next_actions.length > 0) {
-      html += '<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Next Actions</div>';
-      (intel.next_actions || []).forEach(function(a) { html += '<div style="font-size:13px;padding:4px 0">→ ' + a + '</div>'; });
-      html += '</div>';
-    }
-
-    // Margin forecast
-    if (intel.margin_forecast_pct != null) {
-      html += '<div style="margin-bottom:16px;display:flex;gap:16px">';
-      html += '<div><span style="font-size:11px;color:var(--sw-text-sec)">MARGIN FORECAST</span><br><span style="font-size:20px;font-weight:700">' + Math.round(intel.margin_forecast_pct) + '%</span></div>';
-      if (intel.margin_forecast_amount) html += '<div><span style="font-size:11px;color:var(--sw-text-sec)">EST. MARGIN</span><br><span style="font-size:20px;font-weight:700">$' + Math.round(intel.margin_forecast_amount).toLocaleString() + '</span></div>';
-      html += '</div>';
-    }
-
-    // Context summary
-    var summary = ctx.summary || {};
-    html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">';
-    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.total_events || 0) + ' events</span>';
-    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.emails_received || 0) + ' emails</span>';
-    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.po_threads || 0) + ' PO threads</span>';
-    html += '<span style="background:var(--sw-bg);padding:4px 8px;border-radius:3px;font-size:11px">' + (summary.documents || 0) + ' docs</span>';
-    html += '</div>';
-
-    // Recent timeline (last 10)
-    var timeline = (ctx.timeline || []).slice(0, 20);
-    if (timeline.length > 0) {
-      html += '<div><div style="font-weight:700;margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Recent Activity</div>';
-      timeline.forEach(function(e) {
-        var ago = timeAgo(e.when);
-        html += '<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--sw-border);display:flex;gap:8px">';
-        html += '<span style="color:var(--sw-text-sec);min-width:60px">' + ago + '</span>';
-        html += '<span style="color:var(--sw-orange);min-width:50px">' + (e.source || '') + '</span>';
-        html += '<span>' + (e.type || '') + ': ' + ((e.detail || '').slice(0, 100)) + '</span>';
-        html += '</div>';
+    var chips = [];
+    if (hasDoNotChase) chips.push({ label: 'DO NOT CHASE', color: '#e74c3c' });
+    if (hasPaymentAgreement) chips.push({ label: 'PAYMENT AGREEMENT', color: '#3498db' });
+    if (hasSupplierDelay) chips.push({ label: 'SUPPLIER DELAY', color: '#f39c12' });
+    if (hasCouncilHold) chips.push({ label: 'COUNCIL HOLD', color: '#f39c12' });
+    if (hasUnusualScope) chips.push({ label: 'UNUSUAL SCOPE', color: '#f39c12' });
+    (readiness.blockers || []).slice(0, 3).forEach(function(b) { chips.push({ label: String(b).toUpperCase(), color: '#95a5a6' }); });
+    if (chips.length) {
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      chips.forEach(function(c) {
+        html += '<span style="background:' + c.color + ';color:#fff;padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:0.3px">' + c.label + '</span>';
       });
       html += '</div>';
     }
+    html += '</div>';
 
-    // No intelligence placeholder
-    if (!intel.risk_level && !intel.ai_summary) {
-      html += '<div style="text-align:center;padding:30px;color:var(--sw-text-sec)">No AI assessment yet for this job.<br><span style="font-size:12px">Intelligence is generated when sw_job_intelligence is called.</span></div>';
+    // ═══════════════════════════════════════════════════════════
+    // ROW 2 — Latest JARVIS Update (deterministic fallback hierarchy)
+    // ═══════════════════════════════════════════════════════════
+    var aiSummary = intel.ai_summary || '';
+    var computedAt = intel.computed_at;
+    var latestEventAt = events[0] && events[0].created_at;
+    var isStale = aiSummary && computedAt && latestEventAt && new Date(computedAt) < new Date(latestEventAt);
+    html += '<div style="background:var(--sw-card);border-left:3px solid var(--sw-orange);padding:12px 14px;margin-bottom:12px;border-radius:3px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px">Latest JARVIS Update</div>';
+    if (isStale) html += '<span style="background:#f39c12;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px;font-weight:700" title="Assessment older than most recent activity — may be outdated">STALE</span>';
+    html += '</div>';
+    if (aiSummary) {
+      html += '<div style="font-size:13px;line-height:1.5;color:var(--sw-dark)">' + escapeHtml(aiSummary) + '</div>';
+      if (computedAt) html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:6px">Last assessed: ' + new Date(computedAt).toLocaleString() + '</div>';
+    } else {
+      var lines = [];
+      var statusLabel = (typeof STATUS_LABELS !== 'undefined' && STATUS_LABELS[job.status]) || job.status || 'Unknown';
+      var statusTs = job.accepted_at || job.quoted_at || job.created_at;
+      var daysInStatus = statusTs ? Math.floor((Date.now() - new Date(statusTs).getTime()) / 86400000) : null;
+      lines.push('Status: <strong>' + statusLabel + '</strong>' + (daysInStatus != null ? ' for ' + daysInStatus + ' day' + (daysInStatus === 1 ? '' : 's') : ''));
+      lines.push(paymentLine);
+      if (pins.length) {
+        var latest = pins[0];
+        var rawVal = typeof latest.value === 'string' ? latest.value : (latest.value && (latest.value.text || latest.value.reason || JSON.stringify(latest.value))) || '';
+        var pvw = String(rawVal).slice(0, 80);
+        lines.push('Pinned: <strong>' + latest.kind + '</strong>' + (pvw ? ' — ' + escapeHtml(pvw) : ''));
+      }
+      var latestActivity = events[0] || businessEvents[0];
+      if (latestActivity) {
+        var lwhen = latestActivity.created_at || latestActivity.occurred_at;
+        var ltype = latestActivity.event_type || '';
+        lines.push('Latest activity: ' + escapeHtml(ltype) + ' ' + _timeAgo(lwhen));
+      }
+      if ((readiness.blockers || []).length) {
+        lines.push('Blockers: ' + readiness.blockers.slice(0, 3).map(function(b){return escapeHtml(String(b));}).join(', '));
+      }
+      html += '<div style="font-size:13px;line-height:1.6;color:var(--sw-dark)">';
+      lines.forEach(function(l) { html += '<div>' + l + '</div>'; });
+      html += '</div>';
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:6px;font-style:italic">Composed from current state — no AI assessment cached.</div>';
+    }
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════
+    // ROW 3 — Evidence Strip (strict counts from loaded tabs)
+    // ═══════════════════════════════════════════════════════════
+    var noteEvents = events.filter(function(e) { return e.event_type === 'note'; });
+    var commsSet = { 'sms_sent': 1, 'client.email_in': 1, 'supplier.email_in': 1, 'email.received': 1, 'sms_received': 1 };
+    var commsEvents = businessEvents.filter(function(e) { return commsSet[e.event_type]; });
+    var filesLatest = documents[0];
+    var evidence = [
+      { label: 'Notes', count: noteEvents.length, latest: noteEvents[0] && noteEvents[0].created_at, tab: 'history' },
+      { label: 'History', count: events.length, latest: events[0] && events[0].created_at, tab: 'history' },
+      { label: 'Comms', count: commsEvents.length, latest: commsEvents[0] && commsEvents[0].occurred_at, tab: 'comms' },
+      { label: 'Files', count: documents.length, latest: filesLatest && filesLatest.created_at, tab: 'files' },
+    ];
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">';
+    evidence.forEach(function(e) {
+      var latestStr = e.latest ? _timeAgo(e.latest) : '—';
+      var countColor = e.count > 0 ? 'var(--sw-dark)' : 'var(--sw-text-sec)';
+      html += '<div onclick="showJobSubView(\'' + e.tab + '\')" style="background:var(--sw-card);border:1px solid var(--sw-border);padding:10px 12px;border-radius:3px;cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor=\'var(--sw-orange)\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.borderColor=\'var(--sw-border)\';this.style.transform=\'translateY(0)\'">';
+      html += '<div style="font-size:20px;font-weight:700;color:' + countColor + '">' + e.count + '</div>';
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:2px">latest ' + latestStr + '</div>';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--sw-dark);margin-top:4px;text-transform:uppercase;letter-spacing:0.3px">' + e.label + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════
+    // ROW 4 — Pinned Context + Tell JARVIS
+    // ═══════════════════════════════════════════════════════════
+    html += '<div style="background:var(--sw-card);border:1px solid var(--sw-border);padding:14px 16px;border-radius:3px;margin-bottom:12px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px;margin-bottom:10px">Pinned Context</div>';
+    if (!pins.length) {
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);font-style:italic;padding:8px 0">No pinned context yet. Use Tell JARVIS below.</div>';
+    } else {
+      var kindColor = function(k) {
+        if (k === 'do_not_chase') return '#e74c3c';
+        if (k === 'payment_agreement') return '#3498db';
+        if (k === 'supplier_delay' || k === 'council_hold' || k === 'unusual_scope') return '#f39c12';
+        return '#95a5a6';
+      };
+      pins.forEach(function(p) {
+        var color = kindColor(p.kind);
+        var rawVal = typeof p.value === 'string' ? p.value : (p.value && (p.value.text || p.value.reason || JSON.stringify(p.value))) || '';
+        var preview = String(rawVal).slice(0, 160);
+        html += '<div style="border-left:3px solid ' + color + ';padding:8px 12px;margin-bottom:6px;background:var(--sw-bg);border-radius:2px">';
+        html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:2px;flex-wrap:wrap">';
+        html += '<span style="background:' + color + ';color:#fff;padding:2px 6px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">' + escapeHtml(p.kind) + '</span>';
+        html += '<span style="font-size:10px;color:var(--sw-text-sec)">by ' + escapeHtml(p.writer_role || 'unknown') + ' · ' + _timeAgo(p.created_at) + (p.untrusted ? ' · untrusted' : '') + '</span>';
+        html += '</div>';
+        if (preview) html += '<div style="font-size:12px;color:var(--sw-dark)">' + escapeHtml(preview) + '</div>';
+        html += '</div>';
+      });
     }
 
-    // Computed timestamp
-    if (intel.computed_at) {
-      html += '<div style="text-align:right;font-size:11px;color:var(--sw-text-sec);margin-top:12px">Last assessed: ' + new Date(intel.computed_at).toLocaleString() + '</div>';
-    }
-
-    // Manual context input — "Tell JARVIS something about this job"
-    html += '<div style="margin-top:20px;border-top:1px solid var(--sw-border);padding-top:16px">';
-    html += '<div style="font-weight:700;margin-bottom:8px;font-size:12px;text-transform:uppercase;color:var(--sw-text-sec)">Tell JARVIS</div>';
-    html += '<div style="display:flex;gap:8px">';
-    html += '<input type="text" id="jarvisContextInput" placeholder="e.g. Don\'t chase — payment plan agreed" style="flex:1;padding:8px 12px;border:1px solid var(--sw-border);border-radius:3px;font-size:13px">';
+    html += '<div style="margin-top:12px;border-top:1px dashed var(--sw-border);padding-top:12px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px;margin-bottom:8px">Tell JARVIS</div>';
+    html += '<div style="display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">';
+    html += '<select id="jarvisContextKind" style="padding:8px 10px;border:1px solid var(--sw-border);border-radius:3px;font-size:12px;background:#fff;color:var(--sw-dark);min-width:140px">';
+    html += '<optgroup label="Reference only">';
+    html += '<option value="note" selected>Note</option>';
+    html += '<option value="access_note">Access note</option>';
+    html += '<option value="client_preference">Client preference</option>';
+    html += '<option value="supplier_delay">Supplier delay</option>';
+    html += '<option value="unusual_scope">Unusual scope</option>';
+    html += '</optgroup>';
+    html += '<optgroup label="Affects automations">';
+    html += '<option value="do_not_chase">Do not chase</option>';
+    html += '<option value="payment_agreement">Payment agreement</option>';
+    html += '<option value="council_hold">Council hold</option>';
+    html += '</optgroup>';
+    html += '</select>';
+    html += '<input type="text" id="jarvisContextInput" placeholder="e.g. gate code 4829, paying cash on install" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--sw-border);border-radius:3px;font-size:13px">';
     html += '<button onclick="submitJarvisContext(\'' + job.id + '\')" style="background:var(--sw-orange);color:#fff;border:none;padding:8px 16px;border-radius:3px;font-size:12px;font-weight:700;cursor:pointer">Save</button>';
     html += '</div>';
-    html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:4px">All automations will respect this for 30 days. Use for payment plans, disputes, holds, etc.</div>';
+    html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:6px">Reference kinds (Note / Access note / Client preference / Supplier delay / Unusual scope) are informational. <strong>Do not chase</strong>, <strong>Payment agreement</strong>, and <strong>Council hold</strong> will affect automations — select deliberately.</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // ═══════════════════════════════════════════════════════════
+    // ROW 5 — Next Best Actions (rule-based, ≤3)
+    // ═══════════════════════════════════════════════════════════
+    var actions = [];
+    var anyAccrecPaid = invoices.some(function(i) { return String(i.status || '').toUpperCase() === 'PAID'; });
+    var lastClientEmail = businessEvents.find(function(e) { return e.event_type === 'client.email_in'; });
+    var lastClientEmailAgo = lastClientEmail && lastClientEmail.occurred_at ? (Date.now() - new Date(lastClientEmail.occurred_at).getTime()) : null;
+
+    if (hasSupplierDelay) actions.push({ label: 'Confirm supplier ETA', reason: 'supplier_delay pin is active — verify current delivery date' });
+    if (hasUnusualScope) actions.push({ label: 'Review unusual scope', reason: 'unusual_scope pin — human review before next stage' });
+    if (hasCouncilHold) actions.push({ label: 'Follow up council', reason: 'council_hold pin is active' });
+    if (!hasDoNotChase && (job.status === 'accepted' || job.status === 'deposit_invoiced' || job.status === 'awaiting_deposit') && invoices.length && !anyAccrecPaid && amountInvoiced > 0) {
+      actions.push({ label: 'Chase deposit', reason: 'Invoice issued, unpaid, no do_not_chase pin' });
+    }
+    if (job.status === 'accepted' && invoices.length === 0) {
+      actions.push({ label: 'Issue deposit invoice', reason: 'Accepted but no sales invoice yet' });
+    }
+    if (!hasSupplierDelay && (job.status === 'deposit_paid' || job.status === 'processing' || job.status === 'order_materials') && purchaseOrders.length === 0) {
+      actions.push({ label: 'Order materials', reason: 'Deposit paid / processing but no POs yet' });
+    }
+    if (job.status === 'approvals' || job.status === 'approval') {
+      actions.push({ label: 'Check approval status', reason: 'Job is in approvals — check council / engineer' });
+    }
+    if (job.status === 'scheduled' && assignments.length === 0) {
+      actions.push({ label: 'Assign crew', reason: 'Scheduled but no crew assignments' });
+    }
+    if (lastClientEmailAgo !== null && lastClientEmailAgo < 86400000) {
+      actions.push({ label: 'Review recent client email', reason: 'Client emailed ' + _timeAgo(lastClientEmail.occurred_at) });
+    }
+    actions = actions.slice(0, 3);
+
+    html += '<div style="background:var(--sw-card);border:1px solid var(--sw-border);padding:14px 16px;border-radius:3px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px;margin-bottom:10px">Next Best Actions</div>';
+    if (!actions.length) {
+      html += '<div style="font-size:12px;color:var(--sw-text-sec);font-style:italic;padding:4px 0">Nothing flagged. Job is progressing within normal parameters.</div>';
+    } else {
+      actions.forEach(function(a, i) {
+        var border = i < actions.length - 1 ? 'border-bottom:1px solid var(--sw-border)' : '';
+        html += '<div style="padding:8px 0;' + border + ';display:flex;gap:10px;align-items:start">';
+        html += '<span style="color:var(--sw-orange);font-weight:700;font-size:14px;line-height:1.2">→</span>';
+        html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--sw-dark)">' + escapeHtml(a.label) + '</div>';
+        html += '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px">' + escapeHtml(a.reason) + '</div></div>';
+        html += '</div>';
+      });
+    }
     html += '</div>';
 
     html += '</div>';
@@ -8572,13 +8748,17 @@ async function renderJarvisView(job) {
 
 async function submitJarvisContext(jobId) {
   var input = document.getElementById('jarvisContextInput');
+  var kindSel = document.getElementById('jarvisContextKind');
   var text = (input && input.value || '').trim();
+  var kind = (kindSel && kindSel.value) || 'note';
   if (!text) return showToast('Enter some context first', 'warning');
   try {
-    await opsPost('add_manual_context', { job_id: jobId, body: text });
+    await opsPost('add_job_context', { job_id: jobId, kind: kind, value: { text: text, source: 'ops_dashboard' } });
     input.value = '';
-    showToast('Context saved — automations will respect this for 30 days', 'success');
-    // Refresh the JARVIS view to show the new annotation
+    var HIGH_IMPACT = { do_not_chase: 1, payment_agreement: 1, council_hold: 1 };
+    var msg = HIGH_IMPACT[kind] ? 'Pin saved — automations will respect this' : 'Note pinned to job';
+    showToast(msg, 'success');
+    // Full re-render so pins list + override chips + next-best-actions all refresh together
     if (_currentJobData) renderJarvisView(_currentJobData);
   } catch (err) {
     showToast('Failed to save: ' + err.message, 'error');
