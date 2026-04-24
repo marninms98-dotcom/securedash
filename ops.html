@@ -8490,6 +8490,17 @@ async function renderJarvisView(data) {
     return months + 'mo ago';
   };
 
+  // Minimal markdown renderer for Haiku-generated summaries: escape first, then
+  // convert **bold** + line breaks. No deeper markdown (no lists, links, etc.) —
+  // summaries are short and the format comes from the AI prompt.
+  var _renderSummaryMarkdown = function(text) {
+    if (!text) return '';
+    var safe = escapeHtml(text);
+    safe = safe.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\n+/g, '<br>');
+    return safe;
+  };
+
   try {
     var reportBase = window.SUPABASE_URL + '/functions/v1/reporting-api';
     var headers = { 'x-api-key': window.SW_API_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY };
@@ -8561,7 +8572,11 @@ async function renderJarvisView(data) {
     if (hasSupplierDelay) chips.push({ label: 'SUPPLIER DELAY', color: '#f39c12' });
     if (hasCouncilHold) chips.push({ label: 'COUNCIL HOLD', color: '#f39c12' });
     if (hasUnusualScope) chips.push({ label: 'UNUSUAL SCOPE', color: '#f39c12' });
-    (readiness.blockers || []).slice(0, 3).forEach(function(b) { chips.push({ label: String(b).toUpperCase(), color: '#95a5a6' }); });
+    (readiness.blockers || []).slice(0, 3).forEach(function(b) {
+      // readiness.blockers items are {key, label, met, severity} dicts (not strings).
+      var blockerLabel = (b && typeof b === 'object') ? (b.label || b.key || b.reason || 'Blocker') : String(b);
+      chips.push({ label: String(blockerLabel).toUpperCase(), color: '#95a5a6' });
+    });
     if (chips.length) {
       html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
       chips.forEach(function(c) {
@@ -8584,7 +8599,7 @@ async function renderJarvisView(data) {
     if (isStale) html += '<span style="background:#f39c12;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px;font-weight:700" title="Assessment older than most recent activity — may be outdated">STALE</span>';
     html += '</div>';
     if (aiSummary) {
-      html += '<div style="font-size:13px;line-height:1.5;color:var(--sw-dark)">' + escapeHtml(aiSummary) + '</div>';
+      html += '<div style="font-size:13px;line-height:1.5;color:var(--sw-dark)">' + _renderSummaryMarkdown(aiSummary) + '</div>';
       if (computedAt) html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:6px">Last assessed: ' + new Date(computedAt).toLocaleString() + '</div>';
     } else {
       var lines = [];
@@ -8619,7 +8634,15 @@ async function renderJarvisView(data) {
     // ROW 3 — Evidence Strip (strict counts from loaded tabs)
     // ═══════════════════════════════════════════════════════════
     var noteEvents = events.filter(function(e) { return e.event_type === 'note'; });
-    var commsSet = { 'sms_sent': 1, 'client.email_in': 1, 'supplier.email_in': 1, 'email.received': 1, 'sms_received': 1 };
+    // Comms filter covers both inbound + outbound across all channels. Keep explicit
+    // (not prefix-matched) so we don't accidentally count unrelated events.
+    var commsSet = {
+      'sms_sent': 1, 'sms_received': 1,
+      'client.email_in': 1, 'supplier.email_in': 1, 'email.received': 1,
+      'client.email_out': 1, 'supplier.email_out': 1, 'email.sent': 1,
+      'client_comms.sent': 1, 'client_update.sent': 1,
+      'call.logged': 1, 'call.completed': 1,
+    };
     var commsEvents = businessEvents.filter(function(e) { return commsSet[e.event_type]; });
     var filesLatest = documents[0];
     var evidence = [
