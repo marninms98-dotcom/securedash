@@ -8559,7 +8559,9 @@ async function renderJarvisView(data) {
     html += '<span style="background:' + riskColor + ';color:#fff;padding:4px 10px;border-radius:3px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.3px">' + risk.toUpperCase() + ' RISK</span>';
     html += '<div style="flex:1;background:var(--sw-border);height:6px;border-radius:3px;overflow:hidden"><div style="width:' + health + '%;height:100%;background:' + riskColor + ';transition:width 0.3s"></div></div>';
     html += '<span style="font-weight:700;color:' + riskColor + ';min-width:40px;text-align:right">' + health + '%</span>';
+    html += '<button onclick="runJarvisVerify(\'' + job.id + '\')" title="Compare what JARVIS shows against fresh raw database state" style="background:transparent;color:var(--sw-text-sec);border:1px solid var(--sw-border);padding:4px 10px;border-radius:3px;font-size:10px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:0.3px">Verify</button>';
     html += '</div>';
+    html += '<div id="jarvisVerifyStrip"></div>';
     html += '<div style="font-size:13px;color:var(--sw-text-sec);margin-bottom:8px">';
     html += '<strong style="color:var(--sw-dark)">' + ((typeof STATUS_LABELS !== 'undefined' && STATUS_LABELS[job.status]) || job.status || 'Unknown') + '</strong>';
     html += ' · ' + paymentLine;
@@ -8596,7 +8598,10 @@ async function renderJarvisView(data) {
     html += '<div style="background:var(--sw-card);border-left:3px solid var(--sw-orange);padding:12px 14px;margin-bottom:12px;border-radius:3px">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
     html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px">Latest JARVIS Update</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center">';
     if (isStale) html += '<span style="background:#f39c12;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px;font-weight:700" title="Assessment older than most recent activity — may be outdated">STALE</span>';
+    html += '<button onclick="submitJarvisFeedback(\'' + job.id + '\',\'ai_summary\',this)" title="Flag this summary as wrong or misleading — goes to the training dataset" style="background:transparent;color:var(--sw-text-sec);border:1px solid var(--sw-border);padding:2px 6px;border-radius:2px;font-size:11px;cursor:pointer">👎</button>';
+    html += '</div>';
     html += '</div>';
     if (aiSummary) {
       html += '<div style="font-size:13px;line-height:1.5;color:var(--sw-dark)">' + _renderSummaryMarkdown(aiSummary) + '</div>';
@@ -8667,7 +8672,10 @@ async function renderJarvisView(data) {
     // ROW 4 — Pinned Context + Tell JARVIS
     // ═══════════════════════════════════════════════════════════
     html += '<div style="background:var(--sw-card);border:1px solid var(--sw-border);padding:14px 16px;border-radius:3px;margin-bottom:12px">';
-    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px;margin-bottom:10px">Pinned Context</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px">Pinned Context</div>';
+    if (pins.length) html += '<button onclick="submitJarvisFeedback(\'' + job.id + '\',\'pins\',this)" title="Flag pins as wrong, stale, or misclassified" style="background:transparent;color:var(--sw-text-sec);border:1px solid var(--sw-border);padding:2px 6px;border-radius:2px;font-size:11px;cursor:pointer">👎</button>';
+    html += '</div>';
     if (!pins.length) {
       html += '<div style="font-size:12px;color:var(--sw-text-sec);font-style:italic;padding:8px 0">No pinned context yet. Use Tell JARVIS below.</div>';
     } else {
@@ -8747,7 +8755,10 @@ async function renderJarvisView(data) {
     actions = actions.slice(0, 3);
 
     html += '<div style="background:var(--sw-card);border:1px solid var(--sw-border);padding:14px 16px;border-radius:3px">';
-    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px;margin-bottom:10px">Next Best Actions</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<div style="font-weight:700;font-size:11px;text-transform:uppercase;color:var(--sw-text-sec);letter-spacing:0.3px">Next Best Actions</div>';
+    if (actions.length) html += '<button onclick="submitJarvisFeedback(\'' + job.id + '\',\'next_actions\',this)" title="Flag these recommendations as wrong or misleading" style="background:transparent;color:var(--sw-text-sec);border:1px solid var(--sw-border);padding:2px 6px;border-radius:2px;font-size:11px;cursor:pointer">👎</button>';
+    html += '</div>';
     if (!actions.length) {
       html += '<div style="font-size:12px;color:var(--sw-text-sec);font-style:italic;padding:4px 0">Nothing flagged. Job is progressing within normal parameters.</div>';
     } else {
@@ -8764,8 +8775,197 @@ async function renderJarvisView(data) {
 
     html += '</div>';
     el.innerHTML = html;
+    // Cache the snapshot of what JARVIS just rendered — used by runJarvisVerify to compare
+    // against a fresh raw-source snapshot. Values picked are the ones the Verify strip checks.
+    window._jarvisLastRender = {
+      job_id: job.id,
+      rendered_at: Date.now(),
+      status: job.status,
+      amount_paid: amountPaid,
+      amount_invoiced: amountInvoiced,
+      invoice_count: invoices.length,
+      pins_count: pins.length,
+      notes_count: noteEvents.length,
+      comms_count: commsEvents.length,
+      documents_count: documents.length,
+      events_count: events.length,
+      purchase_orders_count: purchaseOrders.length,
+      assignments_count: assignments.length,
+      ai_summary_present: !!aiSummary,
+      ai_computed_at: computedAt || null,
+    };
   } catch (err) {
     el.innerHTML = '<div style="padding:20px;color:#e74c3c">Failed to load JARVIS context: ' + err.message + '</div>';
+  }
+}
+
+// Runs a raw-source audit of what the JARVIS tab just rendered. Fetches verify_snapshot
+// (fresh DB reads) and compares field-by-field to the cached render values. Each check
+// resolves to PASS / MISMATCH / UNVERIFIABLE (the third state handles partial systems
+// where a source table isn't populated yet — e.g. POs absent but supplier emails exist).
+async function runJarvisVerify(jobId) {
+  var strip = document.getElementById('jarvisVerifyStrip');
+  if (!strip) return;
+  strip.innerHTML = '<div style="margin-top:8px;padding:8px 10px;background:var(--sw-bg);border:1px dashed var(--sw-border);border-radius:3px;font-size:11px;color:var(--sw-text-sec)">Verifying against raw database…</div>';
+  try {
+    var raw = await opsFetch('verify_snapshot', { job_id: jobId });
+    if (!raw || raw.error) { strip.innerHTML = '<div style="margin-top:8px;padding:8px 10px;color:#e74c3c;font-size:11px;border:1px solid #f5c6cb;border-radius:3px;background:#fdf2f2">Verify failed: ' + ((raw && raw.error) || 'unknown error') + '</div>'; return; }
+    var rendered = window._jarvisLastRender || {};
+    var checks = [];
+
+    // 1. Job status (parity with the cache that produced what we rendered)
+    checks.push({
+      label: 'Status',
+      rendered: rendered.status || '—',
+      raw: raw.job && raw.job.status || '—',
+      verdict: rendered.status && raw.job && rendered.status === raw.job.status ? 'PASS' : 'MISMATCH',
+    });
+
+    // 2. Paid amount (sum ACCREC non-voided)
+    var paidMatches = Math.abs(Number(rendered.amount_paid || 0) - Number(raw.invoices && raw.invoices.amount_paid || 0)) < 0.01;
+    checks.push({
+      label: 'Paid $',
+      rendered: '$' + Math.round(rendered.amount_paid || 0).toLocaleString(),
+      raw: '$' + Math.round(raw.invoices && raw.invoices.amount_paid || 0).toLocaleString(),
+      verdict: paidMatches ? 'PASS' : 'MISMATCH',
+    });
+
+    // 3. Invoiced amount
+    var invMatches = Math.abs(Number(rendered.amount_invoiced || 0) - Number(raw.invoices && raw.invoices.amount_invoiced || 0)) < 0.01;
+    checks.push({
+      label: 'Invoiced $',
+      rendered: '$' + Math.round(rendered.amount_invoiced || 0).toLocaleString(),
+      raw: '$' + Math.round(raw.invoices && raw.invoices.amount_invoiced || 0).toLocaleString(),
+      verdict: invMatches ? 'PASS' : 'MISMATCH',
+    });
+
+    // 4. Pins count
+    checks.push({
+      label: 'Pins',
+      rendered: rendered.pins_count || 0,
+      raw: raw.pins && raw.pins.count || 0,
+      verdict: (rendered.pins_count || 0) === (raw.pins && raw.pins.count || 0) ? 'PASS' : 'MISMATCH',
+    });
+
+    // 5. Notes count
+    checks.push({
+      label: 'Notes',
+      rendered: rendered.notes_count || 0,
+      raw: raw.notes_count || 0,
+      verdict: (rendered.notes_count || 0) === (raw.notes_count || 0) ? 'PASS' : 'MISMATCH',
+    });
+
+    // 6. Comms count — JARVIS is likely to show fewer than raw because job_detail caps
+    //    business_events at 50. That's a real display truncation; mismatch is honest.
+    checks.push({
+      label: 'Comms',
+      rendered: rendered.comms_count || 0,
+      raw: raw.comms_count || 0,
+      verdict: (rendered.comms_count || 0) === (raw.comms_count || 0) ? 'PASS'
+        : (rendered.comms_count < raw.comms_count ? 'MISMATCH' : 'PASS'),
+      note: (rendered.comms_count < raw.comms_count) ? 'JARVIS display truncated — job_detail caps at 50 business_events' : '',
+    });
+
+    // 7. Files count
+    checks.push({
+      label: 'Files',
+      rendered: rendered.documents_count || 0,
+      raw: raw.documents_count || 0,
+      verdict: (rendered.documents_count || 0) === (raw.documents_count || 0) ? 'PASS' : 'MISMATCH',
+    });
+
+    // 8. POs — partial-systems: 0 rows BUT supplier emails present = UNVERIFIABLE (capture gap),
+    //    not FAIL. Saving this distinction matters because jobs.status 'processing' with no POs
+    //    may just mean we haven't captured them yet (bills paid via Xero directly).
+    var poVerdict, poNote;
+    if ((raw.purchase_orders_count || 0) === 0 && (raw.supplier_email_count || 0) > 0) {
+      poVerdict = 'UNVERIFIABLE';
+      poNote = raw.supplier_email_count + ' supplier email' + (raw.supplier_email_count === 1 ? '' : 's') + ' on this job — POs may exist operationally but not captured as rows';
+    } else if ((rendered.purchase_orders_count || 0) === (raw.purchase_orders_count || 0)) {
+      poVerdict = 'PASS';
+    } else {
+      poVerdict = 'MISMATCH';
+    }
+    checks.push({
+      label: 'POs',
+      rendered: rendered.purchase_orders_count || 0,
+      raw: raw.purchase_orders_count || 0,
+      verdict: poVerdict,
+      note: poNote || '',
+    });
+
+    var mismatches = checks.filter(function(c) { return c.verdict === 'MISMATCH'; }).length;
+    var unverifiable = checks.filter(function(c) { return c.verdict === 'UNVERIFIABLE'; }).length;
+    var summaryColor, summaryVerdict;
+    if (mismatches > 0) { summaryColor = '#e74c3c'; summaryVerdict = 'FAIL · ' + mismatches + ' mismatch' + (mismatches === 1 ? '' : 'es'); }
+    else if (unverifiable > 0) { summaryColor = '#f39c12'; summaryVerdict = 'PARTIAL · ' + unverifiable + ' unverifiable'; }
+    else { summaryColor = '#27ae60'; summaryVerdict = 'PASS · all checks green'; }
+
+    var html = '<div style="margin-top:8px;padding:10px 12px;background:var(--sw-bg);border:1px solid var(--sw-border);border-radius:3px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html += '<div style="font-size:10px;font-weight:700;color:var(--sw-text-sec);text-transform:uppercase;letter-spacing:0.3px">Raw-source Audit · ' + new Date(raw.snapshot_at).toLocaleTimeString() + '</div>';
+    html += '<div style="font-size:11px;font-weight:700;color:' + summaryColor + '">' + summaryVerdict + '</div>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px">';
+    checks.forEach(function(c) {
+      var color = c.verdict === 'PASS' ? '#27ae60' : c.verdict === 'MISMATCH' ? '#e74c3c' : '#95a5a6';
+      var icon = c.verdict === 'PASS' ? '✓' : c.verdict === 'MISMATCH' ? '✗' : '?';
+      var tooltip = 'JARVIS showed: ' + c.rendered + '\nRaw DB: ' + c.raw + (c.note ? '\n\n' + c.note : '');
+      html += '<div title="' + escapeHtml(tooltip) + '" style="background:#fff;border-left:3px solid ' + color + ';padding:6px 8px;border-radius:2px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">';
+      html += '<span style="font-weight:700;color:var(--sw-dark);font-size:11px">' + c.label + '</span>';
+      html += '<span style="color:' + color + ';font-weight:700;font-size:11px">' + icon + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:10px;color:var(--sw-text-sec);margin-top:2px">' + escapeHtml(String(c.rendered)) + ' · raw ' + escapeHtml(String(c.raw)) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+    strip.innerHTML = html;
+  } catch (err) {
+    strip.innerHTML = '<div style="margin-top:8px;padding:8px 10px;color:#e74c3c;font-size:11px;border:1px solid #f5c6cb;border-radius:3px;background:#fdf2f2">Verify failed: ' + err.message + '</div>';
+  }
+}
+
+// Captures a thumbs-down on a JARVIS claim. Writes to business_events with
+// claim_type + claim_text + claim_hash so the dataset is mineable for prompt tuning.
+async function submitJarvisFeedback(jobId, claimType, btnEl) {
+  var reason = window.prompt('What\'s wrong with this? (one line)');
+  if (!reason || !reason.trim()) return;
+  // Capture what JARVIS just rendered for this section — claim_text feeds the dataset.
+  var rendered = window._jarvisLastRender || {};
+  var claimText;
+  if (claimType === 'ai_summary') {
+    claimText = rendered.ai_summary_present
+      ? 'ai_summary present, computed_at=' + (rendered.ai_computed_at || 'unknown')
+      : 'deterministic_fallback, status=' + (rendered.status || 'unknown') + ', paid=$' + Math.round(rendered.amount_paid || 0) + ', invoiced=$' + Math.round(rendered.amount_invoiced || 0);
+  } else if (claimType === 'pins') {
+    claimText = 'pins_count=' + (rendered.pins_count || 0);
+  } else if (claimType === 'next_actions') {
+    claimText = 'status=' + (rendered.status || 'unknown') + ', pins=' + (rendered.pins_count || 0) + ', invoices=' + (rendered.invoice_count || 0) + ', pos=' + (rendered.purchase_orders_count || 0);
+  } else {
+    claimText = claimType;
+  }
+  try {
+    if (btnEl) { btnEl.disabled = true; btnEl.style.opacity = '0.5'; }
+    var resp = await opsPost('jarvis_feedback_negative', {
+      job_id: jobId,
+      claim_type: claimType,
+      claim_text: claimText,
+      reason: reason.trim(),
+      ui_version: window.SW_UI_VERSION || null,
+      model_version: rendered.ai_computed_at ? ('intel@' + rendered.ai_computed_at) : 'deterministic_fallback',
+    });
+    if (resp && resp.success) {
+      if (btnEl) btnEl.innerHTML = '✓';
+      showToast('Feedback saved — thanks, this tunes the prompt', 'success');
+    } else {
+      if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
+      showToast('Failed to save feedback: ' + (resp && resp.error || 'unknown'), 'error');
+    }
+  } catch (err) {
+    if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
+    showToast('Failed to save feedback: ' + err.message, 'error');
   }
 }
 
