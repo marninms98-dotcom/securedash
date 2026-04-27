@@ -847,13 +847,13 @@
     .kanban-container::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
     .kanban-container::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
     .kanban-col {
-      background: rgba(248,246,243,0.6);
-      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(248,246,243,0.7) 0%, rgba(240,237,232,0.5) 100%);
+      border-radius: 14px;
       min-width: 220px;
       flex: 0 0 220px;
-      border: 1px solid rgba(0,0,0,0.06);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(0,0,0,0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
     .kanban-col-header {
       padding: 12px 14px 10px;
@@ -930,20 +930,61 @@
       max-height: none;
     }
     .kanban-card {
-      background: #fff;
-      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.15) 100%);
+      backdrop-filter: blur(24px) saturate(2.2) brightness(1.08);
+      -webkit-backdrop-filter: blur(24px) saturate(2.2) brightness(1.08);
+      border-radius: 16px;
       padding: 11px 13px;
       margin-bottom: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+      box-shadow:
+        0 2px 8px rgba(0,0,0,0.06),
+        0 0 0 0.5px rgba(255,255,255,0.7) inset,
+        0 1px 0 rgba(255,255,255,0.65) inset,
+        0 -0.5px 0 rgba(0,0,0,0.04) inset;
+      border: 0.5px solid rgba(255,255,255,0.45);
       cursor: pointer;
-      transition: box-shadow 0.2s ease, transform 0.2s ease;
+      transition: box-shadow 0.3s ease, transform 0.3s ease, background 0.3s ease, border-color 0.3s ease;
       border-left: none;
+      position: relative;
+      overflow: hidden;
     }
-    .kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06); transform: translateY(-2px); }
+    .kanban-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 55%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 100%);
+      border-radius: 16px 16px 0 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .kanban-card::after {
+      content: '';
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.18) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .kanban-card > * {
+      position: relative;
+      z-index: 1;
+    }
+    .kanban-card:hover {
+      box-shadow:
+        0 12px 32px rgba(0,0,0,0.1),
+        0 4px 12px rgba(0,0,0,0.06),
+        0 0 0 0.5px rgba(255,255,255,0.8) inset,
+        0 1px 0 rgba(255,255,255,0.7) inset;
+      transform: translateY(-3px);
+      background: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.25) 100%);
+      border-color: rgba(255,255,255,0.6);
+    }
     .kanban-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-    .kanban-client { font-size: 13px; font-weight: 600; }
-    .kanban-value { font-size: 12px; font-weight: 600; color: var(--sw-green); font-family: var(--sw-font-num); }
-    .kanban-suburb { font-size: 11px; color: var(--sw-text-sec); }
+    .kanban-client { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .kanban-value { font-size: 12px; font-weight: 600; color: #1a9a5a; font-family: var(--sw-font-num); }
+    .kanban-suburb { font-size: 11px; color: #5a6068; }
     .kanban-meta { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
     .kanban-meta-badge {
       font-size: 10px;
@@ -1003,6 +1044,38 @@
       padding: 2px 4px; border-radius: 4px; margin-left: auto;
     }
     .kanban-ghl-link:hover { background: var(--sw-light); color: var(--sw-primary); }
+    .kanban-icon-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(0,0,0,0.05);
+    }
+    .kanban-icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+    .kanban-icon-btn:hover {
+      background: rgba(0,0,0,0.06);
+    }
+    .kanban-icon-btn svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 1.8;
+      stroke: var(--sw-text-sec);
+      fill: none;
+    }
+    .kanban-icon-btn:hover svg {
+      stroke: var(--sw-orange);
+    }
 
     /* ── Job List (table alternative to kanban) ── */
     .job-list-table {
@@ -2979,6 +3052,13 @@
     <div class="form-group">
       <label class="form-label">Special Instructions</label>
       <textarea class="form-textarea" id="woInstructions" placeholder="Scope and instructions..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+        Scope Items
+        <button class="btn btn-secondary btn-sm" onclick="autoWOFromScope(document.getElementById('woJobSelect').value)" style="font-size:11px;padding:2px 8px;">Load from Scope</button>
+      </label>
+      <div id="woScopeItems" style="font-size:13px;color:var(--sw-text-sec);">No job selected</div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('woModal')">Cancel</button>
@@ -6859,6 +6939,25 @@ function renderKanbanCard(j, status) {
   }
   if (j.ghl_opportunity_id) html += '<a class="kanban-ghl-link" href="https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/opportunities/' + j.ghl_opportunity_id + '" target="_blank" onclick="event.stopPropagation()" title="View in GHL">&#8599;</a>';
   html += '</div>';
+  // Icon row
+  var iconRow = '';
+  if (j.ghl_contact_id) {
+    var commsUrl = 'https://app.maxlead.com.au/v2/location/' + GHL_LOCATION_ID + '/contacts/detail/' + j.ghl_contact_id;
+    iconRow += '<a class="kanban-icon-btn" href="' + commsUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open comms">'
+      + '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
+      + '</a>';
+  }
+  if (j.type && j.type !== 'miscellaneous') {
+    var scopeUrl = j.type === 'fencing'
+      ? 'https://marninms98-dotcom.github.io/fence-designer/?jobId=' + j.id
+      : 'https://marninms98-dotcom.github.io/patio/?jobId=' + j.id;
+    iconRow += '<a class="kanban-icon-btn" href="' + scopeUrl + '" target="_blank" onclick="event.stopPropagation()" title="Open scope tool">'
+      + '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>'
+      + '</a>';
+  }
+  if (iconRow) {
+    html += '<div class="kanban-icon-row">' + iconRow + '</div>';
+  }
   var stale = j.days_in_stage > 14;
   html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
   html += '</div>';
@@ -11040,11 +11139,80 @@ function onPOFulfilmentChange(type) {
   }
 }
 
+var _woScopeItems = [];
+
 async function openWOModal() {
   document.getElementById('woModal').classList.add('active');
   document.getElementById('woJobSearch').value = '';
   document.getElementById('woJobSelect').value = '';
+  document.getElementById('woScopeItems').innerHTML = 'No job selected';
+  _woScopeItems = [];
   await loadPOJobList();
+}
+
+async function openCreateWOModal(jobId) {
+  await openWOModal();
+  if (jobId) {
+    selectJobPicker('wo', jobId);
+    autoWOFromScope(jobId);
+  }
+}
+
+async function autoWOFromScope(jobId) {
+  var container = document.getElementById('woScopeItems');
+  if (!jobId) { container.innerHTML = 'No job selected'; _woScopeItems = []; return; }
+  container.innerHTML = '<span style="color:var(--sw-text-sec);">Loading scope...</span>';
+  try {
+    var data = await opsFetch('scope_to_po', { jobId: jobId });
+    _woScopeItems = [];
+    var labour = data.labour || 0;
+    var desc = data.job_description || data.type || 'Job';
+    if (labour > 0) {
+      _woScopeItems.push({ description: 'Labour \u2014 ' + desc, quantity: 1, unit: 'job', unit_price: labour });
+    }
+    (data.materials || []).forEach(function(m) {
+      _woScopeItems.push({ description: m.description, quantity: m.quantity || 1, unit: m.unit || 'ea', unit_price: 0 });
+    });
+    if (_woScopeItems.length === 0) {
+      container.innerHTML = '<span style="color:var(--sw-text-sec);">No scope data available</span>';
+      return;
+    }
+    renderWOScopeItems();
+    // Auto-fill price from labour
+    if (labour > 0) {
+      var priceEl = document.getElementById('woPrice');
+      if (!priceEl.value) priceEl.value = labour.toFixed(2);
+    }
+  } catch(e) {
+    console.error('autoWOFromScope error:', e);
+    container.innerHTML = '<span style="color:var(--sw-text-sec);">Could not load scope</span>';
+  }
+}
+
+function renderWOScopeItems() {
+  var container = document.getElementById('woScopeItems');
+  if (_woScopeItems.length === 0) { container.innerHTML = '<span style="color:var(--sw-text-sec);">No items</span>'; return; }
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<tr style="border-bottom:1px solid var(--sw-border);color:var(--sw-text-sec);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">';
+  html += '<th style="text-align:left;padding:4px 0;">Description</th><th style="width:50px;text-align:center;padding:4px;">Qty</th><th style="width:50px;text-align:center;padding:4px;">Unit</th><th style="width:70px;text-align:right;padding:4px;">Price</th><th style="width:24px;"></th></tr>';
+  _woScopeItems.forEach(function(item, i) {
+    var isLabour = i === 0 && item.unit_price > 0;
+    var bold = isLabour ? 'font-weight:600;color:var(--sw-text);' : '';
+    html += '<tr style="border-bottom:1px solid var(--sw-border);' + bold + '">';
+    html += '<td style="padding:6px 0;">' + item.description + '</td>';
+    html += '<td style="text-align:center;padding:6px 4px;">' + item.quantity + '</td>';
+    html += '<td style="text-align:center;padding:6px 4px;">' + item.unit + '</td>';
+    html += '<td style="text-align:right;padding:6px 4px;">' + (item.unit_price > 0 ? '$' + item.unit_price.toFixed(2) : '\u2014') + '</td>';
+    html += '<td style="text-align:center;cursor:pointer;color:var(--sw-text-sec);" onclick="removeWOScopeItem(' + i + ')">\u00d7</td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  container.innerHTML = html;
+}
+
+function removeWOScopeItem(idx) {
+  _woScopeItems.splice(idx, 1);
+  renderWOScopeItems();
 }
 
 async function loadSupplierList() {
