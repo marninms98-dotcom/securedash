@@ -1859,9 +1859,10 @@
       background: var(--sw-bg); color: var(--sw-text); font-family: inherit;
     }
     .ops-notes-popup-footer button {
-      padding: 6px 14px; border-radius: 8px; border: none;
+      padding: 0 16px; border-radius: 8px; border: none;
       background: var(--sw-accent, #3498DB); color: #fff;
       font-size: 13px; font-weight: 600; cursor: pointer;
+      align-self: stretch;
     }
     .ops-note-btn.has-notes svg { fill: rgba(52,152,219,0.3); }
     .ops-note-btn { position: relative; }
@@ -10999,7 +11000,7 @@ async function openOpsNotesPopup(event, jobId) {
     + '<div class="ops-notes-popup-footer">'
     + '<textarea id="opsNoteInput" placeholder="Add a note..."></textarea>'
     + '<div id="opsNoteStagedFile" style="display:none;width:100%;"></div>'
-    + '<div style="display:flex;gap:6px;width:100;align-items:center;">'
+    + '<div style="display:flex;gap:6px;width:100%;align-items:stretch;">'
     + '<div class="ops-note-dropzone" id="opsNoteDropzone" style="flex:1;">Drop file or paste image</div>'
     + '<button onclick="saveOpsNote()">Add</button>'
     + '</div>'
