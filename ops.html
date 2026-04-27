@@ -1816,6 +1816,51 @@
     }
     .job-hover-popover .jd-qv-body { padding: 12px 16px; }
 
+    /* Ops Notes popup */
+    .ops-notes-popup {
+      position: fixed; z-index: 180;
+      background: var(--sw-card); border-radius: 12px;
+      width: 340px; max-width: 90vw; max-height: 60vh;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+      border: 1px solid var(--sw-border);
+      display: flex; flex-direction: column;
+    }
+    .ops-notes-popup-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--sw-border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 14px; font-weight: 600;
+    }
+    .ops-notes-popup-body {
+      padding: 12px 16px; overflow-y: auto; flex: 1;
+    }
+    .ops-note-item {
+      padding: 8px 0; border-bottom: 1px solid var(--sw-border);
+      font-size: 13px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    }
+    .ops-note-item:last-child { border-bottom: none; }
+    .ops-note-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
+    .ops-note-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .ops-note-actions button {
+      background: none; border: none; cursor: pointer; font-size: 12px;
+      color: var(--sw-text-sec); padding: 2px 4px; border-radius: 4px;
+    }
+    .ops-note-actions button:hover { background: var(--sw-hover); }
+    .ops-notes-popup-footer {
+      padding: 10px 16px; border-top: 1px solid var(--sw-border);
+      display: flex; gap: 8px;
+    }
+    .ops-notes-popup-footer textarea {
+      flex: 1; border: 1px solid var(--sw-border); border-radius: 8px;
+      padding: 8px 10px; font-size: 13px; resize: none; min-height: 36px;
+      background: var(--sw-bg); color: var(--sw-text); font-family: inherit;
+    }
+    .ops-notes-popup-footer button {
+      padding: 6px 14px; border-radius: 8px; border: none;
+      background: var(--sw-accent, #3498DB); color: #fff;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .ops-note-btn.has-notes svg { fill: rgba(52,152,219,0.3); }
+
     /* Mobile responsive for job detail */
     @media (max-width: 768px) {
       .jd-health-top { padding: 8px 12px; gap: 8px; }
@@ -6992,6 +7037,17 @@ function renderKanbanCard(j, status) {
       + '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>'
       + '</a>';
   }
+  // Xero search icon
+  if (j.client_name) {
+    var xeroUrl = 'https://go.xero.com/app/contacts/search?query=' + encodeURIComponent(j.client_name);
+    iconRow += '<a class="kanban-icon-btn" href="' + xeroUrl + '" target="_blank" onclick="event.stopPropagation()" title="Search in Xero">'
+      + '<svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'
+      + '</a>';
+  }
+  // Notes icon
+  iconRow += '<button class="kanban-icon-btn ops-note-btn" data-job-id="' + j.id + '" onclick="event.stopPropagation();openOpsNotesPopup(event,\'' + j.id + '\')" title="Ops notes">'
+    + '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
+    + '</button>';
   if (iconRow) {
     html += '<div class="kanban-icon-row">' + iconRow + '</div>';
   }
@@ -10860,11 +10916,162 @@ async function showHoverPopover(anchor, jobId) {
     }
     html += '</div>';
     pop.innerHTML = html;
+
+    // Fetch and append ops notes
+    try {
+      var notesData = await opsFetch('list_ops_notes', { jobId: jobId });
+      if (_hoverJobId === jobId && _hoverPopover === pop && notesData.notes && notesData.notes.length > 0) {
+        var notesHtml = '<div style="margin-top:8px;padding:8px 16px 12px;border-top:1px solid var(--sw-border);">';
+        notesHtml += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);margin-bottom:4px;">OPS NOTES</div>';
+        notesData.notes.slice(0, 3).forEach(function(n) {
+          notesHtml += '<div style="font-size:12px;color:var(--sw-text);padding:3px 0;border-bottom:1px solid var(--sw-border);">' + escapeHtml(n.note) + '</div>';
+        });
+        if (notesData.notes.length > 3) {
+          notesHtml += '<div style="font-size:11px;color:var(--sw-text-sec);padding-top:4px;">+' + (notesData.notes.length - 3) + ' more</div>';
+        }
+        notesHtml += '</div>';
+        pop.innerHTML += notesHtml;
+      }
+    } catch(e) { /* silent — notes are supplementary */ }
   } catch(e) {
     if (_hoverPopover === pop) {
       pop.innerHTML = '<div class="jd-qv-body" style="color:var(--sw-red);font-size:13px;">Error: ' + e.message + '</div>';
     }
   }
+}
+
+// ── Ops Notes Popup ──
+
+var _opsNotesPopup = null;
+var _opsNotesJobId = null;
+
+function closeOpsNotesPopup() {
+  if (_opsNotesPopup) { _opsNotesPopup.remove(); _opsNotesPopup = null; _opsNotesJobId = null; }
+}
+
+async function openOpsNotesPopup(event, jobId) {
+  closeOpsNotesPopup();
+  _opsNotesJobId = jobId;
+
+  var pop = document.createElement('div');
+  pop.className = 'ops-notes-popup';
+  pop.innerHTML = '<div class="ops-notes-popup-header"><span>Ops Notes</span><button onclick="closeOpsNotesPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button></div>'
+    + '<div class="ops-notes-popup-body"><div class="loading" style="padding:12px;">Loading...</div></div>'
+    + '<div class="ops-notes-popup-footer"><textarea id="opsNoteInput" placeholder="Add a note..." rows="1"></textarea><button onclick="saveOpsNote()">Add</button></div>';
+
+  document.body.appendChild(pop);
+  _opsNotesPopup = pop;
+
+  // Position near the click
+  var rect = event.currentTarget.getBoundingClientRect();
+  var left = rect.right + 8;
+  if (left + 340 > window.innerWidth) left = rect.left - 348;
+  if (left < 4) left = 4;
+  var top = rect.top - 40;
+  if (top + 300 > window.innerHeight) top = Math.max(4, window.innerHeight - 320);
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+
+  // Close on outside click
+  setTimeout(function() {
+    document.addEventListener('mousedown', _opsNotesOutsideClick);
+  }, 50);
+
+  loadOpsNotes(jobId);
+}
+
+function _opsNotesOutsideClick(e) {
+  if (_opsNotesPopup && !_opsNotesPopup.contains(e.target)) {
+    closeOpsNotesPopup();
+    document.removeEventListener('mousedown', _opsNotesOutsideClick);
+  }
+}
+
+async function loadOpsNotes(jobId) {
+  if (!_opsNotesPopup) return;
+  try {
+    var data = await opsFetch('list_ops_notes', { jobId: jobId });
+    if (!_opsNotesPopup || _opsNotesJobId !== jobId) return;
+    var body = _opsNotesPopup.querySelector('.ops-notes-popup-body');
+    if (!data.notes || data.notes.length === 0) {
+      body.innerHTML = '<div style="padding:12px;color:var(--sw-text-sec);font-size:13px;">No notes yet</div>';
+    } else {
+      var html = '';
+      data.notes.forEach(function(n) {
+        var date = new Date(n.created_at);
+        var dateStr = date.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+        html += '<div class="ops-note-item" data-note-id="' + n.id + '">'
+          + '<div class="ops-note-text">' + escapeHtml(n.note) + '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + dateStr + '</div></div>'
+          + '<div class="ops-note-actions">'
+          + '<button onclick="editOpsNote(\'' + n.id + '\')" title="Edit">&#9998;</button>'
+          + '<button onclick="deleteOpsNote(\'' + n.id + '\')" title="Delete" style="color:var(--sw-red);">&times;</button>'
+          + '</div></div>';
+      });
+      body.innerHTML = html;
+    }
+  } catch(e) {
+    if (_opsNotesPopup) {
+      _opsNotesPopup.querySelector('.ops-notes-popup-body').innerHTML = '<div style="color:var(--sw-red);padding:12px;font-size:13px;">Error: ' + e.message + '</div>';
+    }
+  }
+}
+
+async function saveOpsNote(noteId) {
+  var input = document.getElementById('opsNoteInput');
+  if (!input || !input.value.trim()) return;
+  var body = { job_id: _opsNotesJobId, note: input.value.trim() };
+  if (noteId) body.note_id = noteId;
+  try {
+    await opsFetch('upsert_ops_note', body);
+    input.value = '';
+    input.removeAttribute('data-editing');
+    var addBtn = _opsNotesPopup.querySelector('.ops-notes-popup-footer button');
+    if (addBtn) addBtn.textContent = 'Add';
+    loadOpsNotes(_opsNotesJobId);
+    refreshOpsNotesBadge(_opsNotesJobId);
+  } catch(e) {
+    showToast('Failed to save note: ' + e.message, 'error');
+  }
+}
+
+function editOpsNote(noteId) {
+  var item = _opsNotesPopup.querySelector('[data-note-id="' + noteId + '"]');
+  if (!item) return;
+  var text = item.querySelector('.ops-note-text').childNodes[0].textContent;
+  var input = document.getElementById('opsNoteInput');
+  input.value = text;
+  input.setAttribute('data-editing', noteId);
+  input.focus();
+  var addBtn = _opsNotesPopup.querySelector('.ops-notes-popup-footer button');
+  if (addBtn) {
+    addBtn.textContent = 'Save';
+    addBtn.setAttribute('onclick', "saveOpsNote('" + noteId + "')");
+  }
+}
+
+async function deleteOpsNote(noteId) {
+  try {
+    await opsFetch('delete_ops_note', { note_id: noteId });
+    loadOpsNotes(_opsNotesJobId);
+    refreshOpsNotesBadge(_opsNotesJobId);
+  } catch(e) {
+    showToast('Failed to delete note: ' + e.message, 'error');
+  }
+}
+
+// Highlight the notes icon if a job has notes
+async function refreshOpsNotesBadge(jobId) {
+  try {
+    var data = await opsFetch('list_ops_notes', { jobId: jobId });
+    var btns = document.querySelectorAll('.ops-note-btn[data-job-id="' + jobId + '"]');
+    btns.forEach(function(btn) {
+      if (data.notes && data.notes.length > 0) {
+        btn.classList.add('has-notes');
+      } else {
+        btn.classList.remove('has-notes');
+      }
+    });
+  } catch(e) { /* silent */ }
 }
 
 // ── Quick-View Popup (Kanban card click) ──
