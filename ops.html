@@ -11084,7 +11084,7 @@ async function loadOpsNotes(jobId) {
           ? '<button onclick="sendOpsNoteToTrade(\'' + n.id + '\')" title="Send to trade app" style="font-size:11px;">&#8599;</button>'
           : '';
         html += '<div class="ops-note-item" data-note-id="' + n.id + '">'
-          + '<div class="ops-note-text">' + escapeHtml(n.note || '') + sentBadge + attachHtml
+          + '<div class="ops-note-text">' + attachHtml + '<div>' + escapeHtml(n.note || '') + sentBadge + '</div>'
           + '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + dateStr + '</div></div>'
           + '<div class="ops-note-actions">' + sendBtn
           + '<button onclick="editOpsNote(\'' + n.id + '\')" title="Edit">&#9998;</button>'
