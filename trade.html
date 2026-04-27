@@ -5685,6 +5685,7 @@
         if (n.detail_json && n.detail_json.from_ops) html += '<span style="font-size:10px;background:var(--sw-blue);color:#fff;padding:1px 5px;border-radius:4px">Office</span>';
         html += '<span style="flex:1"></span>';
         html += '<span style="font-size:11px;color:var(--sw-text-sec)">' + timeAgo(n.created_at) + '</span>';
+        html += '<button onclick="deleteNote(\'' + n.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;color:var(--sw-text-sec);font-size:16px;padding:2px 6px;line-height:1;min-height:44px;min-width:44px;" ontouchstart="this.style.color=\'var(--sw-red)\'" ontouchend="this.style.color=\'var(--sw-text-sec)\'">&times;</button>';
         html += '</div>';
         html += '<div style="font-size:13px;color:var(--sw-text);white-space:pre-wrap">' + esc((n.detail_json && n.detail_json.text) || '') + '</div>';
         html += '</div>';
@@ -6702,6 +6703,7 @@
     // Notes
     notes.forEach(function(n) {
       timeline.push({
+        id: n.id,
         time: n.created_at,
         type: n.event_type || 'note',
         icon: n.event_type === 'site_note' ? '&#128221;' : (n.event_type === 'clock_event' ? '&#9201;' : (n.event_type === 'alert' ? '&#9888;' : '&#128221;')),
@@ -6755,6 +6757,7 @@
         if (entry.isAdmin) h += '<span style="font-size:10px;background:var(--sw-blue);color:#fff;padding:1px 5px;border-radius:4px">Office</span>';
         h += '<span style="flex:1"></span>';
         h += '<span style="font-size:11px;color:var(--sw-text-sec)">' + timeAgo(entry.time) + '</span>';
+        if (entry.id && entry.type !== 'photo') h += '<button onclick="deleteNote(\'' + entry.id + '\')" title="Delete" style="background:none;border:none;cursor:pointer;color:var(--sw-text-sec);font-size:16px;padding:2px 6px;line-height:1;min-height:44px;min-width:44px;" ontouchstart="this.style.color=\'var(--sw-red)\'" ontouchend="this.style.color=\'var(--sw-text-sec)\'">&times;</button>';
         h += '</div>';
         if (entry.text) h += '<div style="font-size:13px;color:var(--sw-text);white-space:pre-wrap">' + esc(entry.text) + '</div>';
         if (entry.thumb) {
@@ -6838,6 +6841,20 @@
       input.disabled = false;
       drafts.queueNote(_currentJobId, text);
       toast('Saved offline \u2014 will sync when connected');
+    });
+  };
+
+  // Delete a note
+  window.deleteNote = function(eventId) {
+    if (!confirm('Delete this note?')) return;
+    api('delete_note', null, { event_id: eventId }).then(function() {
+      toast('Note deleted');
+      // Refresh both the Log tab and bottom notes by reloading job detail
+      if (_currentJobId) {
+        loadJobDetail(_currentJobId);
+      }
+    }).catch(function(err) {
+      toast('Error: ' + (err.message || 'Could not delete'));
     });
   };
 

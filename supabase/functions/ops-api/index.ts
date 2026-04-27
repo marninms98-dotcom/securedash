@@ -628,6 +628,13 @@ serve(async (req: Request) => {
         const noteIsAdmin = authMode === 'api_key' || authUser?.role === 'admin'
         return json(await addNote(client, { ...body, userId: noteUserId }, noteIsAdmin))
       }
+      case 'delete_note': {
+        const eventId = body.event_id || body.eventId
+        if (!eventId) return json({ error: 'event_id required' }, 400)
+        const { error: delErr } = await client.from('job_events').delete().eq('id', eventId)
+        if (delErr) return json({ error: delErr.message }, 500)
+        return json({ success: true })
+      }
       case 'create_invoice': return json(await createInvoice(client, body))
       case 'sync_job_invoices': return json(await syncJobInvoices(client, body))
       case 'update_invoice_job_link': {
@@ -4924,11 +4931,6 @@ async function createInvoice(client: any, body: any) {
       event_type: 'invoice_created',
       detail_json: { xero_invoice_id: xeroInvId, invoice_number: invNumber, status: invoiceStatus, total: invTotal, emailed: !!send_email },
     })
-    // Update job status to invoiced if complete
-    await client.from('jobs')
-      .update({ status: 'invoiced' })
-      .eq('id', jId)
-      .eq('status', 'complete')
   }
 
   return { success: true, xero_invoice_id: xeroInvId, invoice_number: invNumber, total: invTotal }
@@ -5333,7 +5335,7 @@ async function completeAndInvoice(client: any, body: any) {
     correlation_id: jId,
     payload: {
       entity: { id: jId, name: job?.client_name || '' },
-      changes: { status: { from: job?.status, to: 'invoiced' } },
+      changes: { status: { from: job?.status, to: 'complete' } },
       financial: { amount: balance || 0, currency: 'AUD' },
     },
   })
@@ -5424,8 +5426,7 @@ async function createGeneralInvoice(client: any, body: any) {
     xero_status: 'DRAFT',
   })
 
-  // Update job status
-  await client.from('jobs').update({ status: 'invoiced' }).eq('id', job_id)
+  // Status stays unchanged — user drags card manually on kanban
 
   return {
     success: true,
@@ -6566,7 +6567,10 @@ async function scopeToPO(client: any, params: URLSearchParams) {
   if (error || !job) throw new Error('Job not found')
 
   const materials = extractMaterialsFromScope(job.scope_json, job.pricing_json)
-  return { job_id: jobId, client: job.client_name, type: job.type, materials }
+  const pj = job.pricing_json || {}
+  const labour = pj.labourCostEstimate || pj.internal?.labour || 0
+  const job_description = pj.job_description || ''
+  return { job_id: jobId, client: job.client_name, type: job.type, materials, labour, job_description }
 }
 
 // ── Scheduling Capacity Endpoint ──

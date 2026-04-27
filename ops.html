@@ -1779,6 +1779,27 @@
     }
     .jd-qv-label { color: var(--sw-text-sec); }
 
+    /* Hover popover (kanban card hover preview) */
+    .job-hover-popover {
+      position: fixed; z-index: 170;
+      background: var(--sw-card); border-radius: 12px;
+      width: 380px; max-width: 90vw; max-height: 70vh;
+      overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+      border: 1px solid var(--sw-border);
+      opacity: 0; transform: translateY(4px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      pointer-events: none;
+    }
+    .job-hover-popover.visible {
+      opacity: 1; transform: translateY(0);
+      pointer-events: auto;
+    }
+    .job-hover-popover .jd-qv-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--sw-border);
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .job-hover-popover .jd-qv-body { padding: 12px 16px; }
+
     /* Mobile responsive for job detail */
     @media (max-width: 768px) {
       .jd-health-top { padding: 8px 12px; gap: 8px; }
@@ -6900,7 +6921,7 @@ function renderKanban(container, columns) {
 }
 
 function renderKanbanCard(j, status) {
-  var html = '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobQuickView(\'' + j.id + '\')" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
+  var html = '<div class="kanban-card" draggable="true" data-job-id="' + j.id + '" data-status="' + status + '" onclick="openJobDetail(\'' + j.id + '\')" onmouseenter="hoverJobCard(event,\'' + j.id + '\')" onmouseleave="hideJobHover()" ondragstart="kanbanDragStart(event)" ondragend="kanbanDragEnd(event)">';
   html += '<div class="kanban-card-header">';
   html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
   if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
@@ -7066,7 +7087,7 @@ function renderJobList(container, columns) {
     '</tr></thead><tbody>';
 
   allJobs.forEach(function(j) {
-    html += '<tr onclick="openJobQuickView(\'' + j.id + '\')" style="cursor:pointer;">';
+    html += '<tr onclick="openJobDetail(\'' + j.id + '\')" onmouseenter="hoverJobCard(event,\'' + j.id + '\')" onmouseleave="hideJobHover()" style="cursor:pointer;">';
     html += '<td><strong>' + (j.client_name || 'Unknown') + '</strong></td>';
     html += '<td>' + (j.site_suburb || '') + '</td>';
     html += '<td><span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span></td>';
@@ -10284,9 +10305,12 @@ function buildNotesHTML(data) {
   if (noteEvents.length > 0) {
     h += '<div class="jd-notes-feed">';
     noteEvents.forEach(function(ev) {
-      h += '<div class="jd-note-item">';
+      h += '<div class="jd-note-item" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+      h += '<div style="flex:1;min-width:0;">';
       h += '<div style="font-size:11px;color:var(--sw-text-sec);">' + (ev.users?.name || '') + ' &middot; ' + new Date(ev.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + '</div>';
       h += '<div>' + escapeHtml(ev.detail_json?.text || ev.detail_json?.note || '') + '</div>';
+      h += '</div>';
+      h += '<button onclick="deleteJobNote(\'' + ev.id + '\')" title="Delete note" style="background:none;border:none;cursor:pointer;color:var(--sw-text-sec);font-size:14px;padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1;" onmouseover="this.style.color=\'var(--sw-red)\'" onmouseout="this.style.color=\'var(--sw-text-sec)\'">&times;</button>';
       h += '</div>';
     });
     h += '</div>';
@@ -10595,6 +10619,17 @@ async function submitJobNote() {
   }
 }
 
+async function deleteJobNote(eventId) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    await opsPost('delete_note', { event_id: eventId });
+    showToast('Note deleted', 'success');
+    refreshJobDetail();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'warning');
+  }
+}
+
 // ── Action Drawer (Zone 3) ──
 
 function renderActionDrawer(data) {
@@ -10714,6 +10749,107 @@ function openAssignmentModalForJob(jobId) {
     var sel = document.getElementById('assignJobSelect');
     if (sel) sel.value = jobId;
   }, 300);
+}
+
+// ── Hover Preview Popover (Kanban card hover) ──
+
+var _hoverTimer = null;
+var _hoverPopover = null;
+var _hoverJobId = null;
+
+function hoverJobCard(event, jobId) {
+  // Skip on touch devices
+  if ('ontouchstart' in window) return;
+  clearTimeout(_hoverTimer);
+  var target = event.currentTarget;
+  _hoverTimer = setTimeout(function() {
+    _hoverJobId = jobId;
+    showHoverPopover(target, jobId);
+  }, 300);
+}
+
+function hideJobHover() {
+  clearTimeout(_hoverTimer);
+  // Small delay so mouse can move to the popover
+  _hoverTimer = setTimeout(function() {
+    if (_hoverPopover) {
+      _hoverPopover.classList.remove('visible');
+      setTimeout(function() {
+        if (_hoverPopover && !_hoverPopover.classList.contains('visible')) {
+          _hoverPopover.remove();
+          _hoverPopover = null;
+          _hoverJobId = null;
+        }
+      }, 150);
+    }
+  }, 100);
+}
+
+async function showHoverPopover(anchor, jobId) {
+  // Remove any existing popover
+  if (_hoverPopover) { _hoverPopover.remove(); _hoverPopover = null; }
+
+  var pop = document.createElement('div');
+  pop.className = 'job-hover-popover';
+  pop.innerHTML = '<div class="jd-qv-header"><span style="font-size:13px;color:var(--sw-text-sec);">Loading...</span></div>';
+  pop.addEventListener('mouseenter', function() { clearTimeout(_hoverTimer); });
+  pop.addEventListener('mouseleave', function() { hideJobHover(); });
+  document.body.appendChild(pop);
+  _hoverPopover = pop;
+
+  // Position near the anchor
+  var rect = anchor.getBoundingClientRect();
+  var popW = 380, popH = 300;
+  var left = rect.right + 8;
+  if (left + popW > window.innerWidth) left = rect.left - popW - 8;
+  if (left < 4) left = 4;
+  var top = rect.top;
+  if (top + popH > window.innerHeight) top = Math.max(4, window.innerHeight - popH - 8);
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+
+  // Fade in
+  requestAnimationFrame(function() { pop.classList.add('visible'); });
+
+  try {
+    var data = await opsFetch('job_detail', { jobId: jobId });
+    // If user moved away before fetch returned
+    if (_hoverJobId !== jobId) { pop.remove(); return; }
+    var j = data.job;
+
+    var html = '<div class="jd-qv-header"><div><strong style="font-size:14px;">' + escapeHtml(j.client_name || 'Unknown') + '</strong>' +
+      '<div style="font-size:12px;color:var(--sw-text-sec);">' + (j.job_number || '') + ' &middot; ' + escapeHtml(j.site_suburb || '') + '</div></div></div>';
+    html += '<div class="jd-qv-body">';
+    html += '<div class="jd-qv-row"><span class="jd-qv-label">Type</span><span class="type-badge ' + j.type + '">' + typeBadgeLabel(j.type) + '</span></div>';
+    html += '<div class="jd-qv-row"><span class="jd-qv-label">Status</span><span class="status-badge ' + j.status + '">' + (STATUS_LABELS[j.status] || j.status) + '</span></div>';
+
+    var quoteVal = j.pricing_json?.totalIncGST || j.pricing_json?.total || 0;
+    if (quoteVal) html += '<div class="jd-qv-row"><span class="jd-qv-label">Quote</span><strong style="color:var(--sw-green)">' + fmt$(quoteVal) + '</strong></div>';
+
+    if (j.site_address) html += '<div class="jd-qv-row"><span class="jd-qv-label">Address</span><span style="font-size:12px">' + escapeHtml(j.site_address) + '</span></div>';
+    if (j.client_phone) html += '<div class="jd-qv-row"><span class="jd-qv-label">Phone</span><a href="tel:' + j.client_phone + '">' + j.client_phone + '</a></div>';
+
+    html += '<div style="display:flex;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--sw-border);font-size:12px;color:var(--sw-text-sec);">';
+    html += '<span>' + (data.assignments || []).length + ' assignments</span>';
+    html += '<span>' + (data.purchase_orders || []).length + ' POs</span>';
+    html += '<span>' + (data.work_orders || []).length + ' WOs</span>';
+    html += '</div>';
+
+    var alerts = evaluateJobAlerts(data);
+    if (alerts.length > 0) {
+      html += '<div style="margin-top:8px;">';
+      alerts.slice(0, 3).forEach(function(a) {
+        html += '<div class="jd-alert ' + a.level + '" style="margin-bottom:4px;">' + a.icon + ' ' + a.message + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    pop.innerHTML = html;
+  } catch(e) {
+    if (_hoverPopover === pop) {
+      pop.innerHTML = '<div class="jd-qv-body" style="color:var(--sw-red);font-size:13px;">Error: ' + e.message + '</div>';
+    }
+  }
 }
 
 // ── Quick-View Popup (Kanban card click) ──
