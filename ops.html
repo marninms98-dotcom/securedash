@@ -7096,6 +7096,9 @@ function kanbanDragStart(e) {
   _kanbanDragFromStatus = card.dataset.status;
   card.style.opacity = '0.4';
   e.dataTransfer.effectAllowed = 'move';
+  // Dismiss hover popover
+  clearTimeout(_hoverTimer);
+  if (_hoverPopover) { _hoverPopover.remove(); _hoverPopover = null; _hoverJobId = null; }
 }
 
 function kanbanDragEnd(e) {
@@ -10833,8 +10836,8 @@ var _hoverPopover = null;
 var _hoverJobId = null;
 
 function hoverJobCard(event, jobId) {
-  // Skip on touch devices
-  if ('ontouchstart' in window) return;
+  // Skip on touch devices or while dragging
+  if ('ontouchstart' in window || _kanbanDragJobId) return;
   clearTimeout(_hoverTimer);
   var target = event.currentTarget;
   _hoverTimer = setTimeout(function() {
@@ -10927,12 +10930,9 @@ async function showHoverPopover(anchor, jobId) {
       if (_hoverJobId === jobId && _hoverPopover === pop && notesData.notes && notesData.notes.length > 0) {
         var notesHtml = '<div style="margin-top:8px;padding:8px 16px 12px;border-top:1px solid var(--sw-border);">';
         notesHtml += '<div style="font-size:11px;font-weight:600;color:var(--sw-text-sec);margin-bottom:4px;">OPS NOTES</div>';
-        notesData.notes.slice(0, 3).forEach(function(n) {
+        notesData.notes.forEach(function(n) {
           notesHtml += '<div style="font-size:12px;color:var(--sw-text);padding:3px 0;border-bottom:1px solid var(--sw-border);">' + escapeHtml(n.note) + '</div>';
         });
-        if (notesData.notes.length > 3) {
-          notesHtml += '<div style="font-size:11px;color:var(--sw-text-sec);padding-top:4px;">+' + (notesData.notes.length - 3) + ' more</div>';
-        }
         notesHtml += '</div>';
         pop.innerHTML += notesHtml;
       }
