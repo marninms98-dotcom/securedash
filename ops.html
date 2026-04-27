@@ -910,6 +910,20 @@
     .kanban-body { padding: 8px 8px 12px; max-height: 600px; overflow-y: auto; }
 
     /* ── Jobs kanban: full viewport width + remaining screen height ── */
+    #viewJobs.active {
+      display: flex !important;
+      flex-direction: column;
+      height: calc(100vh - 72px); /* 48px navbar + 24px container padding-top */
+      overflow: hidden;
+    }
+    #viewJobs .filter-bar {
+      flex-shrink: 0;
+    }
+    #jobsBody {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
     #jobsBody .kanban-container {
       position: relative;
       left: 50%;
@@ -918,7 +932,7 @@
       padding-left: 24px;
       padding-right: 24px;
       box-sizing: border-box;
-      height: calc(100vh - 116px); /* 48px header + 24px container-pt + 44px filter-bar */
+      height: 100%;
       align-items: stretch;
     }
     #jobsBody .kanban-col {
@@ -927,7 +941,9 @@
     }
     #jobsBody .kanban-body {
       flex: 1;
+      min-height: 0;
       max-height: none;
+      overflow-y: auto;
     }
     .kanban-card {
       background: linear-gradient(135deg, rgba(255,255,255,0.38) 0%, rgba(255,255,255,0.15) 100%);
@@ -8485,8 +8501,7 @@ async function openJobDetail(jobId) {
 
     renderHealthBar(data);
     // Render the active sub-view (default to overview)
-    var activeTab = localStorage.getItem('sw_jd_tab') || 'overview';
-    showJobSubView(activeTab);
+    showJobSubView('overview');
   } catch (e) {
     document.getElementById('jdHealthTop').innerHTML = '<div style="color:var(--sw-red);padding:12px;">Error: ' + e.message + '</div>';
   }
