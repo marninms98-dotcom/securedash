@@ -1078,6 +1078,10 @@
       cursor: pointer;
       text-decoration: none;
       transition: background 0.15s ease;
+      border: none;
+      background: none;
+      padding: 0;
+      outline: none;
     }
     .kanban-icon-btn:hover {
       background: rgba(0,0,0,0.06);
@@ -7039,7 +7043,7 @@ function renderKanbanCard(j, status) {
   }
   // Xero search icon
   if (j.client_name) {
-    var xeroUrl = 'https://go.xero.com/app/contacts/search?query=' + encodeURIComponent(j.client_name);
+    var xeroUrl = 'https://go.xero.com/app/!j07L4/search-results?searchTerm=' + encodeURIComponent(j.client_name) + '&selectedCategory=all';
     iconRow += '<a class="kanban-icon-btn" href="' + xeroUrl + '" target="_blank" onclick="event.stopPropagation()" title="Search in Xero">'
       + '<svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'
       + '</a>';
