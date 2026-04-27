@@ -8737,7 +8737,7 @@ async function renderJarvisView(data) {
     // ═══════════════════════════════════════════════════════════
     // ROW 3 — Evidence Strip (strict counts from loaded tabs)
     // ═══════════════════════════════════════════════════════════
-    var noteEvents = events.filter(function(e) { return e.event_type === 'note'; });
+    var noteEvents = events.filter(function(e) { return e.event_type === 'note' || e.event_type === 'note_added' || e.event_type === 'site_note'; });
     // Comms filter covers both inbound + outbound across all channels. Keep explicit
     // (not prefix-matched) so we don't accidentally count unrelated events.
     var commsSet = {
@@ -8750,7 +8750,7 @@ async function renderJarvisView(data) {
     var commsEvents = businessEvents.filter(function(e) { return commsSet[e.event_type]; });
     var filesLatest = documents[0];
     var evidence = [
-      { label: 'Notes', count: noteEvents.length, latest: noteEvents[0] && noteEvents[0].created_at, tab: 'history' },
+      { label: 'Notes', count: noteEvents.length, latest: noteEvents[0] && noteEvents[0].created_at, tab: 'overview' },
       { label: 'History', count: events.length, latest: events[0] && events[0].created_at, tab: 'history' },
       { label: 'Comms', count: commsEvents.length, latest: commsEvents[0] && commsEvents[0].occurred_at, tab: 'comms' },
       { label: 'Files', count: documents.length, latest: filesLatest && filesLatest.created_at, tab: 'files' },
@@ -9361,6 +9361,7 @@ function renderOverviewView(data) {
   });
   if (evts.length > 5) html += '<div style="margin-top:6px;"><a href="#" onclick="event.preventDefault();showJobSubView(\x27history\x27)" style="font-size:11px;color:var(--sw-mid);">View full history &#8594;</a></div>';
   html += '</div>';
+  html += buildNotesHTML(data);
 
   document.getElementById('jdOverview').innerHTML = html;
 }
@@ -9899,6 +9900,7 @@ function renderMoneyView(data) {
     html += '<span class="jd-margin-bar-label" style="color:' + marginColor + '">Margin: ' + marginPct + '%</span></div>';
     html += '</div>';
   }
+  html += buildNotesHTML(data);
 
   document.getElementById('jdMoney').innerHTML = html;
 }
@@ -9927,6 +9929,7 @@ function renderBuildView(data) {
     }
     if (pj.client_notes) html += '<div style="margin-top:8px;font-size:12px;"><strong>Client Notes:</strong> ' + escapeHtml(pj.client_notes) + '</div>';
     if (pj.internal_notes) html += '<div style="margin-top:4px;font-size:12px;color:var(--sw-text-sec);"><strong>Internal:</strong> ' + escapeHtml(pj.internal_notes) + '</div>';
+    html += buildNotesHTML(data);
     document.getElementById('jdBuild').innerHTML = html;
     return;
   }
@@ -10018,6 +10021,7 @@ function renderBuildView(data) {
 
   // Labour Reconciliation placeholder — loads async
   html += '<div id="jdLabourRecon" style="margin-top:16px;"></div>';
+  html += buildNotesHTML(data);
 
   document.getElementById('jdBuild').innerHTML = html;
 
@@ -10271,6 +10275,32 @@ function matchMaterialStatus(category, purchaseOrders) {
   return Object.assign(base, { status: 'draft' });
 }
 
+// ── Shared Notes Section (appended to Overview, Money, Build, Files) ──
+
+function buildNotesHTML(data) {
+  var noteEvents = (data.events || []).filter(function(ev) { return ev.event_type === 'note' || ev.event_type === 'note_added' || ev.event_type === 'site_note'; });
+  var h = '<div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--sw-border);">';
+  h += '<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Notes</div>';
+  if (noteEvents.length > 0) {
+    h += '<div class="jd-notes-feed">';
+    noteEvents.forEach(function(ev) {
+      h += '<div class="jd-note-item">';
+      h += '<div style="font-size:11px;color:var(--sw-text-sec);">' + (ev.users?.name || '') + ' &middot; ' + new Date(ev.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + '</div>';
+      h += '<div>' + escapeHtml(ev.detail_json?.text || ev.detail_json?.note || '') + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  } else {
+    h += '<div style="font-size:12px;color:var(--sw-text-sec);">No notes yet</div>';
+  }
+  h += '<div class="jd-note-input-wrap">';
+  h += '<textarea class="jd-note-input" id="jdNoteInput" placeholder="Add a note..."></textarea>';
+  h += '<button class="btn btn-primary btn-sm" onclick="submitJobNote()">Add</button>';
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
+
 // ── Files View ──
 
 function renderFilesView(data) {
@@ -10420,26 +10450,8 @@ function renderFilesView(data) {
   }
 
   // Notes
-  html += '<div style="font-size:14px;font-weight:700;margin-top:16px;margin-bottom:8px;">Notes</div>';
-  var noteEvents = (data.events || []).filter(function(ev) { return ev.event_type === 'note_added'; });
-  if (noteEvents.length > 0) {
-    html += '<div class="jd-notes-feed">';
-    noteEvents.forEach(function(ev) {
-      html += '<div class="jd-note-item">';
-      html += '<div style="font-size:11px;color:var(--sw-text-sec);">' + (ev.users?.name || '') + ' &middot; ' + new Date(ev.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) + '</div>';
-      html += '<div>' + escapeHtml(ev.detail_json?.note || ev.detail_json?.text || JSON.stringify(ev.detail_json || '')) + '</div>';
-      html += '</div>';
-    });
-    html += '</div>';
-  } else {
-    html += '<div style="font-size:12px;color:var(--sw-text-sec);">No notes yet</div>';
-  }
-
-  // Note input
-  html += '<div class="jd-note-input-wrap">';
-  html += '<textarea class="jd-note-input" id="jdNoteInput" placeholder="Add a note..."></textarea>';
-  html += '<button class="btn btn-primary btn-sm" onclick="submitJobNote()">Add</button>';
-  html += '</div>';
+  html += buildNotesHTML(data);
+  var noteEvents = (data.events || []).filter(function(ev) { return ev.event_type === 'note' || ev.event_type === 'note_added' || ev.event_type === 'site_note'; });
 
   if (!readiness && jobPhotos.length === 0 && receiptPhotos.length === 0 && (data.documents || []).length === 0 && noteEvents.length === 0) {
     html = '<div class="empty-state"><div class="empty-state-icon">&#128247;</div><div class="empty-state-text">No files or notes yet</div></div>' + html.slice(html.lastIndexOf('<div class="jd-note-input-wrap">'));
@@ -10573,8 +10585,7 @@ async function submitJobNote() {
   try {
     await opsPost('add_note', {
       job_id: _currentJobId,
-      note: text,
-      event_type: 'note_added',
+      text: text,
     });
     input.value = '';
     showToast('Note added', 'success');
