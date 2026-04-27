@@ -1864,6 +1864,25 @@
       font-size: 13px; font-weight: 600; cursor: pointer;
     }
     .ops-note-btn.has-notes svg { fill: rgba(52,152,219,0.3); }
+    .ops-note-btn { position: relative; }
+    .ops-note-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 14px;
+      height: 14px;
+      background: var(--sw-orange);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 3px;
+      line-height: 1;
+      pointer-events: none;
+    }
 
     /* Mobile responsive for job detail */
     @media (max-width: 768px) {
@@ -6991,7 +7010,6 @@ function renderKanbanCard(j, status) {
   html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
   if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
   html += '</div>';
-  html += '<div class="kanban-suburb">' + (j.site_suburb || '') + '</div>';
   html += '<div class="kanban-meta">';
   // N-party shared fence badge
   if (j.type === 'fencing' && j.neighbour_count > 0) {
@@ -7049,11 +7067,13 @@ function renderKanbanCard(j, status) {
       + '</a>';
   }
   // Notes icon
-  iconRow += '<button class="kanban-icon-btn ops-note-btn" data-job-id="' + j.id + '" onclick="event.stopPropagation();openOpsNotesPopup(event,\'' + j.id + '\')" title="Ops notes">'
+  var notesBadge = j.ops_notes_count > 0 ? '<span class="ops-note-badge">' + j.ops_notes_count + '</span>' : '';
+  iconRow += '<button class="kanban-icon-btn ops-note-btn' + (j.ops_notes_count > 0 ? ' has-notes' : '') + '" data-job-id="' + j.id + '" onclick="event.stopPropagation();openOpsNotesPopup(event,\'' + j.id + '\')" title="Ops notes">'
     + '<svg viewBox="0 0 24 24"><path d="M4 4h16v12l-4 4H4z" fill="none"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="12" y2="13"/></svg>'
+    + notesBadge
     + '</button>';
   if (iconRow) {
-    html += '<div class="kanban-icon-row">' + iconRow + '</div>';
+    html += '<div class="kanban-icon-row" onmouseenter="clearTimeout(_hoverTimer);hideJobHover()">' + iconRow + '</div>';
   }
   var stale = j.days_in_stage > 14;
   html += '<div class="kanban-days' + (stale ? ' stale' : '') + '">' + j.days_in_stage + ' days in stage</div>';
@@ -10836,8 +10856,9 @@ var _hoverPopover = null;
 var _hoverJobId = null;
 
 function hoverJobCard(event, jobId) {
-  // Skip on touch devices or while dragging
+  // Skip on touch devices, while dragging, or when hovering icons
   if ('ontouchstart' in window || _kanbanDragJobId) return;
+  if (event.target.closest('.kanban-icon-row')) return;
   clearTimeout(_hoverTimer);
   var target = event.currentTarget;
   _hoverTimer = setTimeout(function() {
@@ -11067,12 +11088,20 @@ async function deleteOpsNote(noteId) {
 async function refreshOpsNotesBadge(jobId) {
   try {
     var data = await opsFetch('list_ops_notes', { jobId: jobId });
+    var count = (data.notes && data.notes.length) || 0;
     var btns = document.querySelectorAll('.ops-note-btn[data-job-id="' + jobId + '"]');
     btns.forEach(function(btn) {
-      if (data.notes && data.notes.length > 0) {
+      var badge = btn.querySelector('.ops-note-badge');
+      if (count > 0) {
         btn.classList.add('has-notes');
+        if (badge) {
+          badge.textContent = count;
+        } else {
+          btn.insertAdjacentHTML('beforeend', '<span class="ops-note-badge">' + count + '</span>');
+        }
       } else {
         btn.classList.remove('has-notes');
+        if (badge) badge.remove();
       }
     });
   } catch(e) { /* silent */ }

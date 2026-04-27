@@ -57,6 +57,11 @@
 //   annotations         — Query active AI annotations (GET)
 //   resolve_annotation  — Resolve an AI annotation with response (POST)
 //
+//   ── Ops Notes (personal per-job notes) ──
+//   list_ops_notes      — Get notes for a job
+//   upsert_ops_note     — Create or update a note
+//   delete_ops_note     — Delete a note
+//
 //   ── Price Intelligence ──
 //   extract_po_pricing  — Extract line item prices from PO into material_price_ledger
 //   confirm_price       — Confirm a pending price ledger entry
@@ -1281,6 +1286,11 @@ serve(async (req: Request) => {
       case 'list_proposed_actions': return json(await listProposedActions(client, url.searchParams))
       case 'send_proposed_sms': return json(await sendProposedSms(client, body))
       case 'dismiss_proposed_action': return json(await dismissProposedAction(client, body))
+
+      // ── Ops Notes (Shaun's personal per-job notes) ──
+      case 'list_ops_notes': return json(await listOpsNotes(client, url.searchParams))
+      case 'upsert_ops_note': return json(await upsertOpsNote(client, body))
+      case 'delete_ops_note': return json(await deleteOpsNote(client, body))
 
       // ── Smart Nudges ──
       case 'list_nudges': return json(await listNudges(client, url.searchParams))
@@ -3227,15 +3237,17 @@ async function pipeline(client: any, params: URLSearchParams) {
   // Enrich with assignment/PO/WO/council counts + email activity + invoices
   let assignRes: any = { data: [] }, poRes: any = { data: [] }, woRes: any = { data: [] }
   let councilRes: any = { data: [] }, emailRes: any = { data: [] }, invoiceRes: any = { data: [] }
+  let opsNotesRes: any = { data: [] }
 
   if (jobIds.length > 0) {
-    ;[assignRes, poRes, woRes, councilRes, emailRes, invoiceRes] = await Promise.all([
+    ;[assignRes, poRes, woRes, councilRes, emailRes, invoiceRes, opsNotesRes] = await Promise.all([
       client.from('job_assignments').select('job_id, scheduled_date').in('job_id', jobIds).neq('status', 'cancelled'),
       client.from('purchase_orders').select('job_id').in('job_id', jobIds).neq('status', 'deleted'),
       client.from('work_orders').select('job_id').in('job_id', jobIds).neq('status', 'cancelled'),
       client.from('council_submissions').select('job_id, overall_status, current_step_index, steps').in('job_id', jobIds),
       client.from('po_communications').select('job_id, direction, created_at').in('job_id', jobIds).eq('communication_type', 'purchase_order').order('created_at', { ascending: false }).limit(500),
       client.from('xero_invoices').select('job_id, status, invoice_type, reference').in('job_id', jobIds).eq('invoice_type', 'ACCREC').not('status', 'in', '("VOIDED","DELETED")'),
+      client.from('ops_notes').select('job_id').in('job_id', jobIds),
     ])
   }
 
@@ -3254,6 +3266,7 @@ async function pipeline(client: any, params: URLSearchParams) {
   }
   const poMap = countMap(poRes.data || [])
   const woMap = countMap(woRes.data || [])
+  const opsNotesMap = countMap(opsNotesRes.data || [])
 
   // Council: count + best status + step info per job
   const councilMap: Record<string, number> = {}
@@ -3320,6 +3333,7 @@ async function pipeline(client: any, params: URLSearchParams) {
       first_scheduled_date: schedDateMap[j.id] || null,
       po_count: poMap[j.id] || 0,
       wo_count: woMap[j.id] || 0,
+      ops_notes_count: opsNotesMap[j.id] || 0,
       council_count: councilMap[j.id] || 0,
       council_status: councilInfo?.status || null,
       council_step: councilInfo?.step || null,
@@ -3349,9 +3363,9 @@ async function pipeline(client: any, params: URLSearchParams) {
     schedule_install: [], rectification: [], final_payment: [], get_review: [], archived: [],
   }
   for (const j of enriched) {
-    // Merge deposit → accepted (old status). Scheduled: own column for fencing, merge to processing for others.
+    // Merge legacy statuses: deposit → accepted, processing → order_materials (patio/decking)
     const col = j.status === 'deposit' ? 'accepted'
-      : (j.status === 'scheduled' && j.type !== 'fencing') ? 'processing'
+      : (j.status === 'processing' && j.type !== 'fencing') ? 'order_materials'
       : j.status
     if (columns[col] !== undefined) columns[col].push(j)
   }
@@ -12882,4 +12896,51 @@ async function scopeAvailability(client: any, params: URLSearchParams) {
   })
 
   return { slots, scopers: allScopers.map((s: any) => ({ id: s.id, name: s.name })) }
+}
+
+// ════════════════════════════════════════════════════════════
+// OPS NOTES — Shaun's personal per-job notes (ops dash only)
+// ════════════════════════════════════════════════════════════
+
+async function listOpsNotes(client: any, params: URLSearchParams) {
+  const jobId = params.get('jobId')
+  if (!jobId) throw new ApiError('jobId required', 400)
+  const { data, error } = await client.from('ops_notes')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
+  if (error) throw new ApiError(error.message, 500)
+  return { notes: data || [] }
+}
+
+async function upsertOpsNote(client: any, body: any) {
+  const { job_id, note, note_id } = body
+  if (!job_id || !note) throw new ApiError('job_id and note required', 400)
+
+  if (note_id) {
+    // Update existing
+    const { data, error } = await client.from('ops_notes')
+      .update({ note, updated_at: new Date().toISOString() })
+      .eq('id', note_id)
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+    return { ok: true, note: data }
+  } else {
+    // Insert new
+    const { data, error } = await client.from('ops_notes')
+      .insert({ job_id, note })
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+    return { ok: true, note: data }
+  }
+}
+
+async function deleteOpsNote(client: any, body: any) {
+  const { note_id } = body
+  if (!note_id) throw new ApiError('note_id required', 400)
+  const { error } = await client.from('ops_notes').delete().eq('id', note_id)
+  if (error) throw new ApiError(error.message, 500)
+  return { ok: true }
 }
