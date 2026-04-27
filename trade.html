@@ -5670,6 +5670,35 @@
     html += '<div class="jd-tab-content" id="jdTab_comms"></div>';
     html += '<div class="jd-tab-content" id="jdTab_log"></div>';
 
+    // ── Notes Section (always visible below tabs) ──
+    html += '<div style="margin-top:20px;padding:16px;border-top:1px solid var(--sw-border);">';
+    html += '<div style="font-size:15px;font-weight:700;margin-bottom:10px;">Notes</div>';
+    var allNotes = (data.notes || []).filter(function(n) { return n.event_type === 'note' || n.event_type === 'note_added' || n.event_type === 'site_note'; });
+    if (allNotes.length > 0) {
+      html += '<div id="bottomNotesList">';
+      allNotes.forEach(function(n) {
+        var adminStyle = (n.detail_json && n.detail_json.from_ops) ? 'background:#E8F4FD;border-left:3px solid var(--sw-blue);' : '';
+        html += '<div style="padding:10px;margin-bottom:6px;border-radius:8px;background:var(--sw-light);' + adminStyle + '">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+        html += '<span style="font-size:14px">&#128221;</span>';
+        html += '<span style="font-size:12px;font-weight:600;color:var(--sw-dark)">' + esc((n.users && n.users.name) || 'System') + '</span>';
+        if (n.detail_json && n.detail_json.from_ops) html += '<span style="font-size:10px;background:var(--sw-blue);color:#fff;padding:1px 5px;border-radius:4px">Office</span>';
+        html += '<span style="flex:1"></span>';
+        html += '<span style="font-size:11px;color:var(--sw-text-sec)">' + timeAgo(n.created_at) + '</span>';
+        html += '</div>';
+        html += '<div style="font-size:13px;color:var(--sw-text);white-space:pre-wrap">' + esc((n.detail_json && n.detail_json.text) || '') + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div id="bottomNotesList" style="padding:12px;text-align:center;color:var(--sw-text-sec);font-size:13px">No notes yet</div>';
+    }
+    html += '<div style="display:flex;gap:8px;margin-top:10px;">';
+    html += '<input type="text" id="bottomNoteInput" placeholder="Add a note..." style="flex:1;padding:10px 12px;border:1px solid var(--sw-border);border-radius:8px;font-size:14px;font-family:var(--sw-font);" onkeydown="if(event.key===\'Enter\')submitBottomNote()">';
+    html += '<button onclick="submitBottomNote()" style="background:var(--sw-orange);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;">Send</button>';
+    html += '</div>';
+    html += '</div>';
+
     container.innerHTML = html;
 
     // ── Activate last-used tab (or default to workorder for Tier 2+, scope for Tier 1) ──
@@ -6767,6 +6796,44 @@
       input.value = '';
       input.disabled = false;
       toast('Note saved');
+    }).catch(function(err) {
+      input.disabled = false;
+      drafts.queueNote(_currentJobId, text);
+      toast('Saved offline \u2014 will sync when connected');
+    });
+  };
+
+  // Note submission from bottom notes section
+  window.submitBottomNote = function() {
+    var input = document.getElementById('bottomNoteInput');
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text || !_currentJobId) return;
+    input.disabled = true;
+
+    // Optimistic UI
+    var list = document.getElementById('bottomNotesList');
+    if (list) {
+      var emptyMsg = list.querySelector('div[style*="text-align:center"]');
+      if (emptyMsg) emptyMsg.remove();
+      var tmp = document.createElement('div');
+      tmp.style.cssText = 'padding:10px;margin-bottom:6px;border-radius:8px;background:var(--sw-light)';
+      tmp.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:14px">&#128221;</span><span style="font-size:12px;font-weight:600;color:var(--sw-dark)">' + esc(_user ? _user.name : 'You') + '</span><span style="flex:1"></span><span style="font-size:11px;color:var(--sw-text-sec)">Just now</span></div><div style="font-size:13px;color:var(--sw-text);white-space:pre-wrap">' + esc(text) + '</div>';
+      list.insertBefore(tmp, list.firstChild);
+    }
+
+    api('add_note', null, {
+      jobId: _currentJobId,
+      text: text,
+      eventType: 'site_note',
+      metadata: { user_id: _user ? _user.id : null, user_name: _user ? _user.name : null }
+    }).then(function() {
+      input.value = '';
+      input.disabled = false;
+      toast('Note saved');
+      // Also refresh the Log tab so it stays in sync
+      var logContent = document.getElementById('jdTab_log');
+      if (logContent) logContent.dataset.loaded = '';
     }).catch(function(err) {
       input.disabled = false;
       drafts.queueNote(_currentJobId, text);
