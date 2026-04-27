@@ -1855,8 +1855,12 @@
     }
     .ops-notes-popup-footer textarea {
       flex: 1; border: 1px solid var(--sw-border); border-radius: 8px;
-      padding: 8px 10px; font-size: 13px; resize: none; min-height: 36px;
+      padding: 8px 10px; font-size: 13px; resize: none; min-height: 36px; max-height: 120px;
       background: var(--sw-bg); color: var(--sw-text); font-family: inherit;
+      transition: min-height 0.2s ease;
+    }
+    .ops-notes-popup-footer textarea:focus {
+      min-height: 80px;
     }
     .ops-notes-popup-footer button {
       padding: 6px 14px; border-radius: 8px; border: none;
