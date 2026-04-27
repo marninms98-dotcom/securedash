@@ -11196,6 +11196,7 @@ function editOpsNote(noteId) {
 }
 
 async function deleteOpsNote(noteId) {
+  if (!confirm('Delete this note?')) return;
   try {
     await opsPost('delete_ops_note', { note_id: noteId });
     loadOpsNotes(_opsNotesJobId);
