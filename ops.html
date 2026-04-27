@@ -1851,16 +1851,12 @@
     .ops-note-actions button:hover { background: var(--sw-hover); }
     .ops-notes-popup-footer {
       padding: 10px 16px; border-top: 1px solid var(--sw-border);
-      display: flex; gap: 8px;
+      display: flex; flex-wrap: wrap; gap: 6px;
     }
     .ops-notes-popup-footer textarea {
-      flex: 1; border: 1px solid var(--sw-border); border-radius: 8px;
-      padding: 8px 10px; font-size: 13px; resize: none; min-height: 36px; max-height: 120px;
+      width: 100%; border: 1px solid var(--sw-border); border-radius: 8px;
+      padding: 8px 10px; font-size: 13px; resize: none; height: 64px;
       background: var(--sw-bg); color: var(--sw-text); font-family: inherit;
-      transition: min-height 0.2s ease;
-    }
-    .ops-notes-popup-footer textarea:focus {
-      min-height: 80px;
     }
     .ops-notes-popup-footer button {
       padding: 6px 14px; border-radius: 8px; border: none;
@@ -11000,11 +10996,13 @@ async function openOpsNotesPopup(event, jobId) {
   pop.className = 'ops-notes-popup';
   pop.innerHTML = '<div class="ops-notes-popup-header"><span>Ops Notes</span><button onclick="closeOpsNotesPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button></div>'
     + '<div class="ops-notes-popup-body"><div class="loading" style="padding:12px;">Loading...</div></div>'
-    + '<div class="ops-notes-popup-footer" style="flex-wrap:wrap;">'
-    + '<div id="opsNoteStagedFile" style="display:none;width:100%;margin-bottom:4px;"></div>'
-    + '<textarea id="opsNoteInput" placeholder="Add a note..." rows="1"></textarea>'
+    + '<div class="ops-notes-popup-footer">'
+    + '<textarea id="opsNoteInput" placeholder="Add a note..."></textarea>'
+    + '<div id="opsNoteStagedFile" style="display:none;width:100%;"></div>'
+    + '<div style="display:flex;gap:6px;width:100;align-items:center;">'
+    + '<div class="ops-note-dropzone" id="opsNoteDropzone" style="flex:1;">Drop file or paste image</div>'
     + '<button onclick="saveOpsNote()">Add</button>'
-    + '<div class="ops-note-dropzone" id="opsNoteDropzone">Drop file or paste image</div>'
+    + '</div>'
     + '</div>';
 
   document.body.appendChild(pop);
