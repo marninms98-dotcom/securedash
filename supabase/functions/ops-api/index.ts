@@ -1291,6 +1291,8 @@ serve(async (req: Request) => {
       case 'list_ops_notes': return json(await listOpsNotes(client, url.searchParams))
       case 'upsert_ops_note': return json(await upsertOpsNote(client, body))
       case 'delete_ops_note': return json(await deleteOpsNote(client, body))
+      case 'get_ops_upload_url': return json(await getOpsUploadUrl(client, body))
+      case 'send_ops_note_to_trade': return json(await sendOpsNoteToTrade(client, body))
 
       // ── Smart Nudges ──
       case 'list_nudges': return json(await listNudges(client, url.searchParams))
@@ -12914,22 +12916,22 @@ async function listOpsNotes(client: any, params: URLSearchParams) {
 }
 
 async function upsertOpsNote(client: any, body: any) {
-  const { job_id, note, note_id } = body
-  if (!job_id || !note) throw new ApiError('job_id and note required', 400)
+  const { job_id, note, note_id, attachment_url, attachment_type, attachment_filename } = body
+  if (!job_id || (!note && !attachment_url)) throw new ApiError('job_id and (note or attachment) required', 400)
 
   if (note_id) {
-    // Update existing
     const { data, error } = await client.from('ops_notes')
-      .update({ note, updated_at: new Date().toISOString() })
+      .update({ note: note || null, attachment_url, attachment_type, attachment_filename, updated_at: new Date().toISOString() })
       .eq('id', note_id)
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
     return { ok: true, note: data }
   } else {
-    // Insert new
+    const row: any = { job_id, note: note || null }
+    if (attachment_url) { row.attachment_url = attachment_url; row.attachment_type = attachment_type; row.attachment_filename = attachment_filename }
     const { data, error } = await client.from('ops_notes')
-      .insert({ job_id, note })
+      .insert(row)
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
@@ -12942,5 +12944,63 @@ async function deleteOpsNote(client: any, body: any) {
   if (!note_id) throw new ApiError('note_id required', 400)
   const { error } = await client.from('ops_notes').delete().eq('id', note_id)
   if (error) throw new ApiError(error.message, 500)
+  return { ok: true }
+}
+
+async function getOpsUploadUrl(client: any, body: any) {
+  const { fileName, jobId } = body
+  if (!fileName || !jobId) throw new ApiError('fileName and jobId required', 400)
+  const bucket = 'job-documents'
+  const fileId = crypto.randomUUID()
+  const ext = fileName.includes('.') ? fileName.split('.').pop() : ''
+  const safeName = ext ? `${fileId}.${ext}` : fileId
+  const path = `ops-notes/${jobId}/${safeName}`
+  const { data, error } = await client.storage.from(bucket).createSignedUploadUrl(path)
+  if (error) throw new ApiError(error.message, 500)
+  const { data: urlData } = client.storage.from(bucket).getPublicUrl(path)
+  return { signedUrl: data.signedUrl, publicUrl: urlData.publicUrl, path, token: data.token }
+}
+
+async function sendOpsNoteToTrade(client: any, body: any) {
+  const { note_id } = body
+  if (!note_id) throw new ApiError('note_id required', 400)
+  const { data: note, error: fetchErr } = await client.from('ops_notes').select('*').eq('id', note_id).single()
+  if (fetchErr || !note) throw new ApiError('Note not found', 404)
+
+  // If it has an attachment, insert into the appropriate table
+  if (note.attachment_url) {
+    const isImage = (note.attachment_type || '').startsWith('image/')
+    if (isImage) {
+      await client.from('job_media').insert({
+        job_id: note.job_id,
+        phase: 'scope',
+        type: 'image',
+        storage_url: note.attachment_url,
+        thumbnail_url: note.attachment_url,
+        label: note.attachment_filename || 'Ops attachment',
+        notes: note.note || null,
+      })
+    } else {
+      await client.from('job_documents').insert({
+        job_id: note.job_id,
+        type: 'ops_attachment',
+        storage_url: note.attachment_url,
+        file_name: note.attachment_filename || 'attachment',
+        visible_to_trades: true,
+      })
+    }
+  }
+
+  // Also add as a job_event note so it shows in trade app notes feed
+  if (note.note) {
+    await client.from('job_events').insert({
+      job_id: note.job_id,
+      event_type: 'note',
+      detail_json: { text: note.note, from_ops: true },
+    })
+  }
+
+  // Mark as sent
+  await client.from('ops_notes').update({ sent_to_trade: true, updated_at: new Date().toISOString() }).eq('id', note_id)
   return { ok: true }
 }

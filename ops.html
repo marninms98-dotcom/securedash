@@ -1865,6 +1865,19 @@
     }
     .ops-note-btn.has-notes svg { fill: rgba(52,152,219,0.3); }
     .ops-note-btn { position: relative; }
+    .ops-notes-popup-footer .ops-note-staged {
+      display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+      background: var(--sw-light); border-radius: 6px; font-size: 11px; color: var(--sw-text-sec);
+    }
+    .ops-note-staged img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; }
+    .ops-note-staged .remove { cursor: pointer; color: var(--sw-red); font-weight: 700; margin-left: auto; }
+    .ops-note-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; cursor: pointer; margin-top: 4px; border: 1px solid var(--sw-border); }
+    .ops-note-file-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--sw-light); border-radius: 6px; font-size: 11px; cursor: pointer; margin-top: 4px; color: var(--sw-text-sec); }
+    .ops-note-dropzone { border: 2px dashed var(--sw-border); border-radius: 8px; padding: 8px; text-align: center; font-size: 11px; color: var(--sw-text-sec); margin-top: 4px; transition: border-color 0.2s, background 0.2s; }
+    .ops-note-dropzone.dragover { border-color: var(--sw-orange); background: rgba(243,156,18,0.05); }
+    .ops-note-sent { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(39,174,96,0.12); color: #27AE60; }
+    .ops-lightbox { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 200; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .ops-lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
     .ops-note-badge {
       position: absolute;
       top: -2px;
@@ -10969,6 +10982,7 @@ async function showHoverPopover(anchor, jobId) {
 
 var _opsNotesPopup = null;
 var _opsNotesJobId = null;
+var _opsNoteStagedFile = null;
 
 function closeOpsNotesPopup() {
   if (_opsNotesPopup) { _opsNotesPopup.remove(); _opsNotesPopup = null; _opsNotesJobId = null; }
@@ -10982,10 +10996,38 @@ async function openOpsNotesPopup(event, jobId) {
   pop.className = 'ops-notes-popup';
   pop.innerHTML = '<div class="ops-notes-popup-header"><span>Ops Notes</span><button onclick="closeOpsNotesPopup()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--sw-text-sec);">&times;</button></div>'
     + '<div class="ops-notes-popup-body"><div class="loading" style="padding:12px;">Loading...</div></div>'
-    + '<div class="ops-notes-popup-footer"><textarea id="opsNoteInput" placeholder="Add a note..." rows="1"></textarea><button onclick="saveOpsNote()">Add</button></div>';
+    + '<div class="ops-notes-popup-footer" style="flex-wrap:wrap;">'
+    + '<div id="opsNoteStagedFile" style="display:none;width:100%;margin-bottom:4px;"></div>'
+    + '<textarea id="opsNoteInput" placeholder="Add a note..." rows="1"></textarea>'
+    + '<button onclick="saveOpsNote()">Add</button>'
+    + '<div class="ops-note-dropzone" id="opsNoteDropzone">Drop file or paste image</div>'
+    + '</div>';
 
   document.body.appendChild(pop);
   _opsNotesPopup = pop;
+  _opsNoteStagedFile = null;
+
+  // Paste handler
+  pop.addEventListener('paste', function(e) {
+    var items = (e.clipboardData || {}).items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        var file = items[i].getAsFile();
+        stageOpsNoteFile(file);
+        return;
+      }
+    }
+  });
+
+  // Drop handler
+  var dropzone = pop.querySelector('#opsNoteDropzone');
+  dropzone.addEventListener('dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', function() { dropzone.classList.remove('dragover'); });
+  dropzone.addEventListener('drop', function(e) {
+    e.preventDefault(); dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) stageOpsNoteFile(e.dataTransfer.files[0]);
+  });
 
   // Position near the click
   var rect = event.currentTarget.getBoundingClientRect();
@@ -11025,9 +11067,23 @@ async function loadOpsNotes(jobId) {
       data.notes.forEach(function(n) {
         var date = new Date(n.created_at);
         var dateStr = date.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+        var attachHtml = '';
+        if (n.attachment_url) {
+          var isImg = (n.attachment_type || '').startsWith('image/');
+          if (isImg) {
+            attachHtml = '<img class="ops-note-thumb" src="' + n.attachment_url + '" onclick="event.stopPropagation();openOpsLightbox(\'' + n.attachment_url + '\')" title="Click to enlarge">';
+          } else {
+            attachHtml = '<a class="ops-note-file-badge" href="' + n.attachment_url + '" target="_blank" onclick="event.stopPropagation()">&#128196; ' + escapeHtml(n.attachment_filename || 'file') + '</a>';
+          }
+        }
+        var sentBadge = n.sent_to_trade ? ' <span class="ops-note-sent">Sent &#10003;</span>' : '';
+        var sendBtn = (n.attachment_url || n.note) && !n.sent_to_trade
+          ? '<button onclick="sendOpsNoteToTrade(\'' + n.id + '\')" title="Send to trade app" style="font-size:11px;">&#8599;</button>'
+          : '';
         html += '<div class="ops-note-item" data-note-id="' + n.id + '">'
-          + '<div class="ops-note-text">' + escapeHtml(n.note) + '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + dateStr + '</div></div>'
-          + '<div class="ops-note-actions">'
+          + '<div class="ops-note-text">' + escapeHtml(n.note || '') + sentBadge + attachHtml
+          + '<div style="font-size:11px;color:var(--sw-text-sec);margin-top:2px;">' + dateStr + '</div></div>'
+          + '<div class="ops-note-actions">' + sendBtn
           + '<button onclick="editOpsNote(\'' + n.id + '\')" title="Edit">&#9998;</button>'
           + '<button onclick="deleteOpsNote(\'' + n.id + '\')" title="Delete" style="color:var(--sw-red);">&times;</button>'
           + '</div></div>';
@@ -11043,19 +11099,81 @@ async function loadOpsNotes(jobId) {
 
 async function saveOpsNote(noteId) {
   var input = document.getElementById('opsNoteInput');
-  if (!input || !input.value.trim()) return;
-  var body = { job_id: _opsNotesJobId, note: input.value.trim() };
+  var text = input ? input.value.trim() : '';
+  if (!text && !_opsNoteStagedFile) return;
+  var body = { job_id: _opsNotesJobId };
+  if (text) body.note = text;
   if (noteId) body.note_id = noteId;
+
   try {
+    // Upload staged file first if present
+    if (_opsNoteStagedFile && !noteId) {
+      var fileName = _opsNoteStagedFile.name || ('paste-' + Date.now() + '.png');
+      var urlData = await opsPost('get_ops_upload_url', { fileName: fileName, jobId: _opsNotesJobId });
+      // Upload file to signed URL
+      await fetch(urlData.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': _opsNoteStagedFile.type || 'application/octet-stream' },
+        body: _opsNoteStagedFile,
+      });
+      body.attachment_url = urlData.publicUrl;
+      body.attachment_type = _opsNoteStagedFile.type || 'application/octet-stream';
+      body.attachment_filename = fileName;
+    }
+
     await opsPost('upsert_ops_note', body);
-    input.value = '';
-    input.removeAttribute('data-editing');
-    var addBtn = _opsNotesPopup.querySelector('.ops-notes-popup-footer button');
+    if (input) { input.value = ''; input.removeAttribute('data-editing'); }
+    _opsNoteStagedFile = null;
+    var staged = document.getElementById('opsNoteStagedFile');
+    if (staged) { staged.style.display = 'none'; staged.innerHTML = ''; }
+    var addBtn = _opsNotesPopup ? _opsNotesPopup.querySelector('.ops-notes-popup-footer button:not([onclick*="remove"])') : null;
     if (addBtn) addBtn.textContent = 'Add';
     loadOpsNotes(_opsNotesJobId);
     refreshOpsNotesBadge(_opsNotesJobId);
   } catch(e) {
     showToast('Failed to save note: ' + e.message, 'error');
+  }
+}
+
+function stageOpsNoteFile(file) {
+  _opsNoteStagedFile = file;
+  var container = document.getElementById('opsNoteStagedFile');
+  if (!container) return;
+  container.style.display = 'flex';
+  var isImg = file.type.startsWith('image/');
+  if (isImg) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      container.innerHTML = '<div class="ops-note-staged"><img src="' + e.target.result + '"><span>' + escapeHtml(file.name || 'pasted image') + '</span><span class="remove" onclick="clearOpsNoteStaged()">&times;</span></div>';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    container.innerHTML = '<div class="ops-note-staged">&#128196; <span>' + escapeHtml(file.name) + '</span><span class="remove" onclick="clearOpsNoteStaged()">&times;</span></div>';
+  }
+}
+
+function clearOpsNoteStaged() {
+  _opsNoteStagedFile = null;
+  var container = document.getElementById('opsNoteStagedFile');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+}
+
+function openOpsLightbox(url) {
+  var lb = document.createElement('div');
+  lb.className = 'ops-lightbox';
+  lb.innerHTML = '<img src="' + url + '">';
+  lb.onclick = function() { lb.remove(); };
+  document.body.appendChild(lb);
+}
+
+async function sendOpsNoteToTrade(noteId) {
+  if (!confirm('Send this note + attachment to the trade app?')) return;
+  try {
+    await opsPost('send_ops_note_to_trade', { note_id: noteId });
+    showToast('Sent to trade app', 'success');
+    loadOpsNotes(_opsNotesJobId);
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
   }
 }
 
