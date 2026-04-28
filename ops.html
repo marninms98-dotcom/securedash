@@ -5773,13 +5773,19 @@ function renderScheduleView(container, range) {
         start: ev.scheduled_date,
         end: ev.scheduled_end || ev.scheduled_date,
         crew: {},
-        assignmentId: ev.assignment_id || ''
+        assignmentId: ev.assignment_id || '',
+        activeDates: {}
       };
     }
-    // Expand span
+    // Track actual assignment dates (each date the crew is on site)
+    var evStart = ev.scheduled_date;
+    var evEndDate = ev.scheduled_end || ev.scheduled_date;
+    var d = new Date(evStart + 'T00:00:00');
+    var dEnd = new Date(evEndDate + 'T00:00:00');
+    while (d <= dEnd) { jobMap[jid].activeDates[localDateStr(d)] = true; d.setDate(d.getDate() + 1); }
+    // Expand overall span
     if (ev.scheduled_date < jobMap[jid].start) jobMap[jid].start = ev.scheduled_date;
-    var evEnd = ev.scheduled_end || ev.scheduled_date;
-    if (evEnd > jobMap[jid].end) jobMap[jid].end = evEnd;
+    if (evEndDate > jobMap[jid].end) jobMap[jid].end = evEndDate;
     if (!jobMap[jid].assignmentId && ev.assignment_id) jobMap[jid].assignmentId = ev.assignment_id;
     // Collect crew
     var crewName = 'Unassigned';
@@ -5792,12 +5798,38 @@ function renderScheduleView(container, range) {
     if (crewName !== 'Unassigned') jobMap[jid].crew[crewName] = true;
   });
 
-  // Convert to array and sort by start date, then job number
-  var jobs = Object.keys(jobMap).map(function(jid) {
+  // Convert to array — split non-contiguous days into separate segments
+  var jobs = [];
+  Object.keys(jobMap).forEach(function(jid) {
     var j = jobMap[jid];
     j.id = jid;
     j.crewNames = Object.keys(j.crew);
-    return j;
+    var sortedDates = Object.keys(j.activeDates).sort();
+    if (sortedDates.length === 0) { jobs.push(j); return; }
+    // Group into contiguous runs
+    var segments = [];
+    var segStart = sortedDates[0], segEnd = sortedDates[0];
+    for (var si = 1; si < sortedDates.length; si++) {
+      var prev = new Date(segEnd + 'T00:00:00');
+      prev.setDate(prev.getDate() + 1);
+      if (sortedDates[si] === localDateStr(prev)) {
+        segEnd = sortedDates[si];
+      } else {
+        segments.push({ start: segStart, end: segEnd });
+        segStart = sortedDates[si];
+        segEnd = sortedDates[si];
+      }
+    }
+    segments.push({ start: segStart, end: segEnd });
+    segments.forEach(function(seg, idx) {
+      var copy = {};
+      for (var k in j) copy[k] = j[k];
+      copy.start = seg.start;
+      copy.end = seg.end;
+      copy.id = segments.length > 1 ? jid + '_seg' + idx : jid;
+      copy._jobId = jid;
+      jobs.push(copy);
+    });
   });
   // Add label (job-less) entries
   Object.keys(labelMap).forEach(function(aid) {
@@ -5837,13 +5869,22 @@ function renderScheduleView(container, range) {
       var weekStart = weekDates[0], weekEnd = weekDates[6];
       if (job.end < weekStart || job.start > weekEnd) return;
 
-      // Find first available lane
+      // Prefer same lane as another segment of the same job
+      var realId = job._jobId || job.id;
+      var preferredLane = -1;
+      if (jobLanes['_job_' + realId] != null) preferredLane = jobLanes['_job_' + realId];
+
+      // Find first available lane (try preferred first)
       var placed = false;
-      for (var li = 0; li < lanes.length; li++) {
+      var tryOrder = [];
+      if (preferredLane >= 0) tryOrder.push(preferredLane);
+      for (var li = 0; li < lanes.length; li++) { if (li !== preferredLane) tryOrder.push(li); }
+
+      for (var ti = 0; ti < tryOrder.length; ti++) {
+        var li = tryOrder[ti];
         var canFit = true;
         for (var oi = 0; oi < lanes[li].length; oi++) {
           var other = lanes[li][oi];
-          // Check overlap within this week
           if (!(job.end < other.start || job.start > other.end)) {
             canFit = false;
             break;
@@ -5852,12 +5893,14 @@ function renderScheduleView(container, range) {
         if (canFit) {
           lanes[li].push(job);
           jobLanes[job.id] = li;
+          jobLanes['_job_' + realId] = li;
           placed = true;
           break;
         }
       }
       if (!placed) {
         jobLanes[job.id] = lanes.length;
+        jobLanes['_job_' + realId] = lanes.length;
         lanes.push([job]);
       }
     });
@@ -5927,17 +5970,18 @@ function renderScheduleView(container, range) {
         }
         html += '</div>';
       } else {
+        var realJobId = job._jobId || job.id;
         var typeClass = (job.job_type === 'fencing') ? 'fencing' : (job.job_type === 'decking') ? 'decking' : 'patio';
         var confClass = job.confirmation || 'tentative';
-        var readiness = _calReadiness[job.id];
+        var readiness = _calReadiness[realJobId];
         var readinessClass = readiness ? ' readiness-' + readiness.status : '';
 
         html += '<div class="cal-schedule-bar ' + typeClass + ' ' + confClass + readinessClass + '"';
         html += ' style="position:absolute;top:' + topPx + 'px;left:' + leftPct + '%;width:' + widthPct + '%;height:' + barHeight + 'px;"';
-        html += ' data-job-id="' + job.id + '"';
+        html += ' data-job-id="' + realJobId + '"';
         html += ' data-assignment-id="' + (job.assignmentId || '') + '"';
         html += ' onclick="event.stopPropagation();openCalJobPopup(event,\'' + (job.assignmentId || '') + '\')"';
-        html += ' onmouseenter="showScheduleTooltip(event,\'' + job.id + '\')"';
+        html += ' onmouseenter="showScheduleTooltip(event,\'' + realJobId + '\')"';
         html += ' onmouseleave="hideScheduleTooltip()"';
         html += '>';
 
