@@ -7068,6 +7068,9 @@ function renderKanbanCard(j, status) {
   html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
   if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
   html += '</div>';
+  if ((j.type === 'patio' || j.type === 'decking') && j.site_suburb) {
+    html += '<div class="kanban-suburb">' + j.site_suburb + '</div>';
+  }
   html += '<div class="kanban-meta">';
   // N-party shared fence badge
   if (j.type === 'fencing' && j.neighbour_count > 0) {
