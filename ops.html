@@ -1030,6 +1030,15 @@
       opacity: 0.6;
       margin-left: 4px;
     }
+    .kanban-substage-header { cursor: pointer; user-select: none; }
+    .kanban-substage-header::before {
+      content: '▾';
+      display: inline-block;
+      margin-right: 4px;
+      transition: transform 0.2s;
+    }
+    .kanban-substage-header.collapsed::before { transform: rotate(-90deg); }
+    .kanban-substage-group.collapsed { display: none; }
     .next-step-bar {
       background: var(--sw-warm-100, #F8F6F3);
       border-left: 3px solid var(--sw-orange);
@@ -6798,12 +6807,16 @@ function renderFencingKanban(container, columns) {
         var fresh = jobs.filter(function(j) { return j.days_in_stage <= 7; });
         var following = jobs.filter(function(j) { return j.days_in_stage > 7; });
         if (fresh.length > 0) {
-          html += '<div class="kanban-substage-header" style="color:var(--sw-text-sec);">Quote Sent <span class="count">' + fresh.length + '</span></div>';
+          html += '<div class="kanban-substage-header" onclick="toggleSubstage(this)" style="color:var(--sw-text-sec);">Quote Sent <span class="count">' + fresh.length + '</span></div>';
+          html += '<div class="kanban-substage-group">';
           fresh.forEach(function(j) { html += renderKanbanCard(j, status); });
+          html += '</div>';
         }
         if (following.length > 0) {
-          html += '<div class="kanban-substage-header" style="color:#E67E22;">Following Up <span class="count">' + following.length + '</span></div>';
+          html += '<div class="kanban-substage-header" onclick="toggleSubstage(this)" style="color:#E67E22;">Following Up <span class="count">' + following.length + '</span></div>';
+          html += '<div class="kanban-substage-group">';
           following.forEach(function(j) { html += renderKanbanCard(j, status); });
+          html += '</div>';
         }
       } else {
         jobs.forEach(function(j) { html += renderKanbanCard(j, status); });
@@ -6854,12 +6867,16 @@ function renderPatioKanban(container, columns) {
         var fresh = jobs.filter(function(j) { return j.days_in_stage <= 7; });
         var following = jobs.filter(function(j) { return j.days_in_stage > 7; });
         if (fresh.length > 0) {
-          html += '<div class="kanban-substage-header" style="color:var(--sw-text-sec);">Quote Sent <span class="count">' + fresh.length + '</span></div>';
+          html += '<div class="kanban-substage-header" onclick="toggleSubstage(this)" style="color:var(--sw-text-sec);">Quote Sent <span class="count">' + fresh.length + '</span></div>';
+          html += '<div class="kanban-substage-group">';
           fresh.forEach(function(j) { html += renderKanbanCard(j, status); });
+          html += '</div>';
         }
         if (following.length > 0) {
-          html += '<div class="kanban-substage-header" style="color:#E67E22;">Following Up <span class="count">' + following.length + '</span></div>';
+          html += '<div class="kanban-substage-header" onclick="toggleSubstage(this)" style="color:#E67E22;">Following Up <span class="count">' + following.length + '</span></div>';
+          html += '<div class="kanban-substage-group">';
           following.forEach(function(j) { html += renderKanbanCard(j, status); });
+          html += '</div>';
         }
       } else {
         jobs.forEach(function(j) { html += renderKanbanCard(j, status); });
@@ -7046,11 +7063,13 @@ function renderKanban(container, columns) {
         var subJobs = groups[subName];
         var isLast = idx === lastIdx;
         var subColor = isLast ? '#27AE60' : 'var(--sw-text-sec)';
-        html += '<div class="kanban-substage-header" style="color:' + subColor + ';">';
+        html += '<div class="kanban-substage-header" onclick="toggleSubstage(this)" style="color:' + subColor + ';">';
         html += subName + ' <span class="count">' + subJobs.length + '</span></div>';
+        html += '<div class="kanban-substage-group">';
         subJobs.forEach(function(j) {
           html += renderKanbanCard(j, status);
         });
+        html += '</div>';
       });
     }
 
@@ -7146,6 +7165,14 @@ function renderKanbanCard(j, status) {
 var _kanbanDragJobId = null;
 var _kanbanDragFromStatus = null;
 var _kanbanSavedScroll = 0;
+
+function toggleSubstage(headerEl) {
+  headerEl.classList.toggle('collapsed');
+  var group = headerEl.nextElementSibling;
+  if (group && group.classList.contains('kanban-substage-group')) {
+    group.classList.toggle('collapsed');
+  }
+}
 
 function kanbanDragAllowed(fromStatus, toStatus) {
   if (fromStatus === toStatus) return false;
