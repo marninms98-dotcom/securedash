@@ -11016,6 +11016,29 @@ async function showHoverPopover(anchor, jobId) {
     if (j.site_address) html += '<div class="jd-qv-row"><span class="jd-qv-label">Address</span><span style="font-size:12px">' + escapeHtml(j.site_address) + '</span></div>';
     if (j.client_phone) html += '<div class="jd-qv-row"><span class="jd-qv-label">Phone</span><a href="tel:' + j.client_phone + '">' + j.client_phone + '</a></div>';
 
+    // Neighbour dropdown — try job_contacts first, fall back to pricing_json
+    var neighbours = (data.job_contacts || []).filter(function(c) { return !c.is_primary; });
+    if (neighbours.length === 0 && j.pricing_json && j.pricing_json.neighbour_splits && j.pricing_json.neighbour_splits.neighbours) {
+      neighbours = j.pricing_json.neighbour_splits.neighbours.map(function(nb, i) {
+        return { contact_label: String.fromCharCode(66 + i), client_name: nb.name, client_phone: nb.phone, site_address: nb.address, share_percentage: nb.share_percent };
+      });
+    }
+    if (neighbours.length > 0) {
+      var nbId = 'hover-nb-' + jobId;
+      html += '<div class="jd-qv-row" style="cursor:pointer;user-select:none;" onclick="var el=document.getElementById(\'' + nbId + '\');var arr=this.querySelector(\'.nb-arrow\');if(el){el.style.display=el.style.display===\'none\'?\'block\':\'none\';arr.textContent=el.style.display===\'none\'?\'▸\':\'▾\';}">';
+      html += '<span class="jd-qv-label">Neighbours</span><span style="font-size:12px;color:var(--sw-text-sec);"><span class="nb-arrow">▸</span> ' + neighbours.length + '</span></div>';
+      html += '<div id="' + nbId + '" style="display:none;padding:0 16px 8px;">';
+      neighbours.forEach(function(nb, idx) {
+        html += '<div style="font-size:12px;padding:6px 8px;margin-bottom:4px;background:var(--sw-bg,#f8f9fa);border-radius:6px;border:1px solid var(--sw-border,#e5e7eb);">';
+        html += '<div style="font-weight:600;color:var(--sw-dark);">Neighbour ' + (idx + 1) + ': ' + escapeHtml(nb.client_name || 'Unknown') + '</div>';
+        if (nb.client_phone) html += '<div style="margin-top:2px;"><a href="tel:' + nb.client_phone + '" style="color:var(--sw-mid);" onclick="event.stopPropagation();">' + escapeHtml(nb.client_phone) + '</a></div>';
+        if (nb.site_address) html += '<div style="margin-top:2px;color:var(--sw-text-sec);">' + escapeHtml(nb.site_address) + '</div>';
+        if (nb.share_percentage) html += '<div style="margin-top:2px;color:var(--sw-text-sec);">Cost share: ' + nb.share_percentage + '%</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
     html += '<div style="display:flex;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--sw-border);font-size:12px;color:var(--sw-text-sec);">';
     html += '<span>' + (data.assignments || []).length + ' assignments</span>';
     html += '<span>' + (data.purchase_orders || []).length + ' POs</span>';
