@@ -3827,8 +3827,8 @@ function localDateStr(d) {
 // ════════════════════════════════════════════════════════════
 
 function fmt$(n) {
-  if (n == null || isNaN(n)) return '$0';
-  return '$' + Math.round(Number(n)).toLocaleString();
+  if (n == null || isNaN(n)) return '$0.00';
+  return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtDate(d) {
