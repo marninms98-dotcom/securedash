@@ -7610,7 +7610,7 @@ async function updateMyAssignment(client: any, body: any, userId: string) {
   const newStatus = body.status
   if (!id || !newStatus) throw new Error('assignmentId and status required')
 
-  const allowed = ['confirmed', 'in_progress', 'complete', 'submitted']
+  const allowed = ['confirmed', 'in_progress', 'complete', 'submitted', 'declined']
   if (!allowed.includes(newStatus)) throw new Error('Invalid status. Use: ' + allowed.join(', '))
 
   // Verify this assignment belongs to the authenticated user

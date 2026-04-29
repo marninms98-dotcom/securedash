@@ -4279,7 +4279,17 @@
     // Expanded action area
     h += '<div class="sf-expanded">';
 
-    if (_clockState === 'off' && phase !== 'complete') {
+    if (_clockState === 'off' && phase !== 'complete' && myAssignment.status === 'scheduled') {
+      // ── NEEDS ACCEPTANCE: Accept or Decline ──
+      h += '<div style="font-size:13px;color:var(--sw-text-sec);text-align:center;margin-bottom:10px;">You\'ve been scheduled for this job</div>';
+      h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+      h += '<button class="sf-action-btn" style="flex:1;background:#E74C3C;font-size:15px;padding:14px 12px" onclick="declineAssignment(\'' + myAssignment.id + '\')">';
+      h += '✕ Decline</button>';
+      h += '<button class="sf-action-btn" style="flex:1;background:var(--sw-green);font-size:15px;padding:14px 12px" onclick="acceptAssignment(\'' + myAssignment.id + '\')">';
+      h += '✓ Accept</button>';
+      h += '</div>';
+
+    } else if (_clockState === 'off' && phase !== 'complete') {
       // ── CLOCKED OFF: Two equal buttons — Travel or Clock On ──
       var jobLabel = job.job_number ? esc(job.job_number) : 'this job';
       h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
@@ -11712,6 +11722,27 @@
     var jobName = _currentJob ? (_currentJob.job.job_number || 'this job') : 'this job';
     showConfirm('Clock On?', 'Starting timer for ' + jobName + '.', 'Yes, Clock On').then(function(ok) {
       if (ok) timerAction('clock_on', assignmentId);
+    });
+  };
+
+  window.acceptAssignment = function(assignmentId) {
+    api('update_my_assignment', null, { assignmentId: assignmentId, status: 'confirmed' }).then(function() {
+      toast('Job accepted');
+      if (_currentJob) {
+        var myA = getMyAssignment(_currentJob);
+        if (myA) myA.status = 'confirmed';
+        renderJobDetail(_currentJob);
+      }
+    }).catch(function() { toast('Failed to accept — try again', 'error'); });
+  };
+
+  window.declineAssignment = function(assignmentId) {
+    showConfirm('Decline this job?', 'Are you sure you want to decline? The office will be notified.', 'Yes, Decline').then(function(ok) {
+      if (!ok) return;
+      api('update_my_assignment', null, { assignmentId: assignmentId, status: 'declined' }).then(function() {
+        toast('Job declined — office notified');
+        showTab('jobs');
+      }).catch(function() { toast('Failed to decline — try again', 'error'); });
     });
   };
 
