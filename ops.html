@@ -10675,6 +10675,8 @@ window.handleDocDrop = function(e) {
   if (files.length > 0) handleDocFiles(files);
 };
 
+var _pendingUploads = {};
+
 window.handleDocFiles = function(files) {
   if (!_currentJobData || !_currentJobData.job) return;
   var queue = document.getElementById('jdUploadQueue');
@@ -10695,6 +10697,7 @@ window.handleDocFiles = function(files) {
 
     // Show upload row with type selector
     var rowId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+    _pendingUploads[rowId] = file;
     var rowHtml = '<div id="' + rowId + '" style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--sw-border);font-size:12px">';
     rowHtml += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(file.name) + '</span>';
     rowHtml += '<select id="' + rowId + '_type" style="font-size:11px;padding:2px 4px;border:1px solid var(--sw-border);border-radius:4px">';
@@ -10703,13 +10706,19 @@ window.handleDocFiles = function(files) {
     });
     rowHtml += '</select>';
     rowHtml += '<label style="font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px"><input type="checkbox" id="' + rowId + '_vis" ' + (['site_photo','council_plans','engineering','work_order','supplier_work_order','supplier_quote','approval'].includes(docType) ? 'checked' : '') + '> Trades</label>';
+    rowHtml += '<button id="' + rowId + '_btn" onclick="triggerPendingUpload(\'' + rowId + '\')" style="font-size:11px;padding:2px 10px;border:1px solid var(--sw-border);border-radius:4px;background:var(--sw-green,#22C55E);color:#fff;cursor:pointer;white-space:nowrap">Upload</button>';
     rowHtml += '<span id="' + rowId + '_status" style="font-size:11px;color:var(--sw-text-sec)">Ready</span>';
     rowHtml += '</div>';
     queue.innerHTML += rowHtml;
-
-    // Start upload
-    uploadOneDocument(file, _currentJobData.job.id, rowId);
   });
+};
+
+window.triggerPendingUpload = function(rowId) {
+  var file = _pendingUploads[rowId];
+  if (!file) return;
+  var btn = document.getElementById(rowId + '_btn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'default'; }
+  uploadOneDocument(file, _currentJobData.job.id, rowId);
 };
 
 window.uploadOneDocument = async function(file, jobId, rowId) {
@@ -10753,6 +10762,9 @@ window.uploadOneDocument = async function(file, jobId, rowId) {
 
     statusEl.textContent = 'Done';
     statusEl.style.color = 'var(--sw-green)';
+    delete _pendingUploads[rowId];
+    var btn = document.getElementById(rowId + '_btn');
+    if (btn) btn.style.display = 'none';
 
     // Refresh files view after short delay
     setTimeout(function() {
