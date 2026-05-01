@@ -491,26 +491,49 @@
     return null;
   }
 
+  // Slice 4B Path A — current-render state used by every downstream
+  // consumer (verdicts, peek, memory panel) so live-mode lane cards
+  // get verdicts computed against LIVE events/facts, not fixture
+  // residue. _renderFromIndex updates this on every render.
+  var _CURRENT_INDEX = null;
+  var _IS_LIVE_MODE = false;
+
+  function _activeDataSource() {
+    // When _CURRENT_INDEX is set, prefer it (matches the data the
+    // lanes were derived from). Otherwise fall back to fixtures so
+    // the legacy memory panel still renders during early init.
+    if (_CURRENT_INDEX) return _CURRENT_INDEX;
+    return window.SALE_PREVIEW_FIXTURES || {};
+  }
+
   function recentEventsFor(jobId) {
-    var F = window.SALE_PREVIEW_FIXTURES || {};
-    var events = F.events || [];
+    var src = _activeDataSource();
+    var events = src.events || [];
     return events.filter(function (e) { return e && e.job_id === jobId; });
   }
 
   function proposedActionFor(jobId) {
-    var F = window.SALE_PREVIEW_FIXTURES || {};
-    var pas = F.proposedActions || [];
+    var src = _activeDataSource();
+    var pas = src.proposedActions || [];
     return pas.find(function (p) { return p && p.job_id === jobId && p.status === 'proposed'; }) || null;
   }
 
+  function factsFor(jobId) {
+    var src = _activeDataSource();
+    var ctx = src.jobContext || {};
+    return ctx[jobId] || [];
+  }
+
   function renderMemoryPanel(jobNumber) {
-    var F = window.SALE_PREVIEW_FIXTURES || {};
     var job = findJobByNumber(jobNumber);
     if (!job) {
-      return '<div class="memory-empty">Job not found in fixtures: ' + esc(jobNumber) + '</div>';
+      return '<div class="memory-empty">Job not found: ' + esc(jobNumber) + '</div>';
     }
     var sender = senderForType(job.type);
-    var ctx = (F.jobContext && F.jobContext[job.id]) || [];
+    // Slice 4B Path A — read from active data source (live index
+    // when present, fixture as fallback) so live-mode reps see
+    // their actual context, not fixture residue.
+    var ctx = factsFor(job.id);
     var pa = proposedActionFor(job.id);
     var events = recentEventsFor(job.id).slice().sort(function (a, b) {
       return (b.occurred_at || '').localeCompare(a.occurred_at || '');
@@ -521,7 +544,7 @@
           var prov = f.provenance ? (' <span class="mem-prov">' + esc(f.provenance.source || '') + ' · ' + esc(f.provenance.promoted_at || '') + (f.provenance.untrusted ? ' · untrusted' : '') + '</span>') : '';
           return '<li><span class="mem-kind">' + esc(f.kind) + '</span> ' + esc(JSON.stringify(f.value)) + prov + '</li>';
         }).join('') + '</ul>'
-      : '<div class="mem-ctx-empty">No job_context facts loaded for this fixture job.</div>';
+      : '<div class="mem-ctx-empty">No job_context facts on file for this job.</div>';
 
     var eventsBlock = events.length
       ? '<ul class="mem-events">' + events.map(function (e) {
@@ -529,13 +552,14 @@
           var msgStr = msg ? ' — ' + esc(msg) : '';
           return '<li>' + esc(e.event_type) + ' · ' + esc(e.occurred_at) + msgStr + '</li>';
         }).join('') + '</ul>'
-      : '<ul class="mem-events"><li>No events on file for this fixture job.</li></ul>';
+      : '<ul class="mem-events"><li>No events on file for this job.</li></ul>';
 
     var verdict = null;
     if (pa && window.SALE_POLICY && typeof window.SALE_POLICY.evaluate === 'function') {
+      var srcNow = (_CURRENT_INDEX && _CURRENT_INDEX.generatedAt) || (window.SALE_PREVIEW_FIXTURES && window.SALE_PREVIEW_FIXTURES.engineNow);
       verdict = window.SALE_POLICY.evaluate({
         action: pa, job: job, facts: ctx, recentEvents: events,
-        now: F.engineNow ? new Date(F.engineNow) : new Date(),
+        now: srcNow ? new Date(srcNow) : new Date(),
       });
     }
 
@@ -874,8 +898,11 @@
     }
     var verdict = null;
     if (window.SALE_POLICY && typeof window.SALE_POLICY.evaluate === 'function') {
-      var facts = (F.jobContext && F.jobContext[brain.job.id]) || [];
-      var recent = (F.events || []).filter(function (e) { return e && e.job_id === brain.job.id; });
+      // Slice 4B Path A — read facts/events from the brain payload
+      // we just loaded (which honours forceFixtures), not the
+      // fixture global. Verdict matches the data the rep is seeing.
+      var facts = brain.facts || [];
+      var recent = brain.events || [];
       verdict = window.SALE_POLICY.evaluate({
         action: pa, job: brain.job, facts: facts, recentEvents: recent, now: now,
       });
@@ -925,7 +952,12 @@
     if (headNum) headNum.textContent = jobNumber;
     if (headTitle) headTitle.textContent = 'Loading…';
 
-    window.SALE_JOB_BRAIN.loadJobBrainByNumber(jobNumber, { forceFixtures: true }).then(function (brain) {
+    // Slice 4B Path A — honour the page's live mode. In live mode
+    // the peek loads the job brain from real PostgREST reads
+    // (per-job fallback to fixture if any source fails). In
+    // fixture mode (?fixtures=1), peek stays fixture too.
+    var peekForceFixtures = !_IS_LIVE_MODE;
+    window.SALE_JOB_BRAIN.loadJobBrainByNumber(jobNumber, { forceFixtures: peekForceFixtures }).then(function (brain) {
       PEEK_STATE.open = true;
       PEEK_STATE.activeTab = 'conversation';
       PEEK_STATE.brain = brain;
@@ -983,8 +1015,13 @@
 
   // Enrich each lane card with a SALE_POLICY verdict so the renderer
   // can show the AUTO / APPROVE / BLOCKED / INTERNAL chip.
-  function attachVerdicts(lanes, F, now) {
+  // Slice 4B Path A — reads from `dataSource` (the index payload)
+  // not the fixture global. In live mode the lanes were derived from
+  // real PostgREST events/facts; the verdicts must be evaluated
+  // against the SAME data, not fixture residue.
+  function attachVerdicts(lanes, dataSource, now) {
     if (!window.SALE_POLICY || typeof window.SALE_POLICY.evaluate !== 'function') return lanes;
+    var ds = dataSource || {};
     function decorate(bucket) {
       bucket.items = bucket.items.map(function (card) {
         if (!card.proposed_action) {
@@ -992,8 +1029,8 @@
           return card;
         }
         var jobId = card.job && card.job.id;
-        var facts = (F.jobContext && F.jobContext[jobId]) || [];
-        var recent = (F.events || []).filter(function (e) { return e && e.job_id === jobId; });
+        var facts = (ds.jobContext && ds.jobContext[jobId]) || [];
+        var recent = (ds.events || []).filter(function (e) { return e && e.job_id === jobId; });
         card.verdict = window.SALE_POLICY.evaluate({
           action: card.proposed_action,
           job: card.job,
@@ -1225,7 +1262,12 @@
         })
       : { performance: null, lanes: { book: [], send: [], call: [] }, calendar: index.calendar || null };
 
-    var lanes = attachVerdicts(engine.lanes, F, now);
+    // Slice 4B Path A — set module-level state so peek + memory
+    // panel + verdicts read from this same payload, not fixtures.
+    _CURRENT_INDEX = index;
+    _IS_LIVE_MODE = (index && (index._brand === 'real' || index._brand === 'fallback'));
+
+    var lanes = attachVerdicts(engine.lanes, index, now);
 
     console.info('[sale-preview] engine', {
       jobsConsidered: (engine.diagnostics && engine.diagnostics.jobsConsidered) || 0,

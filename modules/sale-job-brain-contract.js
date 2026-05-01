@@ -202,8 +202,15 @@
   // literal label. Required structural fields (occurred_at) are
   // still `error` if missing.
   var KNOWN_CHANNELS_FAMILIAR = ['sms', 'email', 'note', 'call_summary'];
+  // Channels emitted by T5's live get_job_conversation merge over
+  // the 5 sources (GHL cache, inbox_events, job_events notes,
+  // business_events, chat_logs). Confirmed via T5 status update
+  // 2026-05-01.
   var KNOWN_CHANNELS_T5       = ['crew', 'inbox', 'spine'];
-  var KNOWN_DIRECTIONS        = ['inbound', 'outbound', 'system'];
+  // Directions: T5's reader emits 'internal' for staff notes / chat
+  // logs (rep-to-rep, not customer-facing). Cockpit renders these
+  // as system bubbles per the existing CSS.
+  var KNOWN_DIRECTIONS        = ['inbound', 'outbound', 'system', 'internal'];
 
   function checkMessage(msg, path, errors) {
     if (!isObject(msg)) {
