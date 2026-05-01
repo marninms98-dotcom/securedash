@@ -3533,6 +3533,10 @@
   </div>
 </div>
 
+<!-- Cap 1A canonical state-machine source — MUST load before inline script. -->
+<!-- Mirrors secureworks-site/shared/job-state-machine.ts. -->
+<script src="modules/sw-state-machine.js?v=1"></script>
+
 <!-- Council modules: loaded BEFORE inline script so inline functions override any conflicts -->
 <script src="modules/ops-council.js?v=2"></script>
 <script src="modules/ops-modals.js?v=4"></script>
@@ -3583,24 +3587,34 @@ function crewColor(name) {
 // GHL sub-account ID for "View in GHL" links (visible in your GHL dashboard URL)
 var GHL_LOCATION_ID = '13yKADzN94BRxX4hByYX';
 
-var STATUS_LABELS = {
-  draft: 'Drafts', quoted: 'Quoted', accepted: 'Accepted', approvals: 'Approvals', deposit: 'Deposit', processing: 'Processing',
-  scheduled: 'Scheduled', in_progress: 'In Progress',
-  complete: 'Complete', invoiced: 'Invoiced', paid: 'Paid', lost: 'Lost', cancelled: 'Cancelled',
-  awaiting_deposit: 'Awaiting Deposit', order_materials: 'Order Materials',
-  awaiting_supplier: 'Awaiting Supplier', order_confirmed: 'Order Confirmed',
-  schedule_install: 'Schedule Install', rectification: 'Rectification',
-  final_payment: 'Final Payment', get_review: 'Get Review', archived: 'Archived',
-};
-var STATUS_COLORS = {
-  draft: '#8FA4B2', quoted: '#9B59B6', accepted: '#3498DB', approvals: '#1ABC9C', deposit: '#F39C12', processing: '#E74C3C',
-  scheduled: '#E67E22', in_progress: '#F15A29',
-  complete: '#27AE60', invoiced: '#7F8C8D', cancelled: '#E74C3C', lost: '#95A5A6',
-  awaiting_deposit: '#F39C12', order_materials: '#E67E22',
-  awaiting_supplier: '#95A5A6', order_confirmed: '#1ABC9C',
-  schedule_install: '#3498DB', rectification: '#E74C3C',
-  final_payment: '#F39C12', get_review: '#9B59B6', archived: '#7F8C8D',
-};
+// Cap 1A: STATUS_LABELS / STATUS_COLORS imported from canonical state-machine source.
+// Source: securedash/modules/sw-state-machine.js (mirror of
+// secureworks-site/shared/job-state-machine.ts). Adds `partially_accepted` (was missing here),
+// covers all 22 prod-CHECK statuses, and is the same map every other surface uses.
+// `paid` retained as a label-only key for backwards-compat with any legacy code path that
+// renders that string; it is NOT a stored status.
+var STATUS_LABELS = (function () {
+  var src = (window.SW_STATE_MACHINE && window.SW_STATE_MACHINE.STATUS_LABELS) || {};
+  var out = {};
+  Object.keys(src).forEach(function (k) { out[k] = src[k]; });
+  if (!out.paid) out.paid = 'Paid';
+  return out;
+})();
+var STATUS_COLORS = (function () {
+  var src = (window.SW_STATE_MACHINE && window.SW_STATE_MACHINE.STATUS_COLORS) || {};
+  var out = {};
+  Object.keys(src).forEach(function (k) { out[k] = src[k]; });
+  if (!out.paid) out.paid = '#F39C12';
+  return out;
+})();
+// Pipeline Visibility Guard fallback used by every kanban col-header so a status missing
+// from the canonical map renders as "Status Mapping Gap" instead of "undefined".
+var STATUS_MAPPING_GAP_LABEL = 'Status Mapping Gap';
+var STATUS_MAPPING_GAP_COLOR = '#831843';
+function statusLabelOrGap(s) {
+  if (s == null || s === '') return STATUS_MAPPING_GAP_LABEL;
+  return STATUS_LABELS[s] || (STATUS_MAPPING_GAP_LABEL + ' (' + s + ')');
+}
 var _showDrafts = false;
 var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -6516,12 +6530,64 @@ function toggleDrafts() {
   if (_pipelineData) renderJobs(_pipelineData);
 }
 
-// ── Fencing Pipeline Stage Order ──
-var FENCING_STAGES = ['quoted', 'accepted', 'awaiting_deposit', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'scheduled', 'in_progress', 'rectification', 'final_payment', 'get_review', 'complete'];
+// ── Cap 1A: pipeline stage order imported from canonical source ──
+// (sw-state-machine.js, mirror of secureworks-site/shared/job-state-machine.ts)
+//
+// Notes:
+// - Canonical FENCING_STAGES adds `partially_accepted` (multi-party fence acceptance state).
+//   This was previously missing from ops.html so jobs in that status rendered with no column.
+// - Canonical does NOT include `draft` in the kanban arrays — drafts render in their own panel
+//   via _showDrafts. We include `draft` in the rendered set if _showDrafts is true.
+// - Legacy / derived-view stages (rectification, final_payment, get_review, schedule_install,
+//   processing, deposit) are preserved in the rendered set so existing rows stay visible
+//   until Phase D / Cap 1E migrates them.
+var __SM = (window.SW_STATE_MACHINE) || {};
+function __renderedStagesFor(typeKey) {
+  // typeKey: 'fencing' | 'patio' | 'decking'
+  var canonical = __SM.getStagesForType ? __SM.getStagesForType(typeKey).slice() : [];
+  // Always-rendered legacy/derived columns (matching the prior ops.html shape, so the
+  // operator board does not surprise people in Cap 1A — Cap 1E migrates rows out).
+  var preserve = ['schedule_install', 'rectification', 'final_payment', 'get_review'];
+  preserve.forEach(function (p) {
+    if (canonical.indexOf(p) === -1) {
+      // insert in stage_order position
+      var po = (__SM.STATUS_MAP && __SM.STATUS_MAP[p] && __SM.STATUS_MAP[p].stage_order) || 99;
+      var idx = canonical.findIndex(function (s) {
+        var so = (__SM.STATUS_MAP && __SM.STATUS_MAP[s] && __SM.STATUS_MAP[s].stage_order) || 0;
+        return so > po;
+      });
+      if (idx === -1) canonical.push(p); else canonical.splice(idx, 0, p);
+    }
+  });
+  // Drop draft (rendered in its own panel) and terminals (cancelled/archived) from the kanban.
+  return canonical.filter(function (s) {
+    return s !== 'draft' && s !== 'cancelled' && s !== 'archived' && s !== 'lost';
+  });
+}
+var FENCING_STAGES = __renderedStagesFor('fencing');
+var PATIO_STAGES = __renderedStagesFor('patio');
+var DECKING_STAGES = __renderedStagesFor('decking');
 
-// ── Patio / Decking Pipeline Stage Order (14 stages — fencing + approvals after awaiting_deposit) ──
-var PATIO_STAGES = ['quoted', 'accepted', 'awaiting_deposit', 'approvals', 'order_materials', 'awaiting_supplier', 'order_confirmed', 'schedule_install', 'scheduled', 'in_progress', 'rectification', 'final_payment', 'get_review', 'complete'];
-var DECKING_STAGES = PATIO_STAGES;
+// Status Mapping Gap diagnostic column key — synthetic, not a real jobs.status value.
+// Pipeline Visibility Guard requires this column to render even when empty so an operator
+// can tell at a glance whether the status map is whole.
+var STATUS_MAPPING_GAP_KEY = '__status_mapping_gap__';
+
+function __extractGapJobs(columns) {
+  // Returns the array of jobs whose status is missing from STATUS_LABELS.
+  // `columns` is the backend-returned per-status map from /pipeline.
+  if (!columns) return [];
+  var canonical = (__SM.STATUS_MAP) ? Object.keys(__SM.STATUS_MAP) : Object.keys(STATUS_LABELS);
+  var canon = {};
+  canonical.forEach(function (k) { canon[k] = true; });
+  var gap = [];
+  Object.keys(columns).forEach(function (status) {
+    if (!canon[status]) {
+      (columns[status] || []).forEach(function (j) { gap.push(j); });
+    }
+  });
+  return gap;
+}
 
 function renderJobs(data) {
   var container = document.getElementById('jobsBody');
@@ -6544,7 +6610,7 @@ function renderFencingKanban(container, columns) {
   FENCING_STAGES.forEach(function(status) {
     var jobs = columns[status] || [];
     html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
-    html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+    html += '<div class="kanban-col-header">' + statusLabelOrGap(status) + '<span class="count">' + jobs.length + '</span></div>';
     html += '<div class="kanban-body">';
 
     if (jobs.length === 0) {
@@ -6569,6 +6635,21 @@ function renderFencingKanban(container, columns) {
 
     html += '</div></div>';
   });
+
+  // Cap 1A Pipeline Visibility Guard: Status Mapping Gap diagnostic column.
+  // Always rendered, even when empty, so the operator can tell at a glance whether
+  // the canonical map covers every backend status. Jobs landing here have a status
+  // that is not in the canonical STATUS_MAP — they MUST stay visible.
+  var gapJobs = __extractGapJobs(columns);
+  html += '<div class="kanban-col" data-status="' + STATUS_MAPPING_GAP_KEY + '" style="border-left:3px solid ' + STATUS_MAPPING_GAP_COLOR + ';">';
+  html += '<div class="kanban-col-header" style="color:' + STATUS_MAPPING_GAP_COLOR + ';">' + STATUS_MAPPING_GAP_LABEL + '<span class="count">' + gapJobs.length + '</span></div>';
+  html += '<div class="kanban-body">';
+  if (gapJobs.length === 0) {
+    html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">All statuses mapped ✓</div>';
+  } else {
+    gapJobs.forEach(function (j) { html += renderKanbanCard(j, j.status || STATUS_MAPPING_GAP_KEY); });
+  }
+  html += '</div></div>';
 
   html += '</div>';
   container.innerHTML = html;
@@ -6593,12 +6674,12 @@ function renderPatioKanban(container, columns) {
       var inProgress = jobs.filter(function(j) { return j.council_status && j.council_status !== 'complete' && j.council_count > 0; }).length;
       var blocked = jobs.filter(function(j) { return j.council_status === 'blocked'; }).length;
       var headerExtra = jobs.length > 0 ? ': ' + inProgress + ' in progress' + (blocked > 0 ? ', ' + blocked + ' blocked' : '') : '';
-      html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+      html += '<div class="kanban-col-header">' + statusLabelOrGap(status) + '<span class="count">' + jobs.length + '</span></div>';
       if (jobs.length > 0) {
         html += '<div style="font-size:11px;color:var(--sw-text-sec);padding:0 10px 6px;text-align:center;">' + inProgress + ' in progress' + (blocked > 0 ? ' &bull; <span style="color:#E74C3C;">' + blocked + ' blocked</span>' : '') + '</div>';
       }
     } else {
-      html += '<div class="kanban-col-header">' + (STATUS_LABELS[status] || status) + '<span class="count">' + jobs.length + '</span></div>';
+      html += '<div class="kanban-col-header">' + statusLabelOrGap(status) + '<span class="count">' + jobs.length + '</span></div>';
     }
 
     html += '<div class="kanban-body">';
@@ -6625,6 +6706,18 @@ function renderPatioKanban(container, columns) {
 
     html += '</div></div>';
   });
+
+  // Cap 1A Pipeline Visibility Guard: Status Mapping Gap diagnostic column.
+  var __gapJobsP = __extractGapJobs(columns);
+  html += '<div class="kanban-col" data-status="' + STATUS_MAPPING_GAP_KEY + '" style="border-left:3px solid ' + STATUS_MAPPING_GAP_COLOR + ';">';
+  html += '<div class="kanban-col-header" style="color:' + STATUS_MAPPING_GAP_COLOR + ';">' + STATUS_MAPPING_GAP_LABEL + '<span class="count">' + __gapJobsP.length + '</span></div>';
+  html += '<div class="kanban-body">';
+  if (__gapJobsP.length === 0) {
+    html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">All statuses mapped ✓</div>';
+  } else {
+    __gapJobsP.forEach(function (j) { html += renderKanbanCard(j, j.status || STATUS_MAPPING_GAP_KEY); });
+  }
+  html += '</div></div>';
 
   html += '</div>';
   container.innerHTML = html;
@@ -6770,13 +6863,18 @@ function getNextAction(j) {
 }
 
 function renderKanban(container, columns) {
-  var order = ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
+  // Cap 1A: widened from the prior 8-stage hardcoded order. Renders every active canonical
+  // status — terminals (cancelled/lost/archived) and the drafts panel are excluded as before.
+  // Status Mapping Gap diagnostic column appended after.
+  var order = (window.SW_STATE_MACHINE && window.SW_STATE_MACHINE.ACTIVE_STATUSES)
+    ? window.SW_STATE_MACHINE.ACTIVE_STATUSES.filter(function (s) { return s !== 'draft'; })
+    : ['draft', 'quoted', 'accepted', 'approvals', 'processing', 'in_progress', 'complete', 'invoiced'];
   var html = '<div class="kanban-container">';
 
   order.forEach(function(status) {
     var jobs = columns[status] || [];
     html += '<div class="kanban-col" data-status="' + status + '" ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event)">';
-    html += '<div class="kanban-col-header">' + STATUS_LABELS[status] + '<span class="count">' + jobs.length + '</span></div>';
+    html += '<div class="kanban-col-header">' + statusLabelOrGap(status) + '<span class="count">' + jobs.length + '</span></div>';
     html += '<div class="kanban-body">';
 
     if (jobs.length === 0) {
@@ -6813,6 +6911,18 @@ function renderKanban(container, columns) {
 
     html += '</div></div>';
   });
+
+  // Cap 1A Pipeline Visibility Guard: Status Mapping Gap diagnostic column.
+  var __gapJobsG = __extractGapJobs(columns);
+  html += '<div class="kanban-col" data-status="' + STATUS_MAPPING_GAP_KEY + '" style="border-left:3px solid ' + STATUS_MAPPING_GAP_COLOR + ';">';
+  html += '<div class="kanban-col-header" style="color:' + STATUS_MAPPING_GAP_COLOR + ';">' + STATUS_MAPPING_GAP_LABEL + '<span class="count">' + __gapJobsG.length + '</span></div>';
+  html += '<div class="kanban-body">';
+  if (__gapJobsG.length === 0) {
+    html += '<div style="text-align:center; padding:20px; color:var(--sw-text-sec); font-size:12px;">All statuses mapped ✓</div>';
+  } else {
+    __gapJobsG.forEach(function (j) { html += renderKanbanCard(j, j.status || STATUS_MAPPING_GAP_KEY); });
+  }
+  html += '</div></div>';
 
   html += '</div>';
   container.innerHTML = html;
