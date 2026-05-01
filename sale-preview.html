@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureWorks — Sale (Preview)</title>
+  <!-- Note: 'estimator' is included because the safety lock blocks
+       _loadUserProfile (which would otherwise read the users table —
+       a path that auto-inserts a row when the auth user has no users
+       row yet, i.e., it is NOT pure-read). With the profile fetch
+       blocked, cloud.js falls back to a synthetic profile with
+       role='estimator'. Allowing that role here lets the preview
+       render for any signed-in SecureWorks user without ever issuing
+       a DB write. -->
+  <meta name="sw-allowed-roles" content="admin,sales,sales_manager,ops_manager,estimator">
+
+  <!-- ════════════════════════════════════════════════════════════
+       Defense-in-depth CSP: connect-src is restricted to Supabase +
+       'self'. The page must never talk to GHL / Resend / Twilio /
+       Telegram / Xero directly from the browser. The host we DO talk
+       to (Supabase) is then further constrained at the JS level by
+       the safety lock below.
+       ════════════════════════════════════════════════════════════ -->
+  <meta http-equiv="Content-Security-Policy"
+        content="connect-src 'self' https://kevgrhcjxspbxgovpmfl.supabase.co wss://kevgrhcjxspbxgovpmfl.supabase.co https://cdn.jsdelivr.net">
+
+  <!-- ════════════════════════════════════════════════════════════
+       Preview safety lock v9 — must be the FIRST script.
+
+       Codex stop-hook history (each iteration closed a real bypass):
+         v1 (deny-prefix list): missed prepare_quote / link / register_media /
+             initiate_call / etc. — only guarded ghl-proxy.
+         v2 (read-prefix allow): defeated by get_upload_url and other
+             get_*-named capability-token endpoints.
+         v3 (explicit POST-read full-name allowlist): closed the prefix
+             escape but only wrapped window.fetch — left XHR, sendBeacon,
+             URL-encoding tricks, parameter pollution, and fetch-replacement
+             as live bypass surfaces.
+         v4: closed those vectors via URLSearchParams + multi-channel wraps
+             + frozen fetch + CSP. But only guarded ghl-proxy + ops-api;
+             left every OTHER Supabase write surface wide open (storage
+             uploads, the ~22 other edge functions including send-quote /
+             sql-query / telegram-bot, auth admin/user PUT, realtime).
+         v5: every mutating verb default-deny. Codex flag #5: get_profile
+             is read-or-write (auto-inserts users row on PGRST116).
+         v6: removed get_profile from the allowlist; relied on cloud.js
+             fallback profile. But still trusted GET to be safe — Codex
+             flag #6: GET edge-function writes still bypass.
+         v7: block ALL /functions/v1/* traffic regardless of verb;
+             tighten storage to public-bucket reads only. But blanket-
+             allowed HEAD as a "safe verb" — Codex flag #7: HEAD requests
+             still bypass. HEAD is GET-without-body; on a handler that
+             doesn't gate on method it still fires server-side
+             side-effects, and on storage it leaks metadata of private
+             objects.
+         v8: HEAD treated with same per-path rules as GET. But the auth
+             check used `isMutating && AUTH_POST_ALLOW[path]` — and
+             `isMutating` matches POST/PUT/PATCH/DELETE. That allowed
+             PUT /auth/v1/token, DELETE /auth/v1/logout, etc. — non-POST
+             mutating verbs on the auth allowlist. Codex flag #8.
+         v9 (current): the auth allowlist requires `method === 'POST'`
+             specifically — not just "any mutating verb". Only POST to
+             /auth/v1/{token,logout,otp,recover,verify} passes; every
+             other PUT/PATCH/DELETE on those paths blocks.
+
+       Channels enforced (each runs the same evaluatePolicy):
+         • window.fetch (frozen, non-writable, non-configurable).
+         • XMLHttpRequest.prototype.{open,send}.
+         • navigator.sendBeacon (frozen).
+
+       Defense-in-depth:
+         • localStorage["sw_offline_queue"] hidden from this page only —
+           keeps the real queue intact for other securedash pages while
+           preventing this page from seeing it.
+         • CSP connect-src restricts the page to Supabase + cdn.jsdelivr.
+
+       Reference: secureworks-docs/cio/evidence/secure-sale-cockpit-2026-04-30/
+       ════════════════════════════════════════════════════════════ -->
+  <script>
+    window.SW_PREVIEW_NO_WRITES = true;
+    (function () {
+      'use strict';
+      // ── 1. Hide the offline queue from this page only ──
+      try {
+        var ls = window.localStorage;
+        if (ls && ls.getItem) {
+          var origGet = ls.getItem.bind(ls);
+          var origSet = ls.setItem.bind(ls);
+          var origRemove = ls.removeItem.bind(ls);
+          ls.getItem = function (key) {
+            if (key === 'sw_offline_queue') {
+              console.info('[sale-preview] hidden localStorage key "sw_offline_queue" — preview ignores the offline queue.');
+              return null;
+            }
+            return origGet(key);
+          };
+          ls.setItem = function (key, value) {
+            if (key === 'sw_offline_queue') {
+              console.warn('[sale-preview] BLOCKED localStorage.setItem("sw_offline_queue") — preview must not enqueue writes.');
+              return;
+            }
+            return origSet(key, value);
+          };
+          ls.removeItem = function (key) {
+            if (key === 'sw_offline_queue') {
+              console.warn('[sale-preview] BLOCKED localStorage.removeItem("sw_offline_queue") — preserving real queue for other pages.');
+              return;
+            }
+            return origRemove(key);
+          };
+        }
+      } catch (e) { console.warn('[sale-preview] localStorage wrap failed:', e); }
+
+      // ── 2. Shared policy evaluator (used by fetch + XHR + sendBeacon wraps) ──
+      //
+      // Policy v8: path-prefix-driven default-deny, with HEAD treated
+      // as a read-shaped verb subject to the same per-path rules as GET
+      // (Codex flag #7 fix — v7 blanket-allowed HEAD, but HEAD on
+      // edge-function handlers without explicit method gates still
+      // fires server-side side-effects, and HEAD on private storage
+      // leaks metadata).
+      //
+      //   /auth/v1/*
+      //     GET / HEAD                                 → allow (session info reads)
+      //     POST /auth/v1/{token,logout,otp,recover,verify} → allow
+      //     anything else (e.g. /auth/v1/admin/*, /auth/v1/user PUT)  → block
+      //
+      //   /rest/v1/*
+      //     GET / HEAD                                 → allow (PostgREST reads)
+      //     POST / PUT / PATCH / DELETE                → block
+      //     /rest/v1/rpc/* POST                        → block (function call)
+      //
+      //   /storage/v1/object/public/*
+      //     GET / HEAD                                 → allow (public download / metadata)
+      //     anything else                              → block
+      //
+      //   /storage/v1/* (everything else: /object/{bucket}/, /sign/, /upload/sign/)
+      //     anything (incl. HEAD, which would leak metadata)  → block
+      //
+      //   /functions/v1/*
+      //     ANY VERB (incl. GET, HEAD)                 → block
+      //
+      //   /realtime/v1/*
+      //     anything                                   → block
+      //
+      //   anywhere else (cross-origin, unrecognised paths)
+      //     anything                                   → block (CSP also blocks at network layer)
+      //
+      //   OPTIONS (any path)                           → allow
+      //     CORS preflights are auto-generated by the browser, processed
+      //     by the CORS layer (server-side and client-side), and never
+      //     reach handler business logic. They never mutate state.
+      var AUTH_POST_ALLOW = Object.freeze({
+        '/auth/v1/token':   true,
+        '/auth/v1/logout':  true,
+        '/auth/v1/otp':     true,
+        '/auth/v1/recover': true,
+        '/auth/v1/verify':  true,
+      });
+      var MUTATING_METHODS = /^(POST|PUT|PATCH|DELETE)$/;
+
+      function parseUrl(rawUrl) {
+        try {
+          return new URL(rawUrl, (typeof window !== 'undefined' && window.location)
+            ? window.location.origin : 'https://placeholder.invalid');
+        } catch (e) { return null; }
+      }
+
+      function evaluatePolicy(rawUrl, method) {
+        method = (method || 'GET').toUpperCase();
+        // OPTIONS — only CORS preflight passes everywhere. HEAD is NOT
+        // special-cased; it follows the same per-path rules as GET below.
+        if (method === 'OPTIONS') return { blocked: false };
+
+        var u = parseUrl(rawUrl);
+        if (!u) return { blocked: true, reason: 'unparseable URL — default-deny' };
+        var path = u.pathname;
+        var isMutating = MUTATING_METHODS.test(method);
+        var isReadVerb = (method === 'GET' || method === 'HEAD');
+
+        // ── /auth/v1/* ──
+        // Admin paths block on every verb (no probing existence with HEAD,
+        // no listing users with GET, no admin POSTs / DELETEs).
+        if (path.indexOf('/auth/v1/admin/') === 0) {
+          return { blocked: true, reason: 'auth admin ' + method + ' to ' + path + ' is never allowed from preview pages' };
+        }
+        if (path === '/auth/v1/' || path.indexOf('/auth/v1/') === 0) {
+          if (isReadVerb) return { blocked: false };
+          // Only POST is allowed on the auth allowlist paths. PUT / PATCH /
+          // DELETE on /auth/v1/token / logout / otp / recover / verify are
+          // not part of any documented Supabase auth flow and could be
+          // routed unpredictably (or intentionally — e.g. a hypothetical
+          // future DELETE /auth/v1/token semantically meaning "revoke").
+          // Codex stop-time review #8 flagged that v8 "isMutating" check
+          // accepted any of POST/PUT/PATCH/DELETE; v9 narrows to POST only.
+          if (method === 'POST' && AUTH_POST_ALLOW[path]) return { blocked: false };
+          return { blocked: true, reason: 'auth ' + method + ' to ' + path + ' not allowed (only GET/HEAD on non-admin paths, or POST to {token,logout,otp,recover,verify})' };
+        }
+
+        // ── /rest/v1/* ──
+        if (path.indexOf('/rest/v1/') === 0) {
+          if (isReadVerb) return { blocked: false };
+          return { blocked: true, reason: 'PostgREST ' + method + ' to ' + path + ' not allowed (only GET/HEAD)' };
+        }
+
+        // ── /storage/v1/* ──
+        if (path.indexOf('/storage/v1/') === 0) {
+          // Public-bucket downloads + HEAD-for-metadata only. Private
+          // bucket reads + HEAD probes block.
+          if (isReadVerb && /^\/storage\/v1\/object\/public\//.test(path)) return { blocked: false };
+          return { blocked: true, reason: 'storage ' + method + ' to ' + path + ' not allowed (only GET/HEAD on /storage/v1/object/public/*)' };
+        }
+
+        // ── /functions/v1/* — block all verbs (Slice 1) ──
+        if (path.indexOf('/functions/v1/') === 0) {
+          return {
+            blocked: true,
+            reason: 'edge function ' + method + ' to ' + path + ' blocked in Slice 1 (cockpit uses fixtures only; ' +
+              'edge-function handlers can mutate on GET or HEAD unless explicitly POST-gated, which we cannot verify from the page)',
+          };
+        }
+
+        // ── /realtime/v1/* — block ──
+        if (path.indexOf('/realtime/v1/') === 0) {
+          return { blocked: true, reason: 'realtime ' + method + ' to ' + path + ' not used in Slice 1' };
+        }
+
+        // ── Anything else ──
+        // CSP also blocks any cross-origin connect outside the allowed
+        // hosts. For same-host paths we don't recognise, default-deny.
+        return { blocked: true, reason: 'unrecognised path ' + method + ' ' + path + ' (default-deny)' };
+      }
+
+      function blockedJson(reason) {
+        return new Response(
+          JSON.stringify({ error: 'preview-only', code: 'preview_blocked', reason: reason }),
+          { status: 451, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // ── 3. Wrap and FREEZE window.fetch ──
+      try {
+        if (typeof window.fetch === 'function') {
+          var origFetch = window.fetch.bind(window);
+          var fetchWrap = function (input, init) {
+            try {
+              var url = typeof input === 'string' ? input : (input && input.url) || '';
+              var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+              var p = evaluatePolicy(url, method);
+              if (p.blocked) {
+                console.warn('[sale-preview] BLOCKED fetch ' + method + ' ' + url + ' — ' + p.reason);
+                return Promise.resolve(blockedJson(p.reason));
+              }
+            } catch (innerErr) { /* fall through to real fetch */ }
+            return origFetch(input, init);
+          };
+          // Freeze so subsequent scripts cannot replace window.fetch.
+          Object.defineProperty(window, 'fetch', {
+            value: fetchWrap, writable: false, configurable: false,
+          });
+        }
+      } catch (e) { console.warn('[sale-preview] fetch wrap failed:', e); }
+
+      // ── 4. Wrap XMLHttpRequest.prototype.{open,send} ──
+      // Older libraries / extensions / future code may use XHR rather than
+      // fetch. The XHR wrap intercepts open() to capture method+URL and
+      // send() to enforce the policy before the network request fires.
+      try {
+        if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+          var xhrProto = XMLHttpRequest.prototype;
+          var origOpen = xhrProto.open;
+          var origSend = xhrProto.send;
+          xhrProto.open = function (method, url) {
+            try {
+              this.__sw_preview_method = (method || 'GET').toUpperCase();
+              this.__sw_preview_url = String(url || '');
+            } catch (eO) {}
+            return origOpen.apply(this, arguments);
+          };
+          xhrProto.send = function () {
+            try {
+              var p = evaluatePolicy(this.__sw_preview_url || '', this.__sw_preview_method || 'GET');
+              if (p.blocked) {
+                console.warn('[sale-preview] BLOCKED XHR ' + (this.__sw_preview_method || 'GET') + ' ' + (this.__sw_preview_url || '') + ' — ' + p.reason);
+                // Synthesize a "blocked" terminal state without dispatching
+                // the real send. Defensive: wrapped in try/catch so a
+                // hostile or read-only descriptor never throws past us.
+                var self = this;
+                setTimeout(function () {
+                  try {
+                    var body = JSON.stringify({ error: 'preview-only', code: 'preview_blocked', reason: p.reason });
+                    try { Object.defineProperty(self, 'readyState',   { value: 4,   configurable: true }); } catch (e1) {}
+                    try { Object.defineProperty(self, 'status',       { value: 451, configurable: true }); } catch (e2) {}
+                    try { Object.defineProperty(self, 'responseText', { value: body, configurable: true }); } catch (e3) {}
+                    try { Object.defineProperty(self, 'response',     { value: body, configurable: true }); } catch (e4) {}
+                    if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                    if (typeof self.onload === 'function') self.onload();
+                  } catch (eFire) {}
+                }, 0);
+                return; // do not call origSend
+              }
+            } catch (innerErr) { /* fall through */ }
+            return origSend.apply(this, arguments);
+          };
+        }
+      } catch (e) { console.warn('[sale-preview] XHR wrap failed:', e); }
+
+      // ── 5. Wrap navigator.sendBeacon ──
+      // sendBeacon always POSTs and is commonly used for telemetry on
+      // unload. The cockpit has no legitimate beacon target; treat any
+      // beacon to a guarded path or PostgREST write path as blocked.
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          var origBeacon = navigator.sendBeacon.bind(navigator);
+          var beaconWrap = function (url, data) {
+            try {
+              var rawUrl = String(url || '');
+              var p = evaluatePolicy(rawUrl, 'POST'); // sendBeacon is always POST
+              if (p.blocked) {
+                console.warn('[sale-preview] BLOCKED sendBeacon ' + rawUrl + ' — ' + p.reason);
+                return false;
+              }
+            } catch (innerErr) {}
+            return origBeacon(url, data);
+          };
+          try {
+            Object.defineProperty(navigator, 'sendBeacon', {
+              value: beaconWrap, writable: false, configurable: false,
+            });
+          } catch (eDef) { navigator.sendBeacon = beaconWrap; }
+        }
+      } catch (e) { console.warn('[sale-preview] sendBeacon wrap failed:', e); }
+    })();
+  </script>
+
+  <!-- Supabase client (auth-gate dependency only; mutating fetches are blocked above) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
+    window.SW_API_KEY = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
+  </script>
+  <script src="shared/brand.js"></script>
+  <script src="shared/cloud.js"></script>
+  <script src="shared/auth-gate.js"></script>
+
+  <style>
+    /*
+     * SecureWorks Secure Sale — dark "elite/boss" theme.
+     * Pulled from the Architectural Assurance dark register
+     * (secureworks-docs/brand/design-system.md): --blue-950
+     * page bg, --blue-800 card surfaces, surgical orange accents,
+     * blue-toned shadows, sharp default edges, Helvetica family.
+     * Sales reps spend most of their day in this surface; the
+     * dark register communicates "elite, boss, in-control".
+     */
+    :root {
+      /* Anchor colours (canon, unchanged) */
+      --sw-orange:        #F15A29;
+      --sw-orange-hover:  #C4481F;
+      --sw-orange-tint:   rgba(241, 90, 41, 0.12);
+      --sw-orange-deep:   rgba(241, 90, 41, 0.22);
+
+      /* Dark register surfaces */
+      --sw-bg:            #14202A;     /* page — even deeper than blue-950 for contrast */
+      --sw-card:          #1F2D38;     /* card — blue-800-ish, sits above bg */
+      --sw-card-hover:    #243340;
+      --sw-card-elev:     #283845;     /* peek modal, elevated overlays */
+      --sw-dark:          #14202A;     /* same as bg, kept as alias */
+      --sw-dark-deep:     #0E1820;     /* deeper still, for extreme contrast */
+      /* In the dark register the canonical "mid" role steps one
+         tone lighter (Blue 600 → Blue 400) so text stays
+         readable on the dark surfaces. The original #4C6A7C
+         becomes structural-only; #8FA4B2 takes over the text
+         role. WCAG AA requires 4.5:1 contrast for normal text;
+         #8FA4B2 on #14202A measures ~5.0:1 ✓. */
+      --sw-mid:           #8FA4B2;
+      --sw-mid-deep:      #4C6A7C;     /* preserved alias for borders / accents */
+
+      /* Type colours on dark */
+      --sw-text:          #F2EFEB;     /* warm near-white, never #FFFFFF */
+      --sw-text-sec:      #8FA4B2;     /* mid-light — labels, captions */
+      --sw-text-muted:    #5C7384;     /* muted secondary */
+      --sw-text-dim:      rgba(242, 239, 235, 0.45);
+
+      /* Borders + dividers */
+      --sw-border:        rgba(143, 164, 178, 0.14);
+      --sw-border-strong: rgba(143, 164, 178, 0.26);
+
+      /* Light-surface alias kept for legacy components that
+         expected a "light" tone — now a subtle elevated dark */
+      --sw-light:         #243340;
+      --sw-warm-100:      #1F2D38;
+      --sw-warm-200:      #243340;
+
+      /* Status colours (RAG — utility only, not accents) */
+      --sw-green:         #27AE60;
+      --sw-red:           #E74C3C;
+      --sw-yellow:        #E67E22;
+      --sw-blue:          #3498DB;
+      --sw-purple:        #8E44AD;
+
+      /* Lane accent — third colour for CALL so orange stays action-only */
+      --sw-call-accent:   #FFB554;     /* amber — frees orange for "do this now" signals */
+
+      /* Shadows — blue-toned, deeper for dark mode */
+      --sw-shadow:        0 1px 3px rgba(0, 0, 0, 0.45);
+      --sw-shadow-hover:  0 4px 16px rgba(0, 0, 0, 0.50);
+      --sw-shadow-rise:   0 12px 40px rgba(0, 0, 0, 0.55);
+
+      /* Edges — sharp default per canon */
+      --sw-radius:        0px;
+      --sw-radius-sm:     3px;        /* inputs, buttons */
+      --sw-radius-pill:   100px;      /* filter chips, badges */
+
+      /* Typography — Helvetica family, no Inter / Plus Jakarta */
+      --sw-font:          'Helvetica Neue', Helvetica, Arial, -apple-system, BlinkMacSystemFont, sans-serif;
+      --sw-font-num:      'Helvetica Neue', Helvetica, -apple-system, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--sw-font);
+      background: var(--sw-bg);
+      color: var(--sw-text);
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.01em;
+    }
+    /* Subtle grain on the page background — atmospheric depth
+       per the design philosophy. Cheap, no asset load. */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(circle at 20% 0%, rgba(241, 90, 41, 0.04) 0%, transparent 45%),
+                        radial-gradient(circle at 80% 100%, rgba(76, 106, 124, 0.05) 0%, transparent 50%);
+    }
+    main, header, .header, aside, footer { position: relative; z-index: 1; }
+
+    /* ── Header (mirrors ceo.html) ── */
+    .header {
+      background: var(--sw-dark-deep);
+      color: var(--sw-text);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--sw-border-strong);
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header-brand { font-size: 18px; font-weight: 700; }
+    .header-brand span { color: rgba(255,255,255,0.5); font-weight: 400; }
+    .preview-pill {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+      background: var(--sw-orange); color: #fff; padding: 3px 8px; border-radius: 4px;
+      margin-left: 6px;
+    }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-user { font-size: 13px; color: rgba(255,255,255,0.7); }
+    .btn-header-ghost {
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
+      border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; text-decoration: none;
+    }
+    .btn-header-ghost:hover { background: rgba(255,255,255,0.2); }
+
+    /* ════════════════════════════════════════════════════════════
+       REP PRODUCTION VIEW (Path B)
+       ────────────────────────────────────────────────────────────
+       Calm rep-facing variant. Hides diagnostic / engineering UI
+       without touching data, fixtures, contracts, AI logic, or the
+       dev view's default rendering.
+
+       Toggle via any of:
+         • URL param ?view=rep (or ?view=dev)
+         • localStorage 'sale.view' = 'rep' | 'dev'
+         • The "View: Dev/Rep ▾" button in the header
+       Default is dev. Rep view is purely visual subtraction.
+       ════════════════════════════════════════════════════════════ */
+
+    /* Whole sections that are dev-facing only — hidden in rep view */
+    body.rep-view #lifecycle-section,        /* "Action lifecycle states" debug grid */
+    body.rep-view #leadsource,               /* lead-source attribution — admin/CEO surface */
+    body.rep-view #disabled,                 /* "disabled tiles" container */
+    body.rep-view .preview-error,            /* error display — useful only for dev */
+    body.rep-view .disabled-tile {           /* "Per-rep view disabled" notes */
+      display: none !important;
+    }
+
+    /* Per-card chrome that exposes AI internals or engineering meta */
+    body.rep-view .action-type,              /* function name e.g. propose_booking_window */
+    body.rep-view .angle-chip,               /* intent label e.g. "helpful service" */
+    body.rep-view .action-sender,            /* "From: Nithin (patio)" — feels like AI internals */
+    body.rep-view .caveat-chip,              /* engineering caveat warnings */
+    body.rep-view .fixture-chip {            /* fixture markers — already hidden by default; reinforced here */
+      display: none !important;
+    }
+
+    /* Tighten the trust banner further in rep view — strip becomes near-invisible */
+    body.rep-view .trust-banner-summary { padding: 4px 16px; }
+    body.rep-view .trust-banner-title  { font-size: 10px; opacity: 0.75; }
+    body.rep-view .trust-banner-toggle { opacity: 0.6; }
+
+    /* Tighten card meta spacing now that fewer chips are visible */
+    body.rep-view .loop-card-head     { gap: 6px; }
+    body.rep-view .action-card-head   { gap: 6px; min-height: 22px; }
+    body.rep-view .verdict-reasons    { font-size: 11px; }
+
+    /* Active-state visual hint on the toggle button */
+    body.rep-view #viewToggleBtn {
+      background: rgba(241, 90, 41, 0.18);
+      color: var(--sw-orange);
+    }
+
+    /* ── Trust banner ── thin one-line strip + details/summary for the gate copy */
+    .trust-banner {
+      background: var(--sw-orange-tint);
+      border-left: 2px solid var(--sw-orange);
+      padding: 0;
+      margin: 0;
+      font-size: 11px;
+      color: var(--sw-text);
+    }
+    .trust-banner-summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 6px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .trust-banner-summary::-webkit-details-marker { display: none; }
+    /* Live/fallback data sources line (Slice 4B Phase 1+) */
+    .data-sources-line {
+      font-size: 11px; color: var(--sw-text-sec); font-family: var(--sw-font-num);
+      letter-spacing: 0.2px;
+      display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      margin-left: 12px;
+    }
+    .data-sources-line .src-label { color: var(--sw-text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .data-sources-line .src { display: inline-flex; align-items: center; gap: 4px; }
+    .data-sources-line .src-dot {
+      width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+    }
+    .data-sources-line .src.real      .src-dot { background: #4FCB87; box-shadow: 0 0 6px rgba(79, 203, 135, 0.4); }
+    .data-sources-line .src.fallback  .src-dot { background: #F4A668; box-shadow: 0 0 6px rgba(244, 166, 104, 0.35); }
+    .data-sources-line .src.fixture   .src-dot { background: var(--sw-text-muted); }
+    .data-sources-line .src-name      { color: var(--sw-text); }
+    @media (max-width: 600px) {
+      .data-sources-line { width: 100%; margin-left: 0; margin-top: 4px; }
+    }
+    .trust-banner-title {
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--sw-orange);
+    }
+    .trust-banner-toggle {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--sw-text-sec);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .trust-banner-toggle::after { content: ' ▸'; }
+    .trust-banner[open] .trust-banner-toggle::after { content: ' ▾'; }
+    .trust-banner-content {
+      padding: 8px 16px 12px;
+      border-top: 1px solid var(--sw-border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .trust-banner-copy { color: var(--sw-mid); font-size: 12.5px; line-height: 1.5; flex: 1; min-width: 240px; }
+
+    /* Legacy classes kept for back-compat in case other code paths reference them */
+    .trust-banner-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; max-width: 1200px; margin: 0 auto; }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px;
+      background: rgba(230,126,34,0.12); color: var(--sw-yellow);
+      border: 1px solid rgba(230,126,34,0.25);
+    }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* ── Section Nav ── */
+    .section-nav {
+      background: var(--sw-card);
+      border-bottom: 1px solid var(--sw-border);
+      position: sticky;
+      top: 48px;
+      z-index: 99;
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .section-nav a {
+      padding: 12px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--sw-text-sec);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .section-nav a:hover { color: var(--sw-text); }
+    .section-nav a.active { color: var(--sw-orange); border-bottom-color: var(--sw-orange); }
+
+    /* ── Container ── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .section { margin-bottom: 40px; scroll-margin-top: 130px; }
+    /* Canon-style section label: small, tracked, with a thin orange accent rule.
+       Title still wraps if a static fixture-chip / count chip is appended.
+       Subtitle truncated to a single line with overflow-fade; full text on hover via title attr. */
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--sw-text);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+    .section-title::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 32px;
+      height: 2px;
+      background: var(--sw-orange);
+    }
+    .section-subtitle {
+      font-size: 12px;
+      color: var(--sw-text-sec);
+      margin-bottom: 14px;
+      max-width: 720px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* Allow the subtitle to wrap on hover so reps can read full explainers
+       without losing the calmness of the default one-line state */
+    .section-subtitle:hover { white-space: normal; }
+
+    /* ── My today row (legacy class names retained for the Slice 1 lookups) ── */
+    #today-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 8px; }
+    .today-card {
+      background: var(--sw-card);
+      border-radius: var(--sw-radius);
+      padding: 18px;
+      box-shadow: var(--sw-shadow);
+      text-decoration: none;
+      color: inherit;
+      border-left: 4px solid var(--sw-blue);
+      display: block;
+    }
+    .today-card:nth-child(2) { border-left-color: var(--sw-orange); }
+    .today-card:nth-child(3) { border-left-color: var(--sw-green); }
+    .today-label { font-size: 11px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .today-num { font-size: 30px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); margin-top: 4px; }
+
+    /* ── Slice 2 — performance strip (3-up) ── */
+    .perf-strip {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+      margin-bottom: 16px;
+    }
+    .perf-tile {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow); padding: 12px 14px;
+      border-top: 3px solid var(--sw-blue);
+    }
+    .perf-tile:nth-child(2) { border-top-color: var(--sw-orange); }
+    .perf-tile:nth-child(3) { border-top-color: var(--sw-green); }
+    .perf-tile-label { font-size: 10.5px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .perf-tile-num   { font-size: 22px; font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); margin-top: 4px; }
+    .perf-tile-sub   { font-size: 11px; color: var(--sw-mid); margin-top: 2px; }
+
+    /* ── Slice 2 — lane cockpit ── */
+    .lane-chips { display: none; gap: 6px; margin-bottom: 10px; }
+    .lane-chip {
+      flex: 1; padding: 8px 10px; border: 1px solid var(--sw-border); border-radius: 8px;
+      background: var(--sw-card); font-size: 12px; font-weight: 700; color: var(--sw-text);
+      cursor: pointer; text-align: center;
+    }
+    .lane-chip[aria-pressed="true"] { background: var(--sw-orange); color: #fff; border-color: var(--sw-orange); }
+    .lane-chip-count { font-size: 10px; color: var(--sw-text-sec); margin-left: 4px; font-weight: 600; }
+    .lane-chip[aria-pressed="true"] .lane-chip-count { color: rgba(255,255,255,0.85); }
+
+    .lanes-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 720px) {
+      .lanes-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .lane-pane {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow); padding: 12px;
+    }
+    .lane-pane-head {
+      display: flex; align-items: center; gap: 8px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--sw-border); margin-bottom: 10px;
+    }
+    .lane-pane-title { font-size: 13px; font-weight: 700; color: var(--sw-text); text-transform: uppercase; letter-spacing: 0.4px; }
+    .lane-pane-count {
+      font-size: 11px; font-weight: 700; color: var(--sw-text-sec);
+      background: var(--sw-light); padding: 2px 8px; border-radius: 10px;
+    }
+    .lane-pane[data-lane="book"] .lane-pane-title { color: var(--sw-blue); }
+    .lane-pane[data-lane="send"] .lane-pane-title { color: var(--sw-green); }       /* was orange — orange now action-only */
+    .lane-pane[data-lane="call"] .lane-pane-title { color: var(--sw-call-accent); } /* was green — CALL gets amber */
+
+    /* ── Slice 2 — verdict chip + reasons trail ── */
+    .verdict-chip {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+      padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+    }
+    .verdict-auto      { background: rgba(39,174,96,0.12);  color: var(--sw-green); }
+    .verdict-approve   { background: rgba(230,126,34,0.12); color: var(--sw-yellow); }
+    .verdict-blocked   { background: rgba(231,76,60,0.12);  color: var(--sw-red); }
+    .verdict-internal  { background: rgba(76,106,124,0.12); color: var(--sw-mid); }
+    .verdict-reasons {
+      margin-top: 4px; font-size: 11px; color: var(--sw-text-sec);
+      background: var(--sw-card); border: 1px dashed var(--sw-border);
+      border-radius: 6px; padding: 6px 8px;
+    }
+    .verdict-reasons summary { cursor: pointer; font-weight: 600; color: var(--sw-mid); list-style: none; }
+    .verdict-reasons summary::-webkit-details-marker { display: none; }
+    .verdict-reasons summary::before { content: '▸ '; color: var(--sw-text-sec); }
+    .verdict-reasons[open] summary::before { content: '▾ '; }
+    .verdict-reasons ul { margin: 6px 0 0 0; padding-left: 18px; }
+    .verdict-reasons li { margin-bottom: 2px; line-height: 1.45; }
+
+    /* ── Slice 2 — calendar preview (today only) ── */
+    .calprev-section { margin-top: 18px; }
+    .calprev-list { display: grid; gap: 6px; }
+    .calprev-row {
+      display: grid; grid-template-columns: 64px 80px 1fr;
+      gap: 10px; align-items: center;
+      padding: 8px 10px; background: var(--sw-card);
+      border-radius: 6px; border-left: 3px solid var(--sw-blue);
+      box-shadow: var(--sw-shadow); font-size: 12px;
+    }
+    .calprev-row.kind-proposed { border-left-color: var(--sw-orange); background: var(--sw-orange-tint); }
+    .calprev-time { font-family: var(--sw-font-num); color: var(--sw-text); font-weight: 600; }
+    .calprev-rep  { font-size: 11px; font-weight: 700; color: var(--sw-mid); text-transform: uppercase; letter-spacing: 0.4px; }
+    .calprev-meta { color: var(--sw-text); }
+    .calprev-meta b { color: var(--sw-text); }
+    .calprev-empty { font-size: 12px; color: var(--sw-text-sec); font-style: italic; padding: 8px 10px; }
+
+    /* ── Per-rep toggle (disabled) ── */
+    .per-rep-row {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--sw-card); padding: 12px 16px; border-radius: 8px;
+      box-shadow: var(--sw-shadow); margin-bottom: 16px;
+      border-left: 3px solid var(--sw-yellow);
+    }
+    .per-rep-toggle {
+      padding: 6px 14px; border: 1px solid var(--sw-border); border-radius: 6px;
+      background: var(--sw-light); color: var(--sw-text-sec);
+      font-size: 12px; font-weight: 600; cursor: not-allowed;
+      opacity: 0.55;
+    }
+    .per-rep-toggle:disabled { cursor: not-allowed; }
+    .per-rep-msg { font-size: 12px; color: var(--sw-mid); }
+    .per-rep-msg code { background: var(--sw-light); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+
+    /* ── Bucket (lane group) ── */
+    .bucket {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow); margin-bottom: 14px; overflow: hidden;
+    }
+    .bucket-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; background: var(--sw-light);
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .bucket-title { font-size: 13px; font-weight: 700; color: var(--sw-text); }
+    .bucket-count { font-size: 11px; font-weight: 600; color: var(--sw-text-sec);
+      background: var(--sw-card); padding: 2px 10px; border-radius: 10px; border: 1px solid var(--sw-border); }
+    .bucket-body { padding: 8px 12px; }
+    .bucket-empty { padding: 12px; font-size: 12px; color: var(--sw-text-sec); font-style: italic; }
+
+    /* ── Loop card (dark theme — product review pass) ── */
+    /* Hierarchy:                                                          */
+    /*   1. Customer name + suburb — most prominent, large warm-white      */
+    /*   2. Job number — small, muted, top-left                            */
+    /*   3. Verdict chip + AI proposed action — orange-tinted accent line  */
+    /*   4. Why text — italic, secondary text color, always visible        */
+    /*   5. Approve / Reject / Edit — visible but understated; ghost btns  */
+    .loop-card {
+      padding: 14px 16px;
+      border-radius: var(--sw-radius);
+      border: 1px solid var(--sw-border);
+      margin: 8px 0;
+      background: var(--sw-card);
+      box-shadow: var(--sw-shadow);
+      transition: border-color 0.15s, background 0.15s;
+      cursor: pointer;
+    }
+    .loop-card:hover {
+      background: var(--sw-card-hover);
+      border-color: var(--sw-border-strong);
+    }
+    .loop-card-head {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 8px; font-size: 11px;
+    }
+    .loop-card-num {
+      font-size: 11px; font-weight: 700; color: var(--sw-text-muted);
+      font-family: var(--sw-font-num); letter-spacing: 0.4px;
+    }
+    .loop-card-age {
+      font-size: 11px; color: var(--sw-text-sec); margin-left: auto;
+      font-family: var(--sw-font-num);
+    }
+    .loop-card-title {
+      font-size: 16px; font-weight: 700; color: var(--sw-text);
+      margin-bottom: 2px; line-height: 1.3; letter-spacing: -0.015em;
+    }
+    .loop-card-suburb {
+      font-size: 12px; color: var(--sw-text-sec);
+      text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .loop-card-reason {
+      font-size: 12.5px; color: var(--sw-text-sec);
+      line-height: 1.5; font-style: italic;
+      padding: 6px 10px; border-left: 2px solid var(--sw-border-strong);
+      margin-top: 6px;
+    }
+    .loop-card-quote {
+      font-size: 12.5px; color: var(--sw-text); background: var(--sw-light);
+      padding: 8px 10px; border-radius: var(--sw-radius-sm); margin: 6px 0; font-style: italic;
+      border-left: 3px solid var(--sw-orange);
+    }
+
+    /* ── Type badges ── Pass B: pill geometry per canon (100px full pill, not 4px) */
+    .type-badge {
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 2px 8px; border-radius: var(--sw-radius-pill); text-transform: uppercase;
+      background: var(--sw-light); color: var(--sw-text-sec);
+      display: inline-flex; align-items: center;
+    }
+    .type-badge.type-patio { background: rgba(241,90,41,0.12); color: var(--sw-orange); }
+    .type-badge.type-fencing { background: rgba(76,106,124,0.15); color: var(--sw-mid); }
+    .type-badge.type-general { background: rgba(52,152,219,0.12); color: var(--sw-blue); }
+
+    /* ── Fixture / caveat chips ── */
+    /* FIXTURE pills are dev-only state markers. Hidden by default; add
+       `body.show-fixtures` (e.g. via devtools or a toggle button) to bring
+       them back for debug runs. */
+    .fixture-chip {
+      display: none;
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 2px 8px; border-radius: var(--sw-radius-pill);
+      background: rgba(155,89,182,0.12); color: #8E44AD;
+    }
+    body.show-fixtures .fixture-chip { display: inline-flex; align-items: center; }
+    .caveat-chip {
+      font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: var(--sw-radius-pill);
+      background: rgba(230,126,34,0.12); color: var(--sw-yellow);
+      cursor: help;
+    }
+    .mismatch-dot {
+      color: var(--sw-yellow); font-size: 14px; margin-left: 6px;
+      cursor: help;
+    }
+
+    /* ── Stub action buttons ── Pass B: even quieter. They stay reachable
+       (preserves info per boundary) but don't compete with the primary
+       Approve / Dismiss row for attention. */
+    .stub-row { display: flex; gap: 6px; margin-top: 10px; }
+    .btn-stub {
+      flex: 1; padding: 6px 10px;
+      background: transparent; color: var(--sw-text-muted);
+      border: 1px solid var(--sw-border); border-radius: var(--sw-radius-sm);
+      font-size: 11px; font-weight: 600;
+      cursor: not-allowed; opacity: 0.4;
+    }
+    .btn-stub:disabled { cursor: not-allowed; }
+
+    /* ── Pipeline kanban ── */
+    .pipeline-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+    }
+    .pipe-col {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow); overflow: hidden;
+      display: flex; flex-direction: column; min-height: 200px;
+    }
+    .pipe-col-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; background: var(--sw-light); border-bottom: 1px solid var(--sw-border);
+    }
+    .pipe-col-title { font-size: 12px; font-weight: 700; color: var(--sw-text); text-transform: uppercase; letter-spacing: 0.5px; }
+    .pipe-col-count {
+      font-size: 11px; font-weight: 600; color: var(--sw-text-sec);
+      background: var(--sw-card); padding: 2px 8px; border-radius: 10px; border: 1px solid var(--sw-border);
+    }
+    .pipe-col-body { padding: 8px; flex: 1; }
+    .pipe-card {
+      padding: 10px; border-radius: 8px; border: 1px solid var(--sw-border);
+      margin: 6px 0; background: var(--sw-card);
+    }
+    .pipe-card-head { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+    .pipe-card-num { font-size: 11px; font-weight: 700; color: var(--sw-mid); font-family: var(--sw-font-num); }
+    .pipe-card-title { font-size: 13px; font-weight: 600; color: var(--sw-text); margin-bottom: 2px; }
+    .pipe-card-sub { font-size: 11.5px; color: var(--sw-text-sec); margin-bottom: 6px; }
+    .pipe-card-foot { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ── Lead source ── */
+    .ls-wrap { background: var(--sw-card); border-radius: var(--sw-radius); padding: 16px 20px; box-shadow: var(--sw-shadow); }
+    .ls-row { display: grid; grid-template-columns: 110px 1fr 50px; gap: 10px; align-items: center; padding: 6px 0; }
+    .ls-label { font-size: 12px; color: var(--sw-text); font-weight: 600; }
+    .ls-bar-track { height: 12px; background: var(--sw-light); border-radius: 6px; overflow: hidden; }
+    .ls-bar-fill { height: 100%; background: var(--sw-blue); border-radius: 6px; }
+    .ls-count { font-size: 12px; color: var(--sw-text-sec); text-align: right; font-family: var(--sw-font-num); }
+
+    /* ── Disabled tile ── compressed to a quiet single-line note */
+    .disabled-tile {
+      background: transparent; border-radius: var(--sw-radius);
+      padding: 6px 12px; margin-bottom: 8px;
+      box-shadow: none;
+      border-left: 2px solid var(--sw-border-strong);
+      opacity: 0.7;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .disabled-tile-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 0; }
+    .disabled-tile-title { font-size: 11px; font-weight: 700; color: var(--sw-text-sec); letter-spacing: 0.3px; }
+    .disabled-badge {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 1px 6px; border-radius: 100px; text-transform: uppercase;
+      background: transparent; color: var(--sw-text-muted); border: 1px solid var(--sw-border);
+    }
+    .disabled-tile-reason {
+      font-size: 11px; color: var(--sw-text-sec); font-weight: 500;
+      margin: 2px 0 0; display: inline;
+    }
+    .disabled-tile-detail {
+      font-size: 11px; color: var(--sw-text-muted); line-height: 1.4;
+      margin-top: 2px;
+    }
+
+    /* ── Error state ── */
+    .preview-error {
+      display: none; padding: 24px; background: rgba(231,76,60,0.08);
+      border-left: 4px solid var(--sw-red); color: var(--sw-red);
+      font-size: 13px; border-radius: 8px; margin: 24px;
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       Slice 1: cockpit additions — tabs, calendar, performance,
+       proposed-action cards, JARVIS memory panel.
+       ════════════════════════════════════════════════════════════ */
+
+    /* ── Tab nav (replaces section-nav for top-level navigation) ── */
+    .tab-nav {
+      background: var(--sw-card);
+      border-bottom: 1px solid var(--sw-border);
+      position: sticky;
+      top: 48px;
+      z-index: 99;
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tab-nav a {
+      padding: 12px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--sw-text-sec);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s;
+      cursor: pointer;
+    }
+    .tab-nav a:hover { color: var(--sw-text); }
+    .tab-nav a.active { color: var(--sw-orange); border-bottom-color: var(--sw-orange); }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── State chip on cards ── */
+    .state-chip {
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+      background: rgba(76,106,124,0.12); color: var(--sw-mid);
+    }
+
+    /* ── Action card (proposed-action shape — dark theme) ──
+       Pass B: de-nested. The card-inside-a-card surface is removed.
+       The suggestion now sits inline inside .loop-card, separated by a
+       hairline rule. The orange accent moves to .action-msg as the single
+       visual signal of "this is the AI-proposed message". */
+    .action-card {
+      margin-top: 12px;
+      padding: 10px 0 0;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      border-top: 1px solid var(--sw-border);
+    }
+    .action-empty {
+      margin-top: 12px; padding: 10px 14px;
+      font-size: 12px; color: var(--sw-text-muted); font-style: italic;
+      background: transparent; border: 1px dashed var(--sw-border);
+      border-radius: var(--sw-radius);
+    }
+    .action-card-head {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;
+    }
+    /* Pass B: meta-row de-emphasised (lower visual weight, all info preserved).
+       The cadence/verdict pill stays prominent (it tells the rep what kind of
+       action the AI is proposing). The function name and intent label become
+       quiet caption text. Sender stays visible but tiny. */
+    .action-type {
+      font-size: 10px; font-weight: 600; color: var(--sw-text-muted);
+      background: transparent; padding: 0;
+      border: none;
+      font-family: var(--sw-font-num);
+      letter-spacing: 0.2px;
+    }
+    .angle-chip {
+      font-size: 10px; font-weight: 500; padding: 0;
+      border-radius: 0;
+      background: transparent; color: var(--sw-text-muted);
+      text-transform: lowercase;
+    }
+    .angle-chip::before { content: '· '; opacity: 0.5; }
+    .cadence-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: var(--sw-radius-pill); }
+    .cadence-auto    { background: rgba(39, 174, 96, 0.18);  color: #4FCB87; }
+    .cadence-approve { background: rgba(230, 126, 34, 0.18); color: #F4A668; }
+    .action-sender {
+      font-size: 10px; color: var(--sw-text-muted); font-weight: 500; margin-left: auto;
+      font-style: italic;
+    }
+    .action-why {
+      font-size: 12.5px; color: var(--sw-text-sec); margin-bottom: 8px;
+      line-height: 1.5;
+    }
+    .action-why strong { color: var(--sw-text); font-weight: 600; }
+    .action-msg {
+      font-size: 13.5px; color: var(--sw-text); line-height: 1.55;
+      background: rgba(242, 239, 235, 0.04);
+      padding: 10px 12px; border-radius: var(--sw-radius-sm);
+      border-left: 3px solid var(--sw-orange); margin-bottom: 8px;
+    }
+    .action-talk {
+      font-size: 12.5px; color: var(--sw-text);
+      background: rgba(52, 152, 219, 0.06);
+      padding: 10px 12px; border-radius: var(--sw-radius-sm);
+      border-left: 3px solid #6FB6E8; margin-bottom: 8px;
+    }
+    .action-talk-head {
+      font-size: 10px; font-weight: 700; color: #6FB6E8;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;
+    }
+    .action-talk ul { margin: 0; padding-left: 18px; color: var(--sw-text-sec); }
+    .action-talk li { margin-bottom: 4px; line-height: 1.45; }
+    .action-note {
+      font-size: 11.5px; color: #F4A668; font-style: italic;
+      padding: 6px 10px; background: rgba(230, 126, 34, 0.10);
+      border-radius: var(--sw-radius-sm); margin-bottom: 8px;
+    }
+    .action-controls {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px;
+      padding-top: 10px; border-top: 1px solid var(--sw-border);
+    }
+    /* Buttons — visible but understated (controls support the
+       action, they're not the headline). Disabled state is the
+       default for Slice 4A. */
+    .btn-action {
+      flex: 0 1 auto; padding: 7px 14px;
+      background: rgba(242, 239, 235, 0.04);
+      color: var(--sw-text-muted);
+      border: 1px solid var(--sw-border);
+      border-radius: var(--sw-radius-sm);
+      font-size: 12px; font-weight: 600;
+      letter-spacing: 0.2px;
+      cursor: not-allowed; opacity: 0.85;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-action:disabled { cursor: not-allowed; }
+    .btn-action.btn-approve  { color: #4FCB87; border-color: rgba(39, 174, 96, 0.30); }
+    .btn-action.btn-dismiss  { color: #F08272; border-color: rgba(231, 76, 60, 0.28); }
+    .btn-action.btn-snooze   { color: var(--sw-text-sec); }
+    .btn-action.btn-edit     { color: var(--sw-text); }
+    .btn-action.btn-why      { color: var(--sw-text-muted); font-style: italic; }
+    .btn-action.btn-open-job {
+      cursor: pointer; opacity: 1;
+      background: var(--sw-orange); color: #fff;
+      border-color: var(--sw-orange);
+      margin-left: auto; font-weight: 700;
+    }
+    .btn-action.btn-open-job:hover { background: var(--sw-orange-hover); border-color: var(--sw-orange-hover); }
+
+    /* ── Calendar ── */
+    .cal-grid {
+      display: grid;
+      grid-template-columns: 90px repeat(3, 1fr);
+      gap: 0;
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+      overflow: hidden;
+    }
+    .cal-row { display: contents; }
+    .cal-row-head .cal-day-head {
+      background: var(--sw-light);
+      padding: 10px 12px;
+      font-size: 12px; font-weight: 700; color: var(--sw-text);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .cal-corner {
+      background: var(--sw-light);
+      border-bottom: 1px solid var(--sw-border);
+      border-right: 1px solid var(--sw-border);
+    }
+    .cal-rep-cell {
+      padding: 12px;
+      font-size: 13px; font-weight: 700; color: var(--sw-text);
+      background: var(--sw-light);
+      border-right: 1px solid var(--sw-border);
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .cal-cell {
+      padding: 8px;
+      border-right: 1px solid var(--sw-border);
+      border-bottom: 1px solid var(--sw-border);
+      min-height: 80px;
+    }
+    .cal-slot {
+      padding: 8px 10px; border-radius: 6px;
+      margin-bottom: 6px;
+      background: var(--sw-card);
+      border-left: 3px solid var(--sw-blue);
+      font-size: 12px;
+    }
+    .cal-slot-proposed {
+      background: rgba(241,90,41,0.06);
+      border-left-color: var(--sw-orange);
+      border-style: dashed;
+    }
+    .cal-slot-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .cal-slot-time { font-weight: 700; color: var(--sw-text); font-family: var(--sw-font-num); font-size: 12.5px; }
+    .cal-slot-kind {
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px;
+      color: var(--sw-text-sec);
+    }
+    .cal-slot-proposed .cal-slot-kind { color: var(--sw-orange); }
+    .cal-slot-title { font-weight: 600; color: var(--sw-text); }
+    .cal-slot-meta  { font-size: 11px; color: var(--sw-text-sec); font-family: var(--sw-font-num); margin-top: 2px; }
+    .cal-slot-why   { font-size: 11px; color: var(--sw-mid); font-style: italic; margin-top: 4px; }
+    .cal-legend {
+      display: flex; gap: 18px; flex-wrap: wrap;
+      margin-top: 12px; font-size: 12px; color: var(--sw-text-sec);
+    }
+    .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .cal-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .cal-legend-booked   { background: var(--sw-blue); }
+    .cal-legend-proposed { background: var(--sw-orange); }
+
+    /* ── Performance ── */
+    .perf-window {
+      font-size: 12px; color: var(--sw-text-sec); font-style: italic; margin-bottom: 12px;
+    }
+    .perf-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px; margin-bottom: 18px;
+    }
+    .perf-stat {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      padding: 14px 16px; box-shadow: var(--sw-shadow);
+      border-top: 3px solid var(--sw-blue);
+    }
+    .perf-stat:nth-child(2) { border-top-color: var(--sw-green); }
+    .perf-stat:nth-child(3) { border-top-color: var(--sw-orange); }
+    .perf-stat:nth-child(4) { border-top-color: var(--sw-mid); }
+    .perf-stat:nth-child(5) { border-top-color: var(--sw-yellow); }
+    .perf-stat-label { font-size: 11px; color: var(--sw-text-sec); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .perf-stat-value { font-size: 22px; font-weight: 700; font-family: var(--sw-font-num); margin-top: 4px; }
+    .perf-stat-sub { font-size: 11px; color: var(--sw-text-sec); margin-top: 2px; }
+
+    .perf-velocity-head {
+      font-size: 12px; font-weight: 700; color: var(--sw-text);
+      text-transform: uppercase; letter-spacing: 0.4px; margin: 8px 0;
+    }
+    .perf-velocity {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      padding: 14px 16px; box-shadow: var(--sw-shadow);
+      margin-bottom: 18px;
+    }
+    .perf-vel-row {
+      display: grid; grid-template-columns: 200px 1fr 50px;
+      gap: 10px; align-items: center; padding: 4px 0;
+      font-size: 12px;
+    }
+    .perf-vel-label { color: var(--sw-text); }
+    .perf-vel-bar { height: 10px; background: var(--sw-light); border-radius: 5px; overflow: hidden; }
+    .perf-vel-fill { height: 100%; background: var(--sw-mid); border-radius: 5px; }
+    .perf-vel-days { color: var(--sw-text-sec); text-align: right; font-family: var(--sw-font-num); }
+
+    .perf-perrep-disabled {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      padding: 14px 16px; box-shadow: var(--sw-shadow);
+      border-left: 3px dashed var(--sw-yellow); opacity: 0.85;
+    }
+    .perf-perrep-head {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+      font-size: 14px; color: var(--sw-mid);
+    }
+    .perf-perrep-reason { font-size: 12px; color: var(--sw-mid); line-height: 1.5; }
+
+    /* ── JARVIS memory panel (slide-in overlay) ── */
+    .mem-panel {
+      position: fixed; top: 0; right: -480px;
+      width: 460px; max-width: 100%;
+      height: 100vh;
+      background: var(--sw-card);
+      box-shadow: -8px 0 30px rgba(0,0,0,0.18);
+      transition: right 0.25s ease;
+      z-index: 200;
+      display: flex; flex-direction: column;
+    }
+    .mem-panel.mem-open { right: 0; }
+    body.mem-locked { overflow: hidden; }
+    .mem-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0); pointer-events: none;
+      transition: background 0.25s ease;
+      z-index: 199;
+    }
+    .mem-panel.mem-open ~ .mem-overlay,
+    body.mem-locked .mem-overlay { background: rgba(0,0,0,0.25); pointer-events: auto; }
+
+    .mem-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 18px; background: var(--sw-card); color: var(--sw-text);
+      border-bottom: 1px solid var(--sw-border-strong);
+    }
+    .mem-head-num { font-family: var(--sw-font-num); font-weight: 700; font-size: 13px; opacity: 0.9; }
+    .mem-head-title { font-size: 14px; font-weight: 600; flex: 1; }
+    .mem-close {
+      background: rgba(255,255,255,0.12); color: #fff; border: none;
+      width: 32px; height: 32px; border-radius: 6px; font-size: 20px; cursor: pointer;
+    }
+    .mem-close:hover { background: rgba(255,255,255,0.2); }
+    .mem-meta {
+      padding: 12px 18px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+      border-bottom: 1px solid var(--sw-border); font-size: 12px;
+    }
+    .mem-sender { color: var(--sw-mid); font-weight: 600; }
+    .mem-value { color: var(--sw-text); font-weight: 600; font-family: var(--sw-font-num); }
+    .mem-section { padding: 12px 18px; border-bottom: 1px solid var(--sw-border); flex: 0 0 auto; overflow-y: auto; }
+    .mem-section:last-child { flex: 1 1 auto; }
+    .mem-section-head {
+      font-size: 11px; font-weight: 700; color: var(--sw-text-sec);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .mem-ctx-list { list-style: none; padding: 0; margin: 0; }
+    .mem-ctx-list li { padding: 6px 0; font-size: 12.5px; line-height: 1.5; border-bottom: 1px dashed var(--sw-border); }
+    .mem-ctx-list li:last-child { border-bottom: none; }
+    .mem-kind { font-weight: 700; color: var(--sw-orange); margin-right: 6px; }
+    .mem-prov { font-size: 10.5px; color: var(--sw-text-sec); font-style: italic; margin-left: 6px; }
+    .mem-ctx-empty { font-size: 12px; color: var(--sw-text-sec); font-style: italic; }
+    .mem-events { list-style: none; padding: 0; margin: 0; }
+    .mem-events li { padding: 6px 0; font-size: 12.5px; color: var(--sw-text); border-bottom: 1px dashed var(--sw-border); }
+    .mem-action-head {
+      font-size: 11px; font-weight: 700; color: var(--sw-text-sec);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .mem-action-mirror { background: var(--sw-light); padding: 10px; border-radius: 6px; }
+    .mem-action-msg { font-size: 12.5px; color: var(--sw-text); margin-top: 6px; line-height: 1.5; }
+    .mem-action-tg-hint { font-size: 11px; color: var(--sw-mid); font-style: italic; margin-top: 6px; }
+    .mem-action-empty { font-size: 12px; color: var(--sw-text-sec); font-style: italic; }
+
+    /* ── Slice 4A — Coaching strip ── */
+    .coaching-section { margin-bottom: 16px; }
+    .coaching-strip {
+      display: grid; gap: 10px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 720px) {
+      .coaching-strip { grid-template-columns: repeat(3, 1fr); }
+    }
+    .coaching-card {
+      background: var(--sw-card); border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+      padding: 10px 12px;
+      border-left: 3px solid var(--sw-mid);
+    }
+    .coaching-card[data-lane="book"] { border-left-color: var(--sw-blue); }
+    .coaching-card[data-lane="send"] { border-left-color: var(--sw-green); }       /* was orange */
+    .coaching-card[data-lane="call"] { border-left-color: var(--sw-call-accent); } /* was green — amber for CALL */
+    .coaching-card-head {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .coaching-card-lane {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--sw-text-sec);
+    }
+    .coaching-card-conf {
+      font-size: 10px; font-weight: 600; color: var(--sw-text-sec); margin-left: auto;
+      font-family: var(--sw-font-num);
+    }
+    .coaching-card-text {
+      font-size: 13px; line-height: 1.5; color: var(--sw-text);
+    }
+    .coaching-card-foot {
+      font-size: 10px; color: var(--sw-text-sec); margin-top: 6px;
+      font-style: italic;
+    }
+    .coaching-card-playbook {
+      font-family: var(--sw-font-num); color: var(--sw-mid);
+    }
+
+    /* ── Slice 4A — Conversation peek (centred modal) ── */
+    .peek-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      display: none;
+    }
+    .peek-overlay[aria-hidden="false"] { display: flex; align-items: center; justify-content: center; }
+    .peek-backdrop {
+      position: absolute; inset: 0;
+      background: rgba(26, 39, 46, 0.55);
+    }
+    .peek-modal {
+      position: relative;
+      background: var(--sw-card-elev);
+      border: 1px solid var(--sw-border-strong);
+      border-radius: var(--sw-radius);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+      width: 92%; max-width: 760px; max-height: 88vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .peek-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 16px 18px; border-bottom: 1px solid var(--sw-border);
+      background: var(--sw-card);
+    }
+    .peek-head-id { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+    .peek-head-num {
+      font-size: 11px; font-weight: 700; color: var(--sw-text-muted);
+      font-family: var(--sw-font-num); flex-shrink: 0;
+      letter-spacing: 0.3px;
+    }
+    .peek-head-title {
+      font-size: 16px; font-weight: 700; color: var(--sw-text);
+      letter-spacing: -0.015em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .peek-close {
+      background: transparent; border: none; cursor: pointer;
+      font-size: 24px; line-height: 1; color: var(--sw-text-sec);
+      padding: 0 8px; transition: color 0.15s;
+    }
+    .peek-close:hover { color: var(--sw-text); }
+    .peek-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid var(--sw-border);
+      background: var(--sw-card);
+    }
+    .peek-tab {
+      flex: 1; padding: 12px 8px; font-size: 12px; font-weight: 700;
+      color: var(--sw-text-muted); background: transparent;
+      border: none; border-bottom: 2px solid transparent;
+      cursor: pointer; letter-spacing: 0.3px;
+      text-transform: uppercase;
+      transition: color 0.15s;
+    }
+    .peek-tab:hover { color: var(--sw-text); }
+    .peek-tab[aria-selected="true"] {
+      color: var(--sw-text); border-bottom-color: var(--sw-orange);
+    }
+    .peek-body { flex: 1; overflow-y: auto; padding: 18px 20px; background: var(--sw-card-elev); }
+    .peek-pane[hidden] { display: none; }
+    .peek-foot {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 18px; border-top: 1px solid var(--sw-border);
+      background: var(--sw-card);
+    }
+    .peek-foot-note { font-size: 11px; color: var(--sw-text-muted); font-style: italic; }
+
+    /* Conversation pane — message bubbles, dark theme, channel-tinted */
+    .msg-thread { display: flex; flex-direction: column; gap: 12px; }
+    .msg-bubble {
+      max-width: 80%; padding: 10px 14px;
+      border-radius: var(--sw-radius-sm);
+      font-size: 13.5px; line-height: 1.55;
+      border: 1px solid var(--sw-border);
+    }
+    .msg-bubble.inbound  {
+      align-self: flex-start;
+      background: rgba(76, 106, 124, 0.12); color: var(--sw-text);
+      border-color: rgba(76, 106, 124, 0.30);
+    }
+    .msg-bubble.outbound {
+      align-self: flex-end;
+      background: var(--sw-orange-tint); color: var(--sw-text);
+      border-color: rgba(241, 90, 41, 0.40);
+    }
+    .msg-bubble.system   {
+      align-self: center;
+      background: transparent; color: var(--sw-text-muted);
+      font-style: italic; font-size: 12px; max-width: 95%;
+      text-align: center; border: none;
+      border-top: 1px dashed var(--sw-border);
+      border-bottom: 1px dashed var(--sw-border);
+      padding: 6px 0;
+    }
+    .msg-meta {
+      font-size: 10px; color: var(--sw-text-muted); margin-bottom: 4px;
+      letter-spacing: 0.3px;
+    }
+    .msg-bubble.outbound .msg-meta { color: var(--sw-text-sec); }
+    .msg-channel-chip {
+      display: inline-block; padding: 1px 6px;
+      border-radius: var(--sw-radius-pill);
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-right: 6px;
+      background: rgba(143, 164, 178, 0.18); color: var(--sw-text-sec);
+    }
+    .msg-bubble.inbound  .msg-channel-chip { background: rgba(76, 106, 124, 0.25); color: #B7C8D1; }
+    .msg-bubble.outbound .msg-channel-chip { background: rgba(241, 90, 41, 0.30); color: #FFB088; }
+    .msg-subject { font-weight: 700; margin-bottom: 4px; color: var(--sw-text); }
+
+    /* Facts / events / verdict panes — reuse memory-panel styles */
+    .peek-pane .mem-ctx-list,
+    .peek-pane .mem-events { padding-left: 18px; margin: 0; }
+    .peek-pane .verdict-trail-card {
+      padding: 8px 10px; background: var(--sw-light);
+      border-left: 3px solid var(--sw-orange);
+      border-radius: 4px; margin-bottom: 8px;
+      font-size: 12.5px; color: var(--sw-text);
+    }
+    .peek-pane-empty {
+      font-size: 12px; color: var(--sw-text-sec); font-style: italic; text-align: center; padding: 20px 0;
+    }
+
+    /* ── Product review pass — Lifecycle states preview ── */
+    .lifecycle-section { margin-top: 24px; }
+    .lifecycle-grid {
+      display: grid; gap: 14px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 720px) {
+      .lifecycle-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 1100px) {
+      .lifecycle-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .lifecycle-card {
+      background: var(--sw-card); border: 1px solid var(--sw-border);
+      border-radius: var(--sw-radius); padding: 14px 16px;
+      box-shadow: var(--sw-shadow);
+    }
+    .lifecycle-card-state {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.6px;
+      text-transform: uppercase; margin-bottom: 10px;
+      padding: 3px 8px; border-radius: var(--sw-radius-pill);
+      display: inline-block;
+    }
+    .lifecycle-card-state.s-edit-open        { background: rgba(52, 152, 219, 0.18); color: #6FB6E8; }
+    .lifecycle-card-state.s-approved-pending { background: rgba(39, 174, 96, 0.18);  color: #4FCB87; }
+    .lifecycle-card-state.s-rejected         { background: rgba(143, 164, 178, 0.18); color: var(--sw-text-muted); }
+    .lifecycle-card-state.s-snoozed          { background: rgba(230, 126, 34, 0.18); color: #F4A668; }
+    .lifecycle-card-state.s-blocked          { background: rgba(231, 76, 60, 0.18);  color: #F08272; }
+    .lifecycle-card-status-line {
+      font-size: 11.5px; color: var(--sw-text-sec);
+      margin-bottom: 8px; font-style: italic;
+    }
+    .lifecycle-card-status-line strong { color: var(--sw-text); font-style: normal; font-weight: 600; }
+    .lifecycle-card.muted { opacity: 0.6; }
+    .lifecycle-card.muted .action-msg,
+    .lifecycle-card.muted .loop-card-title { text-decoration: line-through; }
+    .lifecycle-card-edit-textarea {
+      width: 100%;
+      background: rgba(242, 239, 235, 0.06); color: var(--sw-text);
+      border: 1px solid var(--sw-border-strong);
+      border-radius: var(--sw-radius-sm);
+      padding: 10px 12px; font-size: 13.5px; line-height: 1.55;
+      font-family: var(--sw-font); resize: vertical;
+      min-height: 80px;
+    }
+    .lifecycle-card-edit-textarea:disabled { cursor: not-allowed; }
+
+    /* ── Slice 4A — Calendar weekly grid ── */
+    .cal-rep-toggle { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .cal-rep-chip {
+      padding: 6px 12px; background: var(--sw-card);
+      border: 1px solid var(--sw-border);
+      border-radius: var(--sw-radius-pill);
+      font-size: 12px; font-weight: 600; color: var(--sw-text);
+      cursor: pointer;
+    }
+    .cal-rep-chip[aria-pressed="true"] {
+      background: var(--sw-orange); color: #fff; border-color: var(--sw-orange);
+    }
+    .cal-week-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      background: var(--sw-card); padding: 12px; border-radius: var(--sw-radius);
+      box-shadow: var(--sw-shadow);
+    }
+    @media (max-width: 900px) {
+      .cal-week-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .cal-week-grid { grid-template-columns: 1fr; }
+    }
+    .cal-week-day {
+      display: flex; flex-direction: column; gap: 6px;
+      min-height: 100px;
+    }
+    .cal-week-day.today .cal-week-day-head { color: var(--sw-orange); }
+    .cal-week-day-head {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+      color: var(--sw-text-sec); padding-bottom: 4px;
+      border-bottom: 1px solid var(--sw-border);
+    }
+    .cal-week-day-empty {
+      font-size: 11px; color: var(--sw-text-sec); font-style: italic;
+      padding: 8px 0;
+    }
+    .cal-week-slot {
+      padding: 6px 8px; border-radius: var(--sw-radius-sm);
+      font-size: 11.5px; cursor: pointer;
+      background: var(--sw-warm-100); border-left: 3px solid var(--sw-blue);
+    }
+    .cal-week-slot.proposed {
+      background: rgba(241, 90, 41, 0.06); border-left-color: var(--sw-orange);
+    }
+    .cal-week-slot:hover { background: var(--sw-light); }
+    .cal-week-slot-time { font-family: var(--sw-font-num); font-weight: 700; color: var(--sw-text); }
+    .cal-week-slot-meta { color: var(--sw-mid); font-size: 11px; margin-top: 2px; }
+    .cal-week-slot-why { font-style: italic; color: var(--sw-text-sec); font-size: 10.5px; margin-top: 2px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1024px) {
+      .pipeline-grid { grid-template-columns: repeat(3, 1fr); }
+      .perf-vel-row { grid-template-columns: 160px 1fr 50px; }
+    }
+    @media (max-width: 768px) {
+      #today-row { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+      .today-card { padding: 12px; }
+      .today-num { font-size: 22px; }
+      .pipeline-grid { grid-template-columns: 1fr 1fr; }
+      .container { padding: 16px; }
+      .tab-nav a { padding: 10px 14px; font-size: 12px; }
+      .ls-row { grid-template-columns: 90px 1fr 40px; }
+      .cal-grid { grid-template-columns: 70px repeat(3, 1fr); }
+      .perf-vel-row { grid-template-columns: 120px 1fr 40px; font-size: 11px; }
+      .mem-panel { width: 100%; right: -100%; }
+    }
+    @media (max-width: 480px) {
+      .pipeline-grid { grid-template-columns: 1fr; }
+      .action-controls { flex-wrap: wrap; }
+      .btn-action { min-width: 80px; }
+      .cal-grid { grid-template-columns: 1fr; }
+      .cal-corner, .cal-row-head { display: none; }
+      .cal-rep-cell { background: var(--sw-card-elev); color: var(--sw-text); border: none; }
+      .cal-cell::before { content: attr(data-day); display: block; font-size: 10px; color: var(--sw-text-sec); margin-bottom: 4px; }
+      /* Slice 2: lane chips drive a single visible lane on phone */
+      .lane-chips { display: flex; }
+      .lane-pane[data-active="false"] { display: none; }
+      .perf-strip { grid-template-columns: 1fr 1fr; }
+      .perf-tile:nth-child(3) { grid-column: 1 / -1; }
+      .calprev-row { grid-template-columns: 56px 70px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="mainApp">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="header-brand">SecureWorks <span>Sale</span><span class="preview-pill">PREVIEW</span></div>
+      </div>
+      <div class="header-right">
+        <span class="header-user" id="headerUser"></span>
+        <button class="btn-header-ghost" id="viewToggleBtn" type="button" title="Toggle calm rep-facing view (also via ?view=rep or localStorage 'sale.view')">View: Dev ▾</button>
+        <a class="btn-header-ghost" href="index.html">Back</a>
+        <button class="btn-header-ghost" id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <!-- Trust banner — collapsed by default, gate detail behind <details> -->
+    <details class="trust-banner">
+      <summary class="trust-banner-summary">
+        <span class="trust-banner-title">Preview · no actions fire</span>
+        <span class="data-sources-line" id="dataSourcesLine" aria-live="polite" hidden></span>
+        <span class="trust-banner-toggle">ⓘ details</span>
+      </summary>
+      <div class="trust-banner-content">
+        <span class="trust-banner-copy">Gated on SALES-DATA-1 (created_by writer fix), Cap 0 release-truth, and outbound-bypass closure. Every Send / Book / Call button is stubbed.</span>
+        <span class="chip-row">
+          <span class="chip" title="created_by null on the dominant opportunity-picker path">created_by → SALES-DATA-1</span>
+          <span class="chip" id="streamMismatchChip" title="smart_nudges count vs ai_proposed_actions count">stream mismatch → SALES-DATA-6</span>
+          <span class="chip" title="Quick Quote writes quoted_at without canonical events">quoted_at → SALES-DATA-4</span>
+        </span>
+      </div>
+    </details>
+
+    <!-- Tab Nav (4 top-level areas) -->
+    <nav class="tab-nav" role="tablist" aria-label="Secure Sale tabs">
+      <a data-tab="today"       role="tab">Today</a>
+      <a data-tab="calendar"    role="tab">Calendar</a>
+      <a data-tab="pipeline"    role="tab">Pipeline</a>
+      <a data-tab="performance" role="tab">Performance</a>
+    </nav>
+
+    <main class="container">
+      <div id="salePreviewError" class="preview-error">
+        Fixture data failed to load. Confirm <code>modules/sale-preview-fixtures.js</code> is included before <code>modules/sale-preview.js</code>.
+      </div>
+
+      <!-- ════════════════ TODAY ════════════════ -->
+      <div class="tab-pane" data-tab-pane="today" role="tabpanel">
+        <!-- Per-rep toggle (disabled) -->
+        <div class="per-rep-row">
+          <button class="per-rep-toggle" type="button" disabled>Per-rep view</button>
+          <span class="per-rep-msg">
+            Disabled — <code>jobs.created_by</code> is unreliable on the opportunity-picker path (per-rep metrics only).
+            Sender identity is unaffected: patio sends from Nithin, fencing sends from Khairo, always.
+          </span>
+        </div>
+
+        <!-- Performance strip (Slice 2 — derived by sale-action-reducer) -->
+        <section class="section" id="performance-strip-section">
+          <h2 class="section-title">This week <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">Reducer-derived totals over <code>F.jobs</code>. Per-rep splits stay disabled — see footer.</p>
+          <div id="performance-strip" class="perf-strip"></div>
+        </section>
+
+        <!-- Coaching strip (Slice 4A — fixture-driven, read-only) -->
+        <section class="section coaching-section" id="coaching-section">
+          <h2 class="section-title">Coach <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">JARVIS reads the queue and tells you the priority. Source swaps to <code>ops-ai</code> in Slice 5.</p>
+          <div id="coaching-strip" class="coaching-strip"></div>
+        </section>
+
+        <!-- Lane chips (mobile only) -->
+        <nav id="lane-chips" class="lane-chips" aria-label="Today lane">
+          <button class="lane-chip" data-lane-chip="book" type="button" aria-pressed="true">Book<span class="lane-chip-count" data-lane-chip-count="book">0</span></button>
+          <button class="lane-chip" data-lane-chip="send" type="button" aria-pressed="false">Send<span class="lane-chip-count" data-lane-chip-count="send">0</span></button>
+          <button class="lane-chip" data-lane-chip="call" type="button" aria-pressed="false">Call<span class="lane-chip-count" data-lane-chip-count="call">0</span></button>
+        </nav>
+
+        <!-- 3-lane cockpit -->
+        <section class="section" id="lanes-section">
+          <div id="lanes-grid" class="lanes-grid">
+            <div class="lane-pane" data-lane="book" data-active="true">
+              <div class="lane-pane-head">
+                <span class="lane-pane-title">Book</span>
+                <span class="lane-pane-count" data-lane-count="book">0</span>
+              </div>
+              <div data-lane-body="book"></div>
+            </div>
+            <div class="lane-pane" data-lane="send" data-active="false">
+              <div class="lane-pane-head">
+                <span class="lane-pane-title">Send</span>
+                <span class="lane-pane-count" data-lane-count="send">0</span>
+              </div>
+              <div data-lane-body="send"></div>
+            </div>
+            <div class="lane-pane" data-lane="call" data-active="false">
+              <div class="lane-pane-head">
+                <span class="lane-pane-title">Call</span>
+                <span class="lane-pane-count" data-lane-count="call">0</span>
+              </div>
+              <div data-lane-body="call"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Calendar preview (Today only) -->
+        <section class="section calprev-section" id="calendar-preview-section">
+          <h2 class="section-title">Today's calendar <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">Compact view of today's confirmed and proposed scope windows. Full 3-day view lives on the Calendar tab.</p>
+          <div id="calendar-preview-today" class="calprev-list"></div>
+        </section>
+
+        <!-- Lifecycle states preview (Product review pass — display-only) -->
+        <section class="section lifecycle-section" id="lifecycle-section">
+          <h2 class="section-title">Action lifecycle states <span class="fixture-chip">FIXTURE · DISPLAY-ONLY</span></h2>
+          <p class="section-subtitle">Five visual states a card moves through as the rep approves / edits / rejects / snoozes / a policy blocks it. No controls enabled — these are review previews only. Real lifecycle execution lands in Slice 6 (dry-run) and Slice 7 (live).</p>
+          <div id="lifecycle-states-grid" class="lifecycle-grid"></div>
+        </section>
+
+        <!-- Lead source (legacy footer) -->
+        <section class="section" id="leadsource">
+          <h2 class="section-title">Lead source — last 90 days <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">Independent of <code>jobs.created_by</code>; uses <code>contact_matches.lead_source</code>.</p>
+          <div class="ls-wrap"><div id="leadsource-body"></div></div>
+        </section>
+
+        <!-- Disabled tiles (legacy footer) -->
+        <section class="section" id="disabled">
+          <h2 class="section-title">Disabled — pending dependencies</h2>
+          <p class="section-subtitle">These tiles are intentionally stubbed until their unblockers ship.</p>
+          <div id="disabled-tiles-body"></div>
+        </section>
+      </div>
+
+      <!-- ════════════════ CALENDAR ════════════════ -->
+      <div class="tab-pane" data-tab-pane="calendar" role="tabpanel">
+        <section class="section">
+          <h2 class="section-title">Calendar — 7-day weekly view <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">
+            Confirmed scope visits and JARVIS-proposed windows for the signed-in rep.
+            Read-only preview — no create / cancel / reschedule controls. Real GHL appointments will populate
+            once <code>business_events.client.appointment</code> writers land (Slice 10).
+          </p>
+          <div class="cal-rep-toggle" role="tablist" aria-label="Rep filter">
+            <button type="button" class="cal-rep-chip" data-cal-rep="Nithin" aria-pressed="true">Nithin (patio)</button>
+            <button type="button" class="cal-rep-chip" data-cal-rep="Khairo" aria-pressed="false">Khairo (fencing)</button>
+          </div>
+          <div id="calendar-body"></div>
+        </section>
+      </div>
+
+      <!-- ════════════════ PIPELINE ════════════════ -->
+      <div class="tab-pane" data-tab-pane="pipeline" role="tabpanel">
+        <section class="section">
+          <h2 class="section-title">Pipeline (system-wide) <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">
+            Read-only kanban from <code>jobs.status</code>. Quick Quote rows carry an asterisk — see SALES-DATA-4.
+            Drag/drop is disabled in Slice 1; stage changes propose actions, never auto-write to GHL.
+          </p>
+          <div id="pipeline-body" class="pipeline-grid"></div>
+        </section>
+      </div>
+
+      <!-- ════════════════ PERFORMANCE ════════════════ -->
+      <div class="tab-pane" data-tab-pane="performance" role="tabpanel">
+        <section class="section">
+          <h2 class="section-title">Performance — this week <span class="fixture-chip">FIXTURE</span></h2>
+          <p class="section-subtitle">
+            System-wide totals are safe to render now. Per-rep breakdowns wait on <code>jobs.created_by</code> repair
+            (SALES-DATA-1 + SALES-DATA-3). Sender identity (Nithin / Khairo) is unaffected and unconditional.
+          </p>
+          <div id="performance-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ════════════════ JARVIS Memory Panel (slide-in overlay) ════════════════ -->
+  <aside id="memoryPanel" class="mem-panel" aria-hidden="true">
+    <div id="memoryPanelBody"></div>
+  </aside>
+  <div class="mem-overlay" data-mem-close></div>
+
+  <!-- ════════════════ Conversation Peek (Slice 4A — centred modal) ════════════════ -->
+  <!-- Read-only Job Brain peek: Conversation / Facts / Events / Verdict tabs.   -->
+  <!-- No reply box, no send button, no live fetch — fixture-only in Slice 4A.   -->
+  <div id="conversationPeek" class="peek-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="peekHeadingTitle">
+    <div class="peek-backdrop" data-peek-close></div>
+    <div class="peek-modal">
+      <header class="peek-head">
+        <div class="peek-head-id">
+          <span class="peek-head-num" id="peekHeadingNum">—</span>
+          <span class="peek-head-title" id="peekHeadingTitle">—</span>
+        </div>
+        <button type="button" class="peek-close" data-peek-close aria-label="Close conversation peek">×</button>
+      </header>
+      <nav class="peek-tabs" role="tablist" aria-label="Job Brain peek tabs">
+        <button type="button" class="peek-tab" data-peek-tab="conversation" role="tab" aria-selected="true">Conversation</button>
+        <button type="button" class="peek-tab" data-peek-tab="facts"        role="tab" aria-selected="false">Facts</button>
+        <button type="button" class="peek-tab" data-peek-tab="events"       role="tab" aria-selected="false">Events</button>
+        <button type="button" class="peek-tab" data-peek-tab="verdict"      role="tab" aria-selected="false">Verdict</button>
+      </nav>
+      <section class="peek-body">
+        <div class="peek-pane" data-peek-pane="conversation" role="tabpanel"></div>
+        <div class="peek-pane" data-peek-pane="facts"        role="tabpanel" hidden></div>
+        <div class="peek-pane" data-peek-pane="events"       role="tabpanel" hidden></div>
+        <div class="peek-pane" data-peek-pane="verdict"      role="tabpanel" hidden></div>
+      </section>
+      <footer class="peek-foot">
+        <span class="fixture-chip" title="Fixture data — not live">FIXTURE</span>
+        <span class="peek-foot-note">Read-only. No reply box, no live fetch. Live conversation read lands in Slice 4.5.</span>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Order matters: fixtures must load before the renderer.    -->
+  <!-- Contract validator loads before sale-job-brain.js so the   -->
+  <!-- loader's optional drift-check is wired (Slice 4A.1).       -->
+  <script src="modules/sale-preview-fixtures.js"></script>
+  <script src="modules/sale-job-brain-contract.js"></script>
+  <script src="modules/sale-job-brain.js"></script>
+  <script src="modules/sale-action-reducer.js"></script>
+  <script src="modules/sale-safety-policy.js"></script>
+  <script src="modules/sale-preview.js"></script>
+  <script>
+    // Light header-user wiring (mirrors the lightweight pattern in other pages).
+    (function () {
+      function setUser() {
+        try {
+          var c = window.SECUREWORKS_CLOUD;
+          if (c && c.auth && c.auth.isLoggedIn && c.auth.isLoggedIn()) {
+            var u = c.auth.getUser();
+            var el = document.getElementById('headerUser');
+            if (el && u) el.textContent = u.email || u.name || '';
+          }
+        } catch (e) {}
+      }
+      var btn = document.getElementById('signOutBtn');
+      if (btn) {
+        btn.addEventListener('click', function () {
+          try { window.SECUREWORKS_CLOUD.auth.signOut(); } catch (e) {}
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setUser);
+      } else {
+        setUser();
+      }
+      // Retry once after auth-gate resolves.
+      setTimeout(setUser, 500);
+    })();
+  </script>
+
+  <!-- ════════════════════════════════════════════════════════════
+       REP PRODUCTION VIEW TOGGLE (Path B)
+       Pure visual layer. Reads URL ?view=, falls back to localStorage
+       'sale.view'. No data, no fetch, no contract changes.
+       ════════════════════════════════════════════════════════════ -->
+  <script>
+    (function () {
+      var KEY = 'sale.view';
+      var LABELS = { dev: 'View: Dev ▾', rep: 'View: Rep ▾' };
+
+      function readMode() {
+        var p, stored;
+        try { p = new URLSearchParams(location.search).get('view'); } catch (e) { p = null; }
+        try { stored = localStorage.getItem(KEY); } catch (e) { stored = null; }
+        var m = (p || stored || 'dev').toLowerCase();
+        return LABELS[m] ? m : 'dev';
+      }
+
+      function apply(mode) {
+        if (document.body) {
+          document.body.classList.toggle('rep-view', mode === 'rep');
+        }
+        var btn = document.getElementById('viewToggleBtn');
+        if (btn) btn.textContent = LABELS[mode];
+      }
+
+      var current = readMode();
+
+      function init() {
+        apply(current);
+        var btn = document.getElementById('viewToggleBtn');
+        if (btn) {
+          btn.addEventListener('click', function () {
+            current = current === 'rep' ? 'dev' : 'rep';
+            try { localStorage.setItem(KEY, current); } catch (e) {}
+            apply(current);
+          });
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
