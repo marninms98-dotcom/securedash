@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cap 1A — Canonical state machine harness</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'none'">
+  <style>
+    body { font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px; max-width: 1080px; margin: 0 auto; color: #1f2933; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    .meta { color: #5b6b78; font-size: 12px; margin-bottom: 16px; }
+    .summary { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }
+    .summary.pass { background: #def7ec; color: #03543f; }
+    .summary.fail { background: #fde2e2; color: #771d1d; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e6ebef; vertical-align: top; font-size: 12px; }
+    th { background: #f5f7f9; font-weight: 600; }
+    code { background: #f5f7f9; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .pill.green { background: #def7ec; color: #03543f; }
+    .pill.red   { background: #fde2e2; color: #771d1d; }
+    .footer { color: #5b6b78; font-size: 11px; margin-top: 32px; border-top: 1px solid #e6ebef; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Cap 1A — Canonical state machine harness</h1>
+  <div class="meta">
+    Asserts the invariants the canonical state-machine source must hold. Module:
+    <code>modules/sw-state-machine.js</code> (mirror of
+    <code>secureworks-site/shared/job-state-machine.ts</code>). Cap 1B will add a TS↔JS drift
+    test; this harness covers shape, completeness, and Pipeline Visibility Guard behaviour.
+  </div>
+
+  <div id="summary" class="summary">Running…</div>
+  <div id="results"></div>
+
+  <div class="footer">
+    Cap 1 governance — Marnin/Shaun decisions 2026-05-01. JARVIS may explain/propose/draft;
+    no auto-transitions in Cap 1. Override discipline: Marnin/Shaun only, reason category +
+    free-text, no auto-expiry. JARVIS must mention reliance on overrides.
+  </div>
+
+  <script src="sw-state-machine.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var SM = window.SW_STATE_MACHINE;
+    var checks = [];
+
+    function check(name, predicate, detail) {
+      var ok = false;
+      var actual = '';
+      try { ok = !!predicate(); }
+      catch (e) { actual = 'EXCEPTION: ' + e.message; }
+      checks.push({ name: name, ok: ok, detail: detail || '', actual: actual });
+    }
+
+    // ── Shape & completeness ───────────────────────────────────────
+    check('module loads', function () { return !!SM; });
+    check('VERSION present', function () { return typeof SM.VERSION === 'string' && SM.VERSION.length > 0; }, SM && SM.VERSION);
+    check('STATUS_MAP has 22 entries', function () { return Object.keys(SM.STATUS_MAP).length === 22; }, 'count = ' + Object.keys(SM.STATUS_MAP).length);
+    check('ALL_CANONICAL_STATUSES has 22 entries', function () { return SM.ALL_CANONICAL_STATUSES.length === 22; });
+    check('ACTIVE_STATUSES excludes terminal', function () {
+      return SM.ACTIVE_STATUSES.indexOf('cancelled') === -1 &&
+             SM.ACTIVE_STATUSES.indexOf('lost') === -1 &&
+             SM.ACTIVE_STATUSES.indexOf('archived') === -1;
+    });
+    check('FENCING_STAGES has 14 entries', function () { return SM.FENCING_STAGES.length === 14; }, 'count = ' + SM.FENCING_STAGES.length);
+    check('PATIO_STAGES has 14 entries', function () { return SM.PATIO_STAGES.length === 14; });
+    check('DECKING_STAGES === PATIO_STAGES contents', function () {
+      return SM.DECKING_STAGES.join(',') === SM.PATIO_STAGES.join(',');
+    });
+    check('QUICK_QUOTE_STAGES has 5 entries', function () { return SM.QUICK_QUOTE_STAGES.length === 5; });
+
+    // Every STATUS_MAP entry has the required fields.
+    var requiredFields = ['bucket', 'stage_order', 'human', 'color', 'owner', 'jarvis_posture'];
+    requiredFields.forEach(function (f) {
+      check('every STATUS_MAP entry has ' + f, function () {
+        return Object.keys(SM.STATUS_MAP).every(function (k) {
+          var v = SM.STATUS_MAP[k][f];
+          return v !== undefined && v !== null && v !== '';
+        });
+      });
+    });
+
+    check('STATUS_LABELS covers every STATUS_MAP key', function () {
+      return Object.keys(SM.STATUS_MAP).every(function (k) { return typeof SM.STATUS_LABELS[k] === 'string'; });
+    });
+    check('STATUS_COLORS covers every STATUS_MAP key', function () {
+      return Object.keys(SM.STATUS_MAP).every(function (k) { return typeof SM.STATUS_COLORS[k] === 'string'; });
+    });
+
+    // ── partially_accepted (was missing pre-Cap-1A) ──────────────
+    check('partially_accepted in STATUS_LABELS', function () { return SM.STATUS_LABELS.partially_accepted === 'Partially Accepted'; });
+    check('partially_accepted in FENCING_STAGES', function () { return SM.FENCING_STAGES.indexOf('partially_accepted') !== -1; });
+    check('partially_accepted NOT in PATIO_STAGES', function () { return SM.PATIO_STAGES.indexOf('partially_accepted') === -1; });
+
+    // ── approvals scoping (patio-only) ───────────────────────────
+    check('approvals in PATIO_STAGES', function () { return SM.PATIO_STAGES.indexOf('approvals') !== -1; });
+    check('approvals NOT in FENCING_STAGES', function () { return SM.FENCING_STAGES.indexOf('approvals') === -1; });
+
+    // ── Per-type validity helper ─────────────────────────────────
+    check('isLegalForType: fencing ∋ partially_accepted', function () { return SM.isLegalForType('partially_accepted', 'fencing'); });
+    check('isLegalForType: patio ∌ partially_accepted', function () { return !SM.isLegalForType('partially_accepted', 'patio'); });
+    check('isLegalForType: patio ∋ approvals', function () { return SM.isLegalForType('approvals', 'patio'); });
+    check('isLegalForType: fencing ∌ approvals', function () { return !SM.isLegalForType('approvals', 'fencing'); });
+    check('isLegalForType: quick_quote ∌ scheduled', function () { return !SM.isLegalForType('scheduled', 'quick_quote'); });
+
+    // ── mapStatus: known status path ─────────────────────────────
+    check('mapStatus(quoted) → waiting_client', function () { return SM.mapStatus('quoted').frontend_bucket === 'waiting_client'; });
+    check('mapStatus(quoted) is mapped', function () { return SM.mapStatus('quoted').status_mapped_for_pipeline === true; });
+    check('mapStatus(complete) → done', function () { return SM.mapStatus('complete').frontend_bucket === 'done'; });
+
+    // ── mapStatus: legacy flag ───────────────────────────────────
+    check('mapStatus(processing).legacy === true', function () { return SM.mapStatus('processing').legacy === true; });
+    check('mapStatus(deposit).legacy === true', function () { return SM.mapStatus('deposit').legacy === true; });
+    check('mapStatus(lost).legacy === true', function () { return SM.mapStatus('lost').legacy === true; });
+    check('mapStatus(rectification).legacy === true', function () { return SM.mapStatus('rectification').legacy === true; });
+
+    // ── mapStatus: derived_view flag ─────────────────────────────
+    check('mapStatus(schedule_install).derived_view === true', function () { return SM.mapStatus('schedule_install').derived_view === true; });
+    check('mapStatus(final_payment).derived_view === true', function () { return SM.mapStatus('final_payment').derived_view === true; });
+    check('mapStatus(get_review).derived_view === true', function () { return SM.mapStatus('get_review').derived_view === true; });
+
+    // ── Pipeline Visibility Guard: never disappears ──────────────
+    check('mapStatus(unknown) → status_mapping_gap', function () { return SM.mapStatus('waiting_on_new_stage').frontend_bucket === 'status_mapping_gap'; });
+    check('mapStatus(unknown).status_mapped_for_pipeline === false', function () { return SM.mapStatus('xyz_future_status').status_mapped_for_pipeline === false; });
+    check('mapStatus(unknown).reason === unknown', function () { return SM.mapStatus('xyz_future_status').reason === 'unknown'; });
+    check('mapStatus(null) → status_mapping_gap', function () { return SM.mapStatus(null).frontend_bucket === 'status_mapping_gap'; });
+    check('mapStatus(null).reason === missing', function () { return SM.mapStatus(null).reason === 'missing'; });
+    check('mapStatus(empty) → status_mapping_gap', function () { return SM.mapStatus('').frontend_bucket === 'status_mapping_gap'; });
+
+    // ── Mixed-case + whitespace handling ─────────────────────────
+    check('mapStatus(" Quoted ") normalises', function () { return SM.mapStatus(' Quoted ').normalized_status === 'quoted'; });
+    check('mapStatus(QUOTED) normalises', function () { return SM.mapStatus('QUOTED').normalized_status === 'quoted'; });
+
+    // ── Owners + JARVIS posture coverage ─────────────────────────
+    var validOwners = ['sales', 'office', 'shaun', 'system', 'crew'];
+    var validPosture = ['read_only', 'suggest', 'require_approval', 'automate'];
+    check('every owner in {sales|office|shaun|system|crew}', function () {
+      return Object.keys(SM.STATUS_MAP).every(function (k) {
+        return validOwners.indexOf(SM.STATUS_MAP[k].owner) !== -1;
+      });
+    });
+    check('every jarvis_posture in {read_only|suggest|require_approval|automate}', function () {
+      return Object.keys(SM.STATUS_MAP).every(function (k) {
+        return validPosture.indexOf(SM.STATUS_MAP[k].jarvis_posture) !== -1;
+      });
+    });
+    check('Cap 1 v1 jarvis_posture ⊆ {read_only|suggest}', function () {
+      // Cap 1 v1 ships only read_only and suggest. require_approval and automate are reserved.
+      return Object.keys(SM.STATUS_MAP).every(function (k) {
+        var p = SM.STATUS_MAP[k].jarvis_posture;
+        return p === 'read_only' || p === 'suggest';
+      });
+    });
+
+    // ── Buckets cover the contract ───────────────────────────────
+    var expectedBuckets = ['quote', 'waiting_client', 'packet_prep', 'materials', 'ready', 'in_progress', 'done', 'terminal'];
+    check('all 8 frontend buckets present in STATUS_MAP', function () {
+      var seen = {};
+      Object.keys(SM.STATUS_MAP).forEach(function (k) { seen[SM.STATUS_MAP[k].bucket] = true; });
+      return expectedBuckets.every(function (b) { return seen[b]; });
+    });
+
+    // ── Stage_order monotonicity sanity ──────────────────────────
+    check('stage_order monotonic on FENCING_STAGES (ignoring legacy/derived)', function () {
+      var prev = -1;
+      for (var i = 0; i < SM.FENCING_STAGES.length; i++) {
+        var so = SM.STATUS_MAP[SM.FENCING_STAGES[i]].stage_order;
+        if (so < prev) return false;
+        prev = so;
+      }
+      return true;
+    });
+
+    // ── Render summary ───────────────────────────────────────────
+    var pass = checks.filter(function (c) { return c.ok; }).length;
+    var fail = checks.length - pass;
+    var summary = document.getElementById('summary');
+    summary.className = 'summary ' + (fail === 0 ? 'pass' : 'fail');
+    summary.textContent = (fail === 0 ? 'PASS — ' : 'FAIL — ') + pass + '/' + checks.length + ' invariants hold';
+
+    var rows = ['<table>',
+      '<thead><tr><th style="width:60px">Result</th><th>Invariant</th><th style="width:140px">Detail</th></tr></thead>',
+      '<tbody>'];
+    checks.forEach(function (c) {
+      rows.push('<tr>',
+        '<td>', c.ok ? '<span class="pill green">PASS</span>' : '<span class="pill red">FAIL</span>', '</td>',
+        '<td>', c.name, c.actual ? ' <code>' + c.actual + '</code>' : '', '</td>',
+        '<td>', c.detail || '—', '</td>',
+      '</tr>');
+    });
+    rows.push('</tbody></table>');
+    document.getElementById('results').innerHTML = rows.join('');
+
+    window.__CAP1A_RESULTS = { pass: pass, fail: fail, total: checks.length, checks: checks, version: SM.VERSION };
+  })();
+  </script>
+</body>
+</html>
