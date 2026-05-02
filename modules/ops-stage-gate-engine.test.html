@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cap 1B — Stage-Gate Engine harness</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'none'">
+  <style>
+    body { font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px; max-width: 1200px; margin: 0 auto; color: #1f2933; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    .meta { color: #5b6b78; font-size: 12px; margin-bottom: 16px; }
+    .summary { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 600; }
+    .summary.pass { background: #def7ec; color: #03543f; }
+    .summary.fail { background: #fde2e2; color: #771d1d; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e6ebef; vertical-align: top; font-size: 12px; }
+    th { background: #f5f7f9; font-weight: 600; }
+    code { background: #f5f7f9; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .pill.green { background: #def7ec; color: #03543f; }
+    .pill.red   { background: #fde2e2; color: #771d1d; }
+    .pill.amber { background: #fef3c7; color: #92400e; }
+    .pill.info  { background: #dbeafe; color: #1e3a8a; }
+    .pill.gap   { background: #fce7f3; color: #831843; }
+    details { margin: 4px 0; }
+    .footer { color: #5b6b78; font-size: 11px; margin-top: 32px; border-top: 1px solid #e6ebef; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Cap 1B — Stage-Gate Engine harness</h1>
+  <div class="meta">
+    Fixture-based tests for <code>evaluateStageGates</code>, <code>canTransition</code>, and <code>proposeNextStage</code>.
+    Fixtures cover every canonical stage + governance edge cases (multi-neighbour fencing all-or-nothing,
+    patio approvals not_applicable, deposit-before-materials with bank-confirmed override, supplier
+    logistics override, strict-access blocker promotion, illegal jumps, backwards transitions,
+    cancelled re-open).
+  </div>
+
+  <div id="summary" class="summary">Running…</div>
+  <div id="results"></div>
+
+  <div class="footer">
+    Cap 1 governance — Marnin/Shaun decisions 2026-05-01.<br>
+    JARVIS v1: explain / propose / draft only. Never auto-transition.<br>
+    Overrides v1: Marnin/Shaun only, reason category + free-text, no auto-expiry.
+  </div>
+
+  <script src="sw-state-machine.js"></script>
+  <script src="ops-stage-gate-engine.js"></script>
+  <script src="ops-stage-gate-fixtures.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var E = window.SW_STAGE_GATE_ENGINE;
+    var F = window.SW_STAGE_GATE_FIXTURES;
+    var fixtures = F.fixtures;
+
+    function pillClass(sev) {
+      if (sev === 'blocker' || sev === 'red') return 'red';
+      if (sev === 'warning' || sev === 'amber') return 'amber';
+      if (sev === 'green' || sev === 'pass') return 'green';
+      return 'info';
+    }
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; });
+    }
+
+    var results = [];
+    var passCount = 0, failCount = 0;
+
+    fixtures.forEach(function (fx) {
+      var r = E.evaluateStageGates({ id: fx.packet.job.id, type: fx.packet.job.type }, fx.packet, fx.supplemental, { now: F.NOW_ISO });
+      var checks = [];
+      function check(label, actual, expected, ok) { checks.push({ label: label, actual: actual, expected: expected, ok: ok }); }
+      function eq(label, actual, expected) { check(label, actual, expected, actual === expected); }
+
+      if (fx.expected.current_stage !== undefined) eq('current_stage', r.current_stage, fx.expected.current_stage);
+      if (fx.expected.frontend_bucket) eq('frontend_bucket', r.frontend_bucket, fx.expected.frontend_bucket);
+      if (fx.expected.owner) eq('owner', r.owner, fx.expected.owner);
+      if (fx.expected.confidence) eq('confidence', r.confidence, fx.expected.confidence);
+      if (fx.expected.install_in_window !== undefined) eq('install_in_window', r.install_in_window, fx.expected.install_in_window);
+      if (fx.expected.has_blocker !== undefined) eq('has_blocker', r.blockers.length > 0, fx.expected.has_blocker);
+      if (fx.expected.has_warning !== undefined) eq('has_warning', r.warnings.length > 0, fx.expected.has_warning);
+      if (fx.expected.has_override !== undefined) eq('has_override', r.overrides.length > 0, fx.expected.has_override);
+      if (fx.expected.blocker_includes) {
+        var bids = r.blockers.map(function (b) { return b.gate_id; });
+        var missing = fx.expected.blocker_includes.filter(function (n) { return bids.indexOf(n) === -1; });
+        check('blocker_includes', bids.join(','), fx.expected.blocker_includes.join(','), missing.length === 0);
+      }
+      if (fx.expected.warning_includes) {
+        var wids = r.warnings.map(function (w) { return w.gate_id; });
+        var wmissing = fx.expected.warning_includes.filter(function (n) { return wids.indexOf(n) === -1; });
+        check('warning_includes', wids.join(','), fx.expected.warning_includes.join(','), wmissing.length === 0);
+      }
+      if (fx.expected.override_includes) {
+        var oids = r.overrides.map(function (o) { return o.gate_id; });
+        var omissing = fx.expected.override_includes.filter(function (n) { return oids.indexOf(n) === -1; });
+        check('override_includes', oids.join(','), fx.expected.override_includes.join(','), omissing.length === 0);
+      }
+      if (fx.expected.gate_status_assertion) {
+        var ga = fx.expected.gate_status_assertion;
+        var g = r.gates.find(function (x) { return x.gate_id === ga.gate_id; });
+        eq('gate_' + ga.gate_id, g ? g.status : 'not_found', ga.expected_status);
+      }
+      if (fx.expected.cantransition_assertion) {
+        var a = fx.expected.cantransition_assertion;
+        var ct = E.canTransition({ type: a.type }, a.from, a.to, a.override);
+        if (a.expect_allowed !== undefined) eq('ct_allowed', ct.allowed, a.expect_allowed);
+        if (a.expect_hard_blocked !== undefined) eq('ct_hard_blocked', ct.hard_blocked, a.expect_hard_blocked);
+        if (a.expect_direction !== undefined) eq('ct_direction', ct.direction, a.expect_direction);
+        if (a.expect_type_legal !== undefined) eq('ct_type_legal', ct.type_legal, a.expect_type_legal);
+      }
+      if (fx.expected.cantransition_assertion_no_override) {
+        var ano = fx.expected.cantransition_assertion_no_override;
+        var ctno = E.canTransition({ type: ano.type }, ano.from, ano.to);
+        if (ano.expect_allowed !== undefined) eq('ct_no_o_allowed', ctno.allowed, ano.expect_allowed);
+        if (ano.expect_requires_override !== undefined) eq('ct_no_o_requires_override', ctno.requires_override, ano.expect_requires_override);
+      }
+      if (fx.expected.cantransition_assertion_with_override) {
+        var awo = fx.expected.cantransition_assertion_with_override;
+        var ctwo = E.canTransition({ type: awo.type }, awo.from, awo.to, awo.override);
+        if (awo.expect_allowed !== undefined) eq('ct_w_o_allowed', ctwo.allowed, awo.expect_allowed);
+      }
+
+      var allOk = checks.every(function (c) { return c.ok; });
+      if (allOk) passCount += 1; else failCount += 1;
+      results.push({ fixture: fx, result: r, checks: checks, ok: allOk });
+    });
+
+    var summary = document.getElementById('summary');
+    summary.className = 'summary ' + (failCount === 0 ? 'pass' : 'fail');
+    summary.textContent = (failCount === 0 ? 'PASS — ' : 'FAIL — ') + passCount + '/' + fixtures.length + ' fixtures pass';
+
+    var rows = ['<table><thead><tr>',
+      '<th style="width:40px">#</th>',
+      '<th style="width:280px">Fixture</th>',
+      '<th>Stage</th>',
+      '<th>Bucket</th>',
+      '<th>Conf</th>',
+      '<th>Blockers</th>',
+      '<th>Overrides</th>',
+      '<th>Result</th>',
+      '</tr></thead><tbody>'];
+    results.forEach(function (r, i) {
+      var failingChecks = r.checks.filter(function (c) { return !c.ok; });
+      var stagePill = '<span class="pill ' + (r.result.frontend_bucket === 'status_mapping_gap' ? 'gap' : 'info') + '">' + (r.result.current_stage || '—') + '</span>';
+      var bucketPill = '<span class="pill ' + (r.result.frontend_bucket === 'status_mapping_gap' ? 'gap' : 'info') + '">' + r.result.frontend_bucket + '</span>';
+      var confPill = '<span class="pill ' + (r.result.confidence === 'low' ? 'amber' : (r.result.confidence === 'high' ? 'green' : 'info')) + '">' + r.result.confidence + '</span>';
+      var blockerCell = (r.result.blockers || []).map(function (b) { return '<code>' + b.gate_id + '</code>'; }).join(' ') || '<span style="color:#5b6b78">—</span>';
+      var overrideCell = (r.result.overrides || []).map(function (o) { return '<code>' + o.gate_id + '</code>'; }).join(' ') || '<span style="color:#5b6b78">—</span>';
+      var resultPill = r.ok
+        ? '<span class="pill green">PASS</span>'
+        : '<span class="pill red">FAIL</span> <details><summary>diffs</summary><pre style="font-size:11px">' + escapeHtml(JSON.stringify(failingChecks, null, 2)) + '</pre></details>';
+      rows.push('<tr>',
+        '<td>', String(i + 1), '</td>',
+        '<td><strong>', escapeHtml(r.fixture.id), '</strong><br><span style="color:#5b6b78">', escapeHtml(r.fixture.label), '</span></td>',
+        '<td>', stagePill, '</td>',
+        '<td>', bucketPill, '</td>',
+        '<td>', confPill, '</td>',
+        '<td>', blockerCell, '</td>',
+        '<td>', overrideCell, '</td>',
+        '<td>', resultPill, '</td>',
+      '</tr>');
+    });
+    rows.push('</tbody></table>');
+    document.getElementById('results').innerHTML = rows.join('');
+
+    window.__CAP1B_RESULTS = {
+      pass: passCount,
+      fail: failCount,
+      total: fixtures.length,
+      results: results,
+      version: E.VERSION
+    };
+  })();
+  </script>
+</body>
+</html>
