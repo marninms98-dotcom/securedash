@@ -3745,6 +3745,10 @@
 <!-- Mirrors secureworks-site/shared/job-state-machine.ts. -->
 <script src="modules/sw-state-machine.js?v=1"></script>
 
+<!-- Cap 1B stage-gate engine — pure read-only module; never writes status. -->
+<!-- Display-only UX is feature-flagged: enable via ?cap1b=1 query param. -->
+<script src="modules/ops-stage-gate-engine.js?v=1"></script>
+
 <!-- Council modules: loaded BEFORE inline script so inline functions override any conflicts -->
 <script src="modules/ops-council.js?v=2"></script>
 <script src="modules/ops-modals.js?v=4"></script>
@@ -3754,6 +3758,22 @@
 // ════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════
+
+// ── Cap 1B feature flag (display-only stage-gate UX) ──
+// Enabled when ?cap1b=1 is in the URL OR localStorage.sw_cap1b_enabled === '1'.
+// Read-only — controls whether the gate progress badge on kanban cards and
+// the Gate Ledger drawer in job detail render. Never affects status writes.
+window.__SW_CAP1B_GATE_UX_ENABLED = (function () {
+  try {
+    var qs = (window.location.search || '').match(/[?&]cap1b=1\b/);
+    if (qs) return true;
+    var ls = window.localStorage && window.localStorage.getItem('sw_cap1b_enabled');
+    return ls === '1';
+  } catch (e) { return false; }
+})();
+if (window.__SW_CAP1B_GATE_UX_ENABLED) {
+  console.info('[Cap 1B] gate UX enabled — display-only, read-only. Disable via ?cap1b=0 or clearing localStorage.sw_cap1b_enabled.');
+}
 
 // Council modal alias — called from quick view
 function openCouncilModal(jobId) {
@@ -7197,6 +7217,27 @@ function renderKanbanCard(j, status) {
   html += '<span class="kanban-client">' + (j.client_name || 'Unknown') + '</span>';
   if (j.value) html += '<span class="kanban-value">' + fmt$(j.value) + '</span>';
   html += '</div>';
+
+  // Cap 1B (display-only): gate progress badge from the engine. Renders only when
+  // ?cap1b=1 is in the URL (feature flag) AND the engine is loaded. Read-only — no
+  // status writes, no behaviour change. Calls evaluateStageGates with the kanban
+  // card's available data (degraded confidence; full eval happens in the job-detail
+  // drawer via the live release packet).
+  if (window.__SW_CAP1B_GATE_UX_ENABLED && window.SW_STAGE_GATE_ENGINE) {
+    try {
+      var miniPacket = { job: { id: j.id, type: j.type, status: status }, customer: {}, site: {}, purchase_orders: [], events: [] };
+      var miniSupplemental = { assignments: (j.assignment_count > 0 ? [{}] : []), job_context: [], deposit: { deposit_paid: !!j.deposit_paid } };
+      var sgr = window.SW_STAGE_GATE_ENGINE.evaluateStageGates({ id: j.id, type: j.type }, miniPacket, miniSupplemental);
+      var blockerCount = sgr.blockers.length;
+      var warningCount = sgr.warnings.length;
+      if (blockerCount > 0 || warningCount > 0) {
+        var color = blockerCount > 0 ? '#E74C3C' : '#D97706';
+        var label = blockerCount > 0 ? blockerCount + ' blocker' + (blockerCount > 1 ? 's' : '') : warningCount + ' warning' + (warningCount > 1 ? 's' : '');
+        html += '<div class="cap1b-gate-badge" style="margin-top:4px;padding:2px 6px;border-radius:8px;background:rgba(231,76,60,0.08);color:' + color + ';font-size:10px;font-weight:600;display:inline-block;">⚐ ' + label + '</div>';
+      }
+    } catch (e) { /* fail-safe: never break the kanban */ }
+  }
+
   if ((j.type === 'patio' || j.type === 'decking') && j.site_suburb) {
     html += '<div class="kanban-suburb">' + j.site_suburb + '</div>';
   }
@@ -11491,6 +11532,59 @@ async function openJobQuickView(jobId) {
         html += '<div class="jd-alert ' + a.level + '" style="margin-bottom:4px;">' + a.icon + ' ' + a.message + '</div>';
       });
       html += '</div>';
+    }
+
+    // Cap 1B (display-only): Gate Ledger drawer — feature-flagged via ?cap1b=1.
+    // Read-only — no status writes, no behaviour change. Renders the full gate
+    // ledger from evaluateStageGates() so Shaun/Marnin can see exactly which
+    // gates pass / fail / are overridden / are not_applicable for this job.
+    if (window.__SW_CAP1B_GATE_UX_ENABLED && window.SW_STAGE_GATE_ENGINE) {
+      try {
+        var sgPacket = {
+          revision: data.revision || null,
+          document: data.document || null,
+          purchase_orders: data.purchase_orders || [],
+          work_order: data.work_order || (data.work_orders && data.work_orders[0]) || null,
+          media: data.media || [],
+          events: data.events || [],
+          customer: { name: j.client_name, email: j.client_email, mobile: j.client_phone, ghl_contact_id: j.ghl_contact_id || null },
+          site: { address: j.site_address, suburb: j.site_suburb, lat: j.site_lat || null, lng: j.site_lng || null },
+          job: { id: j.id, job_number: j.job_number, type: j.type, status: j.status, quoted_at: j.quoted_at, accepted_at: j.accepted_at, completed_at: j.completed_at }
+        };
+        var sgSupplemental = {
+          assignments: data.assignments || [],
+          job_context: data.job_context || [],
+          deposit: { deposit_paid: !!j.deposit_paid }
+        };
+        var sgr = window.SW_STAGE_GATE_ENGINE.evaluateStageGates({ id: j.id, type: j.type }, sgPacket, sgSupplemental);
+
+        var ledger = '<details class="cap1b-gate-ledger" style="margin-top:12px;border:1px solid var(--sw-border);border-radius:6px;padding:8px 10px;background:#fafbfc;">';
+        ledger += '<summary style="cursor:pointer;font-weight:600;font-size:12px;color:var(--sw-text);">';
+        ledger += '⚐ Gate Ledger (Cap 1B preview)';
+        ledger += '<span style="margin-left:8px;font-weight:400;color:var(--sw-text-sec);">';
+        ledger += sgr.blockers.length + ' blocker · ' + sgr.warnings.length + ' warning · ' + sgr.overrides.length + ' override · stage <code>' + (sgr.current_stage || '—') + '</code> · posture <code>' + sgr.jarvis_posture + '</code>';
+        ledger += '</span></summary>';
+        ledger += '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:11px;">';
+        ledger += '<thead><tr style="border-bottom:1px solid var(--sw-border);"><th style="text-align:left;padding:4px 6px;">Gate</th><th style="text-align:left;padding:4px 6px;">Status</th><th style="text-align:left;padding:4px 6px;">Reason</th></tr></thead><tbody>';
+        sgr.gates.forEach(function (g) {
+          var color = '#27AE60';
+          if (g.status === 'fail') color = (g.severity === 'blocker' ? '#E74C3C' : '#D97706');
+          else if (g.status === 'overridden') color = '#9B59B6';
+          else if (g.status === 'not_applicable' || g.status === 'deferred') color = '#95A5A6';
+          else if (g.status === 'unknown') color = '#7F8C8D';
+          ledger += '<tr style="border-bottom:1px solid var(--sw-border);">';
+          ledger += '<td style="padding:3px 6px;"><code>' + g.gate_id + '</code></td>';
+          ledger += '<td style="padding:3px 6px;color:' + color + ';font-weight:600;">' + g.status + '</td>';
+          ledger += '<td style="padding:3px 6px;color:var(--sw-text-sec);">' + (g.reason || '') + '</td>';
+          ledger += '</tr>';
+        });
+        ledger += '</tbody></table>';
+        ledger += '<div style="margin-top:6px;font-size:10px;color:var(--sw-text-sec);">Read-only display. JARVIS posture = <code>' + sgr.jarvis_posture + '</code>. Cap 1 v1: explain / propose / draft only.</div>';
+        ledger += '</details>';
+        html += ledger;
+      } catch (e) {
+        html += '<div style="margin-top:12px;font-size:11px;color:var(--sw-text-sec);">Gate ledger unavailable: ' + e.message + '</div>';
+      }
     }
 
     document.getElementById('jdQvBody').innerHTML = html;
