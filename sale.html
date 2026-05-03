@@ -1083,6 +1083,47 @@ $$('.m-chip').forEach(function (chip) {
 });
 
 // ────────────────────────────────────────────────────────────
+// Rep view — who sees what.
+//
+// Mapping is by email local-part (the bit before @). Verified against
+// Supabase users table 2026-05-03:
+//   marnin@secureworkswa.com.au   — admin       → ALL JOBS
+//   jan@secureworkswa.com.au      — admin       → ALL JOBS
+//   shaun@secureworkswa.com.au    — ops_manager → ALL JOBS
+//   khairopomare@outlook.com      — sales       → FENCING ONLY
+//   nithin@secureworkswa.com.au   — sales       → PATIO ONLY
+//
+// Type discriminator matches modules/sale-cadence-engine.js line 289:
+//   job.type === 'fencing' → Khairo, everything else → Nithin.
+//
+// Unknown email → see ALL by default. Better to over-show to a real
+// signed-in user than silently hide their pipeline.
+// ────────────────────────────────────────────────────────────
+function repView(profile) {
+  var emailLocal = String((profile && (profile.email || profile.name)) || '')
+    .toLowerCase().split('@')[0];
+  if (!emailLocal) return { key: 'all', label: 'ALL', filter: null };
+  if (emailLocal.indexOf('marnin') >= 0
+      || emailLocal.indexOf('shaun')  >= 0
+      || emailLocal === 'jan' || emailLocal.indexOf('jan.') >= 0) {
+    return { key: 'admin', label: 'ALL JOBS', filter: null };
+  }
+  if (emailLocal.indexOf('khairo') >= 0) {
+    return {
+      key: 'khairo', label: 'FENCING ONLY',
+      filter: function (j) { return String(j.type || '').toLowerCase() === 'fencing'; },
+    };
+  }
+  if (emailLocal.indexOf('nithin') >= 0) {
+    return {
+      key: 'nithin', label: 'PATIO ONLY',
+      filter: function (j) { return String(j.type || '').toLowerCase() !== 'fencing'; },
+    };
+  }
+  return { key: 'unknown', label: 'ALL JOBS', filter: null };
+}
+
+// ────────────────────────────────────────────────────────────
 // Boot
 // ────────────────────────────────────────────────────────────
 
@@ -1100,13 +1141,17 @@ function loadAndRender(cloud) {
   var laneBookCards = document.getElementById('laneBookCards');
   if (laneBookCards) laneBookCards.innerHTML = '<div class="state-msg">Loading your queue…</div>';
 
-  cloud.jobs.listJobs({ limit: 80 }).then(function (jobs) {
+  var view = repView(cloud.auth && cloud.auth.getUser ? cloud.auth.getUser() : null);
+
+  cloud.jobs.listJobs({ limit: 200 }).then(function (jobs) {
     jobs = jobs || [];
     // Filter out terminal states; keep anything still actionable.
     var open = jobs.filter(function (j) {
       var s = (j.status || '').toLowerCase();
       return s !== 'complete' && s !== 'completed' && s !== 'lost' && s !== 'cancelled' && s !== 'archived';
     });
+    // Per-rep view filter (admin / shaun / unknown → all).
+    if (view.filter) open = open.filter(view.filter);
     var buckets = bucketize(open);
     _bucketCache = buckets;
     renderLane('book', buckets.book);
@@ -1128,11 +1173,13 @@ function loadAndRender(cloud) {
 function setOpRail(profile) {
   var name = (profile && (profile.full_name || profile.name || profile.email)) || 'YOU';
   var initials = name.split(/[\s@]/)[0].toUpperCase().slice(0, 8);
+  var view = repView(profile);
   var d = new Date();
   var days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   var hh = String(d.getHours()).padStart(2, '0');
   var mm = String(d.getMinutes()).padStart(2, '0');
-  document.getElementById('opMeta').textContent = 'OP · ' + initials + ' · ' + days[d.getDay()] + ' ' + hh + ':' + mm;
+  document.getElementById('opMeta').textContent =
+    'OP · ' + initials + ' · ' + view.label + ' · ' + days[d.getDay()] + ' ' + hh + ':' + mm;
 }
 
 function bindSignout(cloud) {
