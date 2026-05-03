@@ -225,7 +225,7 @@
       --orange: #F15A29;
       --orange-deep: #C4481F;
       --amber:  #FFB554;            /* CALL lane */
-      --green:  #4CAF8E;            /* MESSAGE lane */
+      --green:  #4CAF8E;            /* FOLLOW UP lane */
       --blue:   #5C8FB8;            /* BOOK lane */
       --bg:        #050709;
       --surface-1: #0A0F12;
@@ -429,9 +429,9 @@
       letter-spacing: 2.5px;
       text-transform: uppercase;
     }
-    .lane[data-lane="call"]    .lane-title { color: var(--amber); }
-    .lane[data-lane="book"]    .lane-title { color: var(--blue); }
-    .lane[data-lane="message"] .lane-title { color: var(--green); }
+    .lane[data-lane="book"]     .lane-title { color: var(--blue); }
+    .lane[data-lane="followup"] .lane-title { color: var(--green); }
+    .lane[data-lane="call"]     .lane-title { color: var(--amber); }
     .lane-count {
       font-size: 9px;
       font-weight: 700;
@@ -461,9 +461,9 @@
       transition: background 0.12s;
     }
     .lcard:hover { background: var(--surface-2); }
-    .lane[data-lane="call"]    .lcard { border-left-color: var(--amber); }
-    .lane[data-lane="book"]    .lcard { border-left-color: var(--blue); }
-    .lane[data-lane="message"] .lcard { border-left-color: var(--green); }
+    .lane[data-lane="book"]     .lcard { border-left-color: var(--blue); }
+    .lane[data-lane="followup"] .lcard { border-left-color: var(--green); }
+    .lane[data-lane="call"]     .lcard { border-left-color: var(--amber); }
     .lcard.urgent { border-left-color: var(--orange); }
 
     .lcard-top {
@@ -604,9 +604,9 @@
       border-radius: 100px;
     }
     .m-chip[data-active="true"] { color: var(--text); }
-    .m-chip[data-lane="call"][data-active="true"]    { box-shadow: inset 0 -2px 0 var(--amber); }
-    .m-chip[data-lane="book"][data-active="true"]    { box-shadow: inset 0 -2px 0 var(--blue); }
-    .m-chip[data-lane="message"][data-active="true"] { box-shadow: inset 0 -2px 0 var(--green); }
+    .m-chip[data-lane="book"][data-active="true"]     { box-shadow: inset 0 -2px 0 var(--blue); }
+    .m-chip[data-lane="followup"][data-active="true"] { box-shadow: inset 0 -2px 0 var(--green); }
+    .m-chip[data-lane="call"][data-active="true"]     { box-shadow: inset 0 -2px 0 var(--amber); }
 
     /* ── Mobile FAB (hidden on desktop) ── */
     .m-fab {
@@ -751,31 +751,23 @@
     <div class="lane-bar-meta" id="laneBarMeta">— LEADS</div>
   </div>
 
-  <!-- Mobile chip switcher -->
+  <!-- Mobile chip switcher (order: BOOK first, FOLLOW UP middle, CALL last) -->
   <nav class="m-chips" role="tablist" aria-label="Lane switcher">
-    <button class="m-chip" data-lane="call" data-active="true" role="tab">
-      <span class="m-chip-count" id="chipCallCount">0</span> CALL
-    </button>
-    <button class="m-chip" data-lane="book" data-active="false" role="tab">
+    <button class="m-chip" data-lane="book" data-active="true" role="tab">
       <span class="m-chip-count" id="chipBookCount">0</span> BOOK
     </button>
-    <button class="m-chip" data-lane="message" data-active="false" role="tab">
-      <span class="m-chip-count" id="chipMsgCount">0</span> MSG
+    <button class="m-chip" data-lane="followup" data-active="false" role="tab">
+      <span class="m-chip-count" id="chipFollowupCount">0</span> FOLLOW UP
+    </button>
+    <button class="m-chip" data-lane="call" data-active="false" role="tab">
+      <span class="m-chip-count" id="chipCallCount">0</span> CALL
     </button>
   </nav>
 
-  <!-- Lanes: filled by JS. Desktop = 3 lanes side-by-side; mobile = one at a time. -->
+  <!-- Lanes: filled by JS. Desktop = 3 lanes side-by-side; mobile = one at a time.
+       Order: BOOK · FOLLOW UP · CALL. FOLLOW UP is channel-flexible (text or email). -->
   <section class="lanes" id="lanesRoot">
-    <div class="lane" data-lane="call" data-active="true">
-      <div class="lane-head">
-        <div class="lane-title">CALL</div>
-        <div class="lane-count" id="laneCallCount">0 LEADS</div>
-      </div>
-      <div class="lane-cards" id="laneCallCards">
-        <div class="state-msg">Loading…</div>
-      </div>
-    </div>
-    <div class="lane" data-lane="book" data-active="false">
+    <div class="lane" data-lane="book" data-active="true">
       <div class="lane-head">
         <div class="lane-title">BOOK</div>
         <div class="lane-count" id="laneBookCount">0 LEADS</div>
@@ -784,12 +776,21 @@
         <div class="state-msg">Loading…</div>
       </div>
     </div>
-    <div class="lane" data-lane="message" data-active="false">
+    <div class="lane" data-lane="followup" data-active="false">
       <div class="lane-head">
-        <div class="lane-title">MESSAGE</div>
-        <div class="lane-count" id="laneMsgCount">0 LEADS</div>
+        <div class="lane-title">FOLLOW UP</div>
+        <div class="lane-count" id="laneFollowupCount">0 LEADS</div>
       </div>
-      <div class="lane-cards" id="laneMsgCards">
+      <div class="lane-cards" id="laneFollowupCards">
+        <div class="state-msg">Loading…</div>
+      </div>
+    </div>
+    <div class="lane" data-lane="call" data-active="false">
+      <div class="lane-head">
+        <div class="lane-title">CALL</div>
+        <div class="lane-count" id="laneCallCount">0 LEADS</div>
+      </div>
+      <div class="lane-cards" id="laneCallCards">
         <div class="state-msg">Loading…</div>
       </div>
     </div>
@@ -851,13 +852,14 @@ function jobTypeLabel(t) {
 // ────────────────────────────────────────────────────────────
 // Lane assignment (v1: status-based, with age tiebreakers)
 //
-// CALL    = no quote yet but >24h since enquiry, OR quoted+viewed but no
-//           reply >3d (assume from sent_at), OR stale draft >7d.
-// BOOK    = quoted in last 3d (still warm; book follow-up call), OR
-//           draft <=24h (fresh, book discovery).
-// MESSAGE = quoted >=4d ago and <=14d (chase by SMS/email), OR
-//           explicit 'accepted' / 'deposit_pending' (send invoice).
-// Anything else falls into CALL by default — never silently dropped.
+// BOOK     = fresh draft <=24h (book discovery call), OR quoted in last 3d
+//            (still warm; book sign-off call).
+// FOLLOW UP = quoted >=4d ago and <=21d (chase by SMS or email — channel-
+//            flexible), OR explicit 'accepted' / 'deposit_pending'
+//            (send deposit invoice).
+// CALL     = stale draft >7d, OR quoted+silent >3d but <4d (one phone push
+//            before falling into FOLLOW UP), OR anything else by default.
+// Anything else → CALL — nothing silently dropped.
 // ────────────────────────────────────────────────────────────
 function laneFor(job) {
   var status = (job.status || '').toLowerCase();
@@ -865,10 +867,10 @@ function laneFor(job) {
   var sentH = hoursAgo(job.sent_at || job.quoted_at);
 
   if (status === 'accepted' || status === 'deposit_pending' || status === 'invoice_pending') {
-    return 'message';
+    return 'followup';
   }
   if (status === 'quoted') {
-    if (sentH >= 24 * 4 && sentH <= 24 * 21) return 'message';
+    if (sentH >= 24 * 4 && sentH <= 24 * 21) return 'followup';
     if (sentH < 24 * 3) return 'book';
     return 'call';
   }
@@ -884,8 +886,8 @@ function urgencyPill(job, lane) {
   var ageH = hoursAgo(job.created_at);
   var sentH = hoursAgo(job.sent_at || job.quoted_at);
   if (lane === 'call' && ageH > 24 * 7) return { label: 'STALE', urgent: true };
-  if (lane === 'message' && sentH > 24 * 10) return { label: 'STALE', urgent: true };
-  if (lane === 'message' && sentH > 24 * 5) return { label: 'CHASE TODAY', urgent: true };
+  if (lane === 'followup' && sentH > 24 * 10) return { label: 'STALE', urgent: true };
+  if (lane === 'followup' && sentH > 24 * 5) return { label: 'CHASE TODAY', urgent: true };
   if (lane === 'call' && ageH > 24 * 3) return { label: 'TODAY', urgent: true };
   if (lane === 'book' && ageH < 24) return { label: 'FRESH', urgent: false };
   return { label: relTime(job.updated_at || job.created_at), urgent: false };
@@ -942,8 +944,9 @@ function renderCard(job, lane) {
     actions.appendChild(makeStubBtn('Book site visit'));
     actions.appendChild(makeStubBtn('Discovery call'));
     actions.appendChild(makeStubBtn('Open in Ops', function () { openInOps(job); }));
-  } else if (lane === 'message') {
+  } else if (lane === 'followup') {
     actions.appendChild(makeStubBtn('Send chase SMS'));
+    actions.appendChild(makeStubBtn('Send chase email'));
     actions.appendChild(makeStubBtn('Send invoice'));
     actions.appendChild(makeStubBtn('Open in Ops', function () { openInOps(job); }));
   }
@@ -988,16 +991,16 @@ function showStubToast(label) {
 }
 
 function renderLane(laneKey, items) {
-  var rootMap = { call: 'laneCallCards', book: 'laneBookCards', message: 'laneMsgCards' };
+  var rootMap = { book: 'laneBookCards', followup: 'laneFollowupCards', call: 'laneCallCards' };
   var root = document.getElementById(rootMap[laneKey]);
   if (!root) return;
   root.innerHTML = '';
   if (!items.length) {
     var empty = document.createElement('div');
     empty.className = 'lane-empty';
-    empty.textContent = laneKey === 'call' ? 'No calls queued.' :
-                        laneKey === 'book' ? 'Nothing to book.' :
-                                              'Nothing to send.';
+    empty.textContent = laneKey === 'book' ? 'Nothing to book.' :
+                        laneKey === 'followup' ? 'Nothing to follow up.' :
+                                                 'No calls queued.';
     root.appendChild(empty);
     return;
   }
@@ -1005,21 +1008,21 @@ function renderLane(laneKey, items) {
 }
 
 function renderCounts(buckets) {
-  var c = buckets.call.length, b = buckets.book.length, m = buckets.message.length;
-  document.getElementById('laneCallCount').textContent = c + ' LEAD' + (c === 1 ? '' : 'S');
-  document.getElementById('laneBookCount').textContent = b + ' LEAD' + (b === 1 ? '' : 'S');
-  document.getElementById('laneMsgCount').textContent  = m + ' LEAD' + (m === 1 ? '' : 'S');
-  document.getElementById('chipCallCount').textContent = c;
-  document.getElementById('chipBookCount').textContent = b;
-  document.getElementById('chipMsgCount').textContent  = m;
-  document.getElementById('laneBarMeta').textContent = (c + b + m) + ' LEADS';
+  var b = buckets.book.length, f = buckets.followup.length, c = buckets.call.length;
+  document.getElementById('laneBookCount').textContent     = b + ' LEAD' + (b === 1 ? '' : 'S');
+  document.getElementById('laneFollowupCount').textContent = f + ' LEAD' + (f === 1 ? '' : 'S');
+  document.getElementById('laneCallCount').textContent     = c + ' LEAD' + (c === 1 ? '' : 'S');
+  document.getElementById('chipBookCount').textContent     = b;
+  document.getElementById('chipFollowupCount').textContent = f;
+  document.getElementById('chipCallCount').textContent     = c;
+  document.getElementById('laneBarMeta').textContent = (b + f + c) + ' LEADS';
 }
 
 function renderHero(jobs, buckets) {
-  var total = buckets.call.length + buckets.book.length + buckets.message.length;
+  var total = buckets.book.length + buckets.followup.length + buckets.call.length;
   document.getElementById('heroCount').textContent = total;
   document.getElementById('heroSub').textContent = total === 0 ? 'You are clear.'
-    : (buckets.call.length + ' to call · ' + buckets.book.length + ' to book · ' + buckets.message.length + ' to send');
+    : (buckets.book.length + ' to book · ' + buckets.followup.length + ' to follow up · ' + buckets.call.length + ' to call');
 
   var pipeSum = jobs.reduce(function (acc, j) {
     var v = jobValue(j);
@@ -1044,13 +1047,13 @@ function renderHero(jobs, buckets) {
 // ────────────────────────────────────────────────────────────
 
 var FAB_LABELS_BY_LANE = {
-  call: function (top) { return top ? 'DIAL ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'CALL — CLEAR'; },
-  book: function (top) { return top ? 'BOOK ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'BOOK — CLEAR'; },
-  message: function (top) { return top ? 'MSG ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'MSG — CLEAR'; },
+  book:     function (top) { return top ? 'BOOK ' + (top.client_name || '').split(' ')[0].toUpperCase()      : 'BOOK — CLEAR'; },
+  followup: function (top) { return top ? 'FOLLOW UP ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'FOLLOW UP — CLEAR'; },
+  call:     function (top) { return top ? 'DIAL ' + (top.client_name || '').split(' ')[0].toUpperCase()      : 'CALL — CLEAR'; },
 };
 
-var _activeLane = 'call';
-var _bucketCache = { call: [], book: [], message: [] };
+var _activeLane = 'book';
+var _bucketCache = { book: [], followup: [], call: [] };
 
 function setActiveLane(lane) {
   _activeLane = lane;
@@ -1084,18 +1087,18 @@ $$('.m-chip').forEach(function (chip) {
 // ────────────────────────────────────────────────────────────
 
 function bucketize(jobs) {
-  var b = { call: [], book: [], message: [] };
+  var b = { book: [], followup: [], call: [] };
   jobs.forEach(function (j) { b[laneFor(j)].push(j); });
-  // Sort each lane by urgency: oldest first for call/message, freshest first for book.
+  // Sort each lane by urgency: oldest first for call/follow-up (most overdue at top), freshest first for book.
   b.call.sort(function (a, x) { return hoursAgo(x.created_at) - hoursAgo(a.created_at); });
-  b.message.sort(function (a, x) { return hoursAgo(x.sent_at || x.quoted_at || x.created_at) - hoursAgo(a.sent_at || a.quoted_at || a.created_at); });
+  b.followup.sort(function (a, x) { return hoursAgo(x.sent_at || x.quoted_at || x.created_at) - hoursAgo(a.sent_at || a.quoted_at || a.created_at); });
   b.book.sort(function (a, x) { return hoursAgo(a.created_at) - hoursAgo(x.created_at); });
   return b;
 }
 
 function loadAndRender(cloud) {
-  var laneCallCards = document.getElementById('laneCallCards');
-  laneCallCards.innerHTML = '<div class="state-msg">Loading your queue…</div>';
+  var laneBookCards = document.getElementById('laneBookCards');
+  if (laneBookCards) laneBookCards.innerHTML = '<div class="state-msg">Loading your queue…</div>';
 
   cloud.jobs.listJobs({ limit: 80 }).then(function (jobs) {
     jobs = jobs || [];
@@ -1106,16 +1109,16 @@ function loadAndRender(cloud) {
     });
     var buckets = bucketize(open);
     _bucketCache = buckets;
-    renderLane('call', buckets.call);
     renderLane('book', buckets.book);
-    renderLane('message', buckets.message);
+    renderLane('followup', buckets.followup);
+    renderLane('call', buckets.call);
     renderCounts(buckets);
     renderHero(open, buckets);
     refreshFab();
   }).catch(function (err) {
     console.error('[sale] load failed:', err);
     var msg = 'Failed to load. ' + (err && err.message ? err.message : 'Unknown error');
-    ['laneCallCards','laneBookCards','laneMsgCards'].forEach(function (id) {
+    ['laneBookCards','laneFollowupCards','laneCallCards'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.innerHTML = '<div class="state-msg error">' + msg + '</div>';
     });
@@ -1149,8 +1152,8 @@ function waitForCloud(cb, attempt) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  // Default mobile lane = call
-  setActiveLane('call');
+  // Default mobile lane = book
+  setActiveLane('book');
 
   waitForCloud(function (cloud) {
     bindSignout(cloud);
@@ -1167,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', function () {
       loadAndRender(cloud);
     });
     cloud.on('auth:logout', function () {
-      ['laneCallCards','laneBookCards','laneMsgCards'].forEach(function (id) {
+      ['laneBookCards','laneFollowupCards','laneCallCards'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.innerHTML = '';
       });
