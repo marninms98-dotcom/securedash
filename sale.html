@@ -253,7 +253,10 @@
     a { color: inherit; text-decoration: none; }
     button { font-family: inherit; cursor: pointer; }
 
-    #mainApp { display: none; }
+    /* #mainApp visibility is owned by shared/auth-gate.js — it injects
+       a `display:none !important` style at script-load and removes it
+       on successful login. Do NOT add a stylesheet rule here, or the
+       cockpit will stay hidden after unlock. */
 
     /* ── Operator status rail ── */
     .op-rail {
