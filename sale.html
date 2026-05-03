@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#050709">
+  <title>SecureWorks — Sale</title>
+
+  <!-- Allowed roles. Mirrors sale-preview.html: 'estimator' is included
+       so any signed-in SecureWorks user can land here even when the safety
+       lock blocks the users-table write inside _loadUserProfile and
+       cloud.js falls back to a synthetic profile. -->
+  <meta name="sw-allowed-roles" content="admin,sales,sales_manager,ops_manager,estimator">
+
+  <!-- ════════════════════════════════════════════════════════════
+       Defense-in-depth CSP — same as sale-preview.html. Browser network
+       layer enforces hosts; the JS safety lock below enforces verbs/paths.
+       ════════════════════════════════════════════════════════════ -->
+  <meta http-equiv="Content-Security-Policy"
+        content="connect-src 'self' https://kevgrhcjxspbxgovpmfl.supabase.co wss://kevgrhcjxspbxgovpmfl.supabase.co https://cdn.jsdelivr.net">
+
+  <!-- ════════════════════════════════════════════════════════════
+       Stub-only safety lock — verbatim copy of sale-preview.html v9.
+       Codex stop-time tested through 9 iterations. Blocks every mutating
+       verb (POST/PUT/PATCH/DELETE) on PostgREST, all /functions/v1/*,
+       all storage writes, all realtime, and freezes window.fetch +
+       XMLHttpRequest.prototype + navigator.sendBeacon so subsequent
+       scripts cannot replace them. Means clicking DIAL/BOOK/SEND on this
+       page CANNOT fire a real GHL/SMS/email/calendar/status mutation
+       even if a future bug tried.
+       ════════════════════════════════════════════════════════════ -->
+  <script>
+    window.SW_PREVIEW_NO_WRITES = true;
+    (function () {
+      'use strict';
+      try {
+        var ls = window.localStorage;
+        if (ls && ls.getItem) {
+          var origGet = ls.getItem.bind(ls);
+          var origSet = ls.setItem.bind(ls);
+          var origRemove = ls.removeItem.bind(ls);
+          ls.getItem = function (key) {
+            if (key === 'sw_offline_queue') return null;
+            return origGet(key);
+          };
+          ls.setItem = function (key, value) {
+            if (key === 'sw_offline_queue') {
+              console.warn('[sale] BLOCKED localStorage.setItem("sw_offline_queue") — stub-only page must not enqueue writes.');
+              return;
+            }
+            return origSet(key, value);
+          };
+          ls.removeItem = function (key) {
+            if (key === 'sw_offline_queue') return;
+            return origRemove(key);
+          };
+        }
+      } catch (e) { console.warn('[sale] localStorage wrap failed:', e); }
+
+      var AUTH_POST_ALLOW = Object.freeze({
+        '/auth/v1/token':   true,
+        '/auth/v1/logout':  true,
+        '/auth/v1/otp':     true,
+        '/auth/v1/recover': true,
+        '/auth/v1/verify':  true,
+      });
+      var MUTATING_METHODS = /^(POST|PUT|PATCH|DELETE)$/;
+
+      function parseUrl(rawUrl) {
+        try {
+          return new URL(rawUrl, (typeof window !== 'undefined' && window.location)
+            ? window.location.origin : 'https://placeholder.invalid');
+        } catch (e) { return null; }
+      }
+
+      function evaluatePolicy(rawUrl, method) {
+        method = (method || 'GET').toUpperCase();
+        if (method === 'OPTIONS') return { blocked: false };
+
+        var u = parseUrl(rawUrl);
+        if (!u) return { blocked: true, reason: 'unparseable URL — default-deny' };
+        var path = u.pathname;
+        var isMutating = MUTATING_METHODS.test(method);
+        var isReadVerb = (method === 'GET' || method === 'HEAD');
+
+        if (path.indexOf('/auth/v1/admin/') === 0) {
+          return { blocked: true, reason: 'auth admin ' + method + ' to ' + path + ' is never allowed' };
+        }
+        if (path === '/auth/v1/' || path.indexOf('/auth/v1/') === 0) {
+          if (isReadVerb) return { blocked: false };
+          if (method === 'POST' && AUTH_POST_ALLOW[path]) return { blocked: false };
+          return { blocked: true, reason: 'auth ' + method + ' to ' + path + ' not allowed' };
+        }
+
+        if (path.indexOf('/rest/v1/') === 0) {
+          if (isReadVerb) return { blocked: false };
+          return { blocked: true, reason: 'PostgREST ' + method + ' to ' + path + ' not allowed (only GET/HEAD)' };
+        }
+
+        if (path.indexOf('/storage/v1/') === 0) {
+          if (isReadVerb && /^\/storage\/v1\/object\/public\//.test(path)) return { blocked: false };
+          return { blocked: true, reason: 'storage ' + method + ' to ' + path + ' not allowed' };
+        }
+
+        if (path.indexOf('/functions/v1/') === 0) {
+          return { blocked: true, reason: 'edge function ' + method + ' to ' + path + ' blocked (stub-only page)' };
+        }
+
+        if (path.indexOf('/realtime/v1/') === 0) {
+          return { blocked: true, reason: 'realtime ' + method + ' to ' + path + ' not used' };
+        }
+
+        return { blocked: true, reason: 'unrecognised path ' + method + ' ' + path + ' (default-deny)' };
+      }
+
+      function blockedJson(reason) {
+        return new Response(
+          JSON.stringify({ error: 'stub-only', code: 'preview_blocked', reason: reason }),
+          { status: 451, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      try {
+        if (typeof window.fetch === 'function') {
+          var origFetch = window.fetch.bind(window);
+          var fetchWrap = function (input, init) {
+            try {
+              var url = typeof input === 'string' ? input : (input && input.url) || '';
+              var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+              var p = evaluatePolicy(url, method);
+              if (p.blocked) {
+                console.warn('[sale] BLOCKED fetch ' + method + ' ' + url + ' — ' + p.reason);
+                return Promise.resolve(blockedJson(p.reason));
+              }
+            } catch (innerErr) {}
+            return origFetch(input, init);
+          };
+          Object.defineProperty(window, 'fetch', {
+            value: fetchWrap, writable: false, configurable: false,
+          });
+        }
+      } catch (e) { console.warn('[sale] fetch wrap failed:', e); }
+
+      try {
+        if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+          var xhrProto = XMLHttpRequest.prototype;
+          var origOpen = xhrProto.open;
+          var origSend = xhrProto.send;
+          xhrProto.open = function (method, url) {
+            try {
+              this.__sw_method = (method || 'GET').toUpperCase();
+              this.__sw_url = String(url || '');
+            } catch (eO) {}
+            return origOpen.apply(this, arguments);
+          };
+          xhrProto.send = function () {
+            try {
+              var p = evaluatePolicy(this.__sw_url || '', this.__sw_method || 'GET');
+              if (p.blocked) {
+                console.warn('[sale] BLOCKED XHR ' + (this.__sw_method || 'GET') + ' ' + (this.__sw_url || '') + ' — ' + p.reason);
+                var self = this;
+                setTimeout(function () {
+                  try {
+                    var body = JSON.stringify({ error: 'stub-only', code: 'preview_blocked', reason: p.reason });
+                    try { Object.defineProperty(self, 'readyState',   { value: 4,   configurable: true }); } catch (e1) {}
+                    try { Object.defineProperty(self, 'status',       { value: 451, configurable: true }); } catch (e2) {}
+                    try { Object.defineProperty(self, 'responseText', { value: body, configurable: true }); } catch (e3) {}
+                    try { Object.defineProperty(self, 'response',     { value: body, configurable: true }); } catch (e4) {}
+                    if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                    if (typeof self.onload === 'function') self.onload();
+                  } catch (eFire) {}
+                }, 0);
+                return;
+              }
+            } catch (innerErr) {}
+            return origSend.apply(this, arguments);
+          };
+        }
+      } catch (e) { console.warn('[sale] XHR wrap failed:', e); }
+
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          var origBeacon = navigator.sendBeacon.bind(navigator);
+          var beaconWrap = function (url, data) {
+            try {
+              var rawUrl = String(url || '');
+              var p = evaluatePolicy(rawUrl, 'POST');
+              if (p.blocked) {
+                console.warn('[sale] BLOCKED sendBeacon ' + rawUrl + ' — ' + p.reason);
+                return false;
+              }
+            } catch (innerErr) {}
+            return origBeacon(url, data);
+          };
+          try {
+            Object.defineProperty(navigator, 'sendBeacon', {
+              value: beaconWrap, writable: false, configurable: false,
+            });
+          } catch (eDef) { navigator.sendBeacon = beaconWrap; }
+        }
+      } catch (e) { console.warn('[sale] sendBeacon wrap failed:', e); }
+    })();
+  </script>
+
+  <!-- Supabase client (read-only via the safety lock above) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL = 'https://kevgrhcjxspbxgovpmfl.supabase.co';
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldmdyaGNqeHNwYnhnb3ZwbWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTQxMDUsImV4cCI6MjA4NzkzMDEwNX0.lPUEvx8u98WL86PcMNv8yfLnd6OQKzTUOCsRewfQiZc';
+    window.SW_API_KEY = '097a1160f9a8b2f517f4770ebbe88dca105a36f816ef728cc8724da25b2667dc';
+  </script>
+  <script src="shared/brand.js"></script>
+  <script src="shared/cloud.js"></script>
+  <script src="shared/auth-gate.js"></script>
+
+  <style>
+    /*
+     * SecureWorks Secure Sale — noir register.
+     * Single responsive layout: desktop = 3-lane grid, mobile = chip
+     * switcher + single-lane stage. CSS-only mode switching where
+     * possible; tiny JS for chip activation + FAB context.
+     */
+
+    :root {
+      --orange: #F15A29;
+      --orange-deep: #C4481F;
+      --amber:  #FFB554;            /* CALL lane */
+      --green:  #4CAF8E;            /* MESSAGE lane */
+      --blue:   #5C8FB8;            /* BOOK lane */
+      --bg:        #050709;
+      --surface-1: #0A0F12;
+      --surface-2: #14202A;
+      --surface-3: #1F2A30;
+      --rule:        rgba(242,239,235,0.08);
+      --rule-strong: rgba(242,239,235,0.16);
+      --text:        rgba(242,239,235,0.95);
+      --text-sec:    rgba(242,239,235,0.55);
+      --text-muted:  rgba(242,239,235,0.30);
+      --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overscroll-behavior-y: contain;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+
+    #mainApp { display: none; }
+
+    /* ── Operator status rail ── */
+    .op-rail {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 24px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--rule);
+      background: var(--surface-1);
+    }
+    .op-rail .live {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--green);
+    }
+    .op-rail .live::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+    }
+    .op-rail .pace { color: var(--text); margin-left: auto; }
+    .op-rail .stub-flag {
+      color: var(--amber);
+      border: 1px solid rgba(255,181,84,0.3);
+      padding: 2px 6px;
+    }
+
+    /* ── App header ── */
+    .app-header {
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--rule);
+    }
+    .brand {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .brand span { color: var(--orange); }
+    .app-nav {
+      display: flex;
+      gap: 18px;
+    }
+    .app-nav a {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 4px 0;
+      border-bottom: 1px solid transparent;
+    }
+    .app-nav a.active {
+      color: var(--text);
+      border-bottom-color: var(--orange);
+    }
+    .signout-btn {
+      background: transparent;
+      border: 1px solid var(--rule-strong);
+      color: var(--text-muted);
+      padding: 6px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .signout-btn:hover { color: var(--text); border-color: var(--text-sec); }
+
+    /* ── Performance strip (desktop only) ── */
+    .perf {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 1px;
+      background: var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .perf-tile {
+      background: var(--bg);
+      padding: 22px 24px;
+    }
+    .perf-tile.hero { background: var(--surface-1); }
+    .perf-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .perf-num {
+      font-size: 38px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-top: 4px;
+      color: var(--text);
+    }
+    .perf-tile.hero .perf-num {
+      font-size: 56px;
+      color: var(--orange);
+    }
+    .perf-num .c {
+      font-size: 0.55em;
+      vertical-align: top;
+      color: var(--text-sec);
+      margin-right: 2px;
+    }
+    .perf-tile.hero .perf-num .c { color: var(--orange); opacity: 0.7; }
+    .perf-sub {
+      font-size: 11px;
+      color: var(--text-sec);
+      margin-top: 4px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Lane bar ── */
+    .lane-bar {
+      padding: 18px 24px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+    }
+    .lane-bar-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .lane-bar-meta {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    /* ── Lanes (desktop = 3 cols, mobile = single via chip switch) ── */
+    .lanes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--rule);
+      padding: 0 24px 80px;
+      max-width: 1640px;
+      margin: 0 auto;
+    }
+    .lane {
+      background: var(--bg);
+      padding: 16px 16px 24px;
+      min-height: 240px;
+    }
+    .lane-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 12px;
+    }
+    .lane-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+    }
+    .lane[data-lane="call"]    .lane-title { color: var(--amber); }
+    .lane[data-lane="book"]    .lane-title { color: var(--blue); }
+    .lane[data-lane="message"] .lane-title { color: var(--green); }
+    .lane-count {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+    }
+    .lane-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .lane-empty {
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      padding: 16px 4px;
+      border: 1px dashed var(--rule-strong);
+      text-align: center;
+    }
+
+    /* ── Card (lane card) ── */
+    .lcard {
+      background: var(--surface-1);
+      border-left: 2px solid transparent;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .lcard:hover { background: var(--surface-2); }
+    .lane[data-lane="call"]    .lcard { border-left-color: var(--amber); }
+    .lane[data-lane="book"]    .lcard { border-left-color: var(--blue); }
+    .lane[data-lane="message"] .lcard { border-left-color: var(--green); }
+    .lcard.urgent { border-left-color: var(--orange); }
+
+    .lcard-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .lcard-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.2px;
+    }
+    .lcard-time {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-sec);
+      text-transform: uppercase;
+    }
+    .lcard-meta {
+      font-size: 11px;
+      color: var(--text-sec);
+      margin-top: 4px;
+      letter-spacing: 0.2px;
+      line-height: 1.45;
+    }
+    .lcard-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .lcard-val {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.2px;
+    }
+    .lcard-pill {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border: 1px solid var(--rule-strong);
+      color: var(--text-muted);
+      border-radius: 100px;
+    }
+    .lcard-pill.urgent {
+      color: var(--orange);
+      border-color: rgba(241,90,41,0.5);
+    }
+
+    /* Card expanded actions (toggle via .open) */
+    .lcard-actions {
+      display: none;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--rule);
+      flex-wrap: wrap;
+    }
+    .lcard.open .lcard-actions { display: flex; }
+    .lcard-actions a,
+    .lcard-actions button {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--rule-strong);
+      color: var(--text);
+      border-radius: 3px;
+    }
+    .lcard-actions .primary {
+      background: var(--orange);
+      border-color: var(--orange);
+      color: #000;
+    }
+    .lcard-actions .stub {
+      color: var(--text-sec);
+      border-style: dashed;
+    }
+    .lcard-actions .stub::after {
+      content: ' · stub';
+      color: var(--amber);
+      font-weight: 400;
+      letter-spacing: 1px;
+    }
+
+    /* ── Loader / empty / error states ── */
+    .state-msg {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .state-msg.error { color: var(--orange); }
+
+    /* ── Mobile chip switcher (hidden on desktop) ── */
+    .m-chips {
+      display: none;
+      gap: 1px;
+      background: var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .m-chip {
+      flex: 1;
+      background: var(--bg);
+      border: none;
+      color: var(--text-muted);
+      padding: 14px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: color 0.12s, background 0.12s;
+    }
+    .m-chip-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      font-size: 10px;
+      font-weight: 700;
+      background: var(--rule-strong);
+      color: var(--text);
+      border-radius: 100px;
+    }
+    .m-chip[data-active="true"] { color: var(--text); }
+    .m-chip[data-lane="call"][data-active="true"]    { box-shadow: inset 0 -2px 0 var(--amber); }
+    .m-chip[data-lane="book"][data-active="true"]    { box-shadow: inset 0 -2px 0 var(--blue); }
+    .m-chip[data-lane="message"][data-active="true"] { box-shadow: inset 0 -2px 0 var(--green); }
+
+    /* ── Mobile FAB (hidden on desktop) ── */
+    .m-fab {
+      display: none;
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      padding: 16px;
+      background: var(--orange);
+      color: #000;
+      border: none;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-radius: 3px;
+      box-shadow: 0 12px 30px rgba(241,90,41,0.35);
+      z-index: 100;
+    }
+    .m-fab[data-disabled="true"] {
+      background: var(--surface-3);
+      color: var(--text-muted);
+      box-shadow: none;
+    }
+
+    /* ──────────────────────────────────────────────
+       Mobile breakpoint: stack to single lane,
+       show chip switcher + FAB.
+       ────────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .app-header {
+        padding: 14px 16px;
+      }
+      .app-nav { display: none; }
+      .perf {
+        grid-template-columns: 1fr;
+      }
+      .perf-tile { padding: 18px 16px; }
+      .perf-tile:not(.hero) {
+        display: none;  /* hide MTD + Pipeline tiles on mobile; mobile rail shows them compact */
+      }
+      .perf-tile.hero .perf-num { font-size: 64px; }
+      .lane-bar {
+        padding: 14px 16px 10px;
+      }
+      .lane-bar-meta { display: none; }
+      .lanes {
+        grid-template-columns: 1fr;
+        padding: 0 0 120px;
+        background: transparent;
+        gap: 0;
+      }
+      .lane {
+        display: none;
+        padding: 12px 16px 24px;
+      }
+      .lane[data-active="true"] { display: block; }
+      .m-chips { display: flex; }
+      .m-fab   { display: flex; align-items: center; justify-content: center; }
+      .lane-head { display: none; }   /* lane label is the chip itself */
+      .lcard { padding: 14px 14px; }
+      .lcard-name { font-size: 15px; }
+    }
+
+    @media (min-width: 721px) {
+      /* Desktop: all lanes always visible */
+      .lane { display: block !important; }
+    }
+
+    /* ── Mobile compact perf rail (replaces hidden tiles) ── */
+    .m-perf-rail {
+      display: none;
+      gap: 12px;
+      padding: 8px 16px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--rule);
+    }
+    .m-perf-rail strong { color: var(--text); margin-left: 4px; }
+    @media (max-width: 720px) {
+      .m-perf-rail { display: flex; justify-content: space-around; }
+    }
+  </style>
+</head>
+<body>
+
+<main id="mainApp">
+
+  <!-- Operator status rail -->
+  <div class="op-rail">
+    <span class="live">LIVE</span>
+    <span id="opMeta">OP · — · WED</span>
+    <span class="stub-flag" title="Action buttons on this surface are stubs in v1 — no SMS, calls, calendar writes, or status moves fire from here yet. Use ops.html for live actions.">STUB-ACTIONS</span>
+    <span class="pace" id="opPace"></span>
+  </div>
+
+  <!-- App header -->
+  <header class="app-header">
+    <div class="brand">SecureWorks Group <span>/ Sale</span></div>
+    <nav class="app-nav">
+      <a href="#" class="active">Today</a>
+      <a href="ops.html">Ops</a>
+      <a href="ceo.html">CEO</a>
+    </nav>
+    <button class="signout-btn" id="signoutBtn">Sign out</button>
+  </header>
+
+  <!-- Mobile compact perf rail -->
+  <div class="m-perf-rail">
+    <span>WK <strong id="mWk">—</strong></span>
+    <span>QUE <strong id="mQue">—</strong></span>
+    <span>PIPE <strong id="mPipe">—</strong></span>
+  </div>
+
+  <!-- Performance strip (desktop) -->
+  <section class="perf">
+    <div class="perf-tile hero">
+      <div class="perf-label">Active Queue</div>
+      <div class="perf-num"><span class="c">#</span><span id="heroCount">—</span></div>
+      <div class="perf-sub" id="heroSub">Loading your queue…</div>
+    </div>
+    <div class="perf-tile">
+      <div class="perf-label">Pipeline value</div>
+      <div class="perf-num"><span class="c">$</span><span id="pipeVal">—</span></div>
+      <div class="perf-sub" id="pipeSub">Sum of open quotes</div>
+    </div>
+    <div class="perf-tile">
+      <div class="perf-label">Quotes out</div>
+      <div class="perf-num"><span id="quotesCount">—</span></div>
+      <div class="perf-sub" id="quotesSub">Awaiting reply</div>
+    </div>
+  </section>
+
+  <!-- Lane bar -->
+  <div class="lane-bar">
+    <div class="lane-bar-title">Today · Sorted by intent</div>
+    <div class="lane-bar-meta" id="laneBarMeta">— LEADS</div>
+  </div>
+
+  <!-- Mobile chip switcher -->
+  <nav class="m-chips" role="tablist" aria-label="Lane switcher">
+    <button class="m-chip" data-lane="call" data-active="true" role="tab">
+      <span class="m-chip-count" id="chipCallCount">0</span> CALL
+    </button>
+    <button class="m-chip" data-lane="book" data-active="false" role="tab">
+      <span class="m-chip-count" id="chipBookCount">0</span> BOOK
+    </button>
+    <button class="m-chip" data-lane="message" data-active="false" role="tab">
+      <span class="m-chip-count" id="chipMsgCount">0</span> MSG
+    </button>
+  </nav>
+
+  <!-- Lanes: filled by JS. Desktop = 3 lanes side-by-side; mobile = one at a time. -->
+  <section class="lanes" id="lanesRoot">
+    <div class="lane" data-lane="call" data-active="true">
+      <div class="lane-head">
+        <div class="lane-title">CALL</div>
+        <div class="lane-count" id="laneCallCount">0 LEADS</div>
+      </div>
+      <div class="lane-cards" id="laneCallCards">
+        <div class="state-msg">Loading…</div>
+      </div>
+    </div>
+    <div class="lane" data-lane="book" data-active="false">
+      <div class="lane-head">
+        <div class="lane-title">BOOK</div>
+        <div class="lane-count" id="laneBookCount">0 LEADS</div>
+      </div>
+      <div class="lane-cards" id="laneBookCards">
+        <div class="state-msg">Loading…</div>
+      </div>
+    </div>
+    <div class="lane" data-lane="message" data-active="false">
+      <div class="lane-head">
+        <div class="lane-title">MESSAGE</div>
+        <div class="lane-count" id="laneMsgCount">0 LEADS</div>
+      </div>
+      <div class="lane-cards" id="laneMsgCards">
+        <div class="state-msg">Loading…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mobile FAB: shows primary action of the active lane -->
+  <button class="m-fab" id="mFab" data-disabled="true">SELECT A LANE</button>
+
+</main>
+
+<script>
+'use strict';
+
+// ────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────
+
+function $(sel, root) { return (root || document).querySelector(sel); }
+function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
+
+function fmtMoney(n) {
+  if (n == null || isNaN(n)) return '—';
+  if (n >= 1000) return (Math.round(n / 100) / 10).toLocaleString() + 'k';
+  return Math.round(n).toLocaleString();
+}
+
+function hoursAgo(ts) {
+  if (!ts) return Infinity;
+  return (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60);
+}
+
+function relTime(ts) {
+  var h = hoursAgo(ts);
+  if (h < 1) return 'NOW';
+  if (h < 24) return Math.round(h) + 'H AGO';
+  var d = Math.round(h / 24);
+  if (d < 7) return d + 'D AGO';
+  if (d < 30) return Math.round(d / 7) + 'W AGO';
+  return Math.round(d / 30) + 'MO AGO';
+}
+
+function jobValue(job) {
+  if (job.value_inc_gst) return Number(job.value_inc_gst);
+  if (job.pricing_json) {
+    var p = job.pricing_json;
+    if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = null; } }
+    if (p && (p.total_inc_gst || p.total || p.grand_total)) {
+      return Number(p.total_inc_gst || p.total || p.grand_total);
+    }
+  }
+  return null;
+}
+
+function jobTypeLabel(t) {
+  if (!t) return 'Job';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// ────────────────────────────────────────────────────────────
+// Lane assignment (v1: status-based, with age tiebreakers)
+//
+// CALL    = no quote yet but >24h since enquiry, OR quoted+viewed but no
+//           reply >3d (assume from sent_at), OR stale draft >7d.
+// BOOK    = quoted in last 3d (still warm; book follow-up call), OR
+//           draft <=24h (fresh, book discovery).
+// MESSAGE = quoted >=4d ago and <=14d (chase by SMS/email), OR
+//           explicit 'accepted' / 'deposit_pending' (send invoice).
+// Anything else falls into CALL by default — never silently dropped.
+// ────────────────────────────────────────────────────────────
+function laneFor(job) {
+  var status = (job.status || '').toLowerCase();
+  var ageH = hoursAgo(job.created_at);
+  var sentH = hoursAgo(job.sent_at || job.quoted_at);
+
+  if (status === 'accepted' || status === 'deposit_pending' || status === 'invoice_pending') {
+    return 'message';
+  }
+  if (status === 'quoted') {
+    if (sentH >= 24 * 4 && sentH <= 24 * 21) return 'message';
+    if (sentH < 24 * 3) return 'book';
+    return 'call';
+  }
+  if (status === 'draft' || status === 'lead' || status === 'qualified') {
+    if (ageH <= 24) return 'book';
+    if (ageH > 24 * 7) return 'call';
+    return 'call';
+  }
+  return 'call';
+}
+
+function urgencyPill(job, lane) {
+  var ageH = hoursAgo(job.created_at);
+  var sentH = hoursAgo(job.sent_at || job.quoted_at);
+  if (lane === 'call' && ageH > 24 * 7) return { label: 'STALE', urgent: true };
+  if (lane === 'message' && sentH > 24 * 10) return { label: 'STALE', urgent: true };
+  if (lane === 'message' && sentH > 24 * 5) return { label: 'CHASE TODAY', urgent: true };
+  if (lane === 'call' && ageH > 24 * 3) return { label: 'TODAY', urgent: true };
+  if (lane === 'book' && ageH < 24) return { label: 'FRESH', urgent: false };
+  return { label: relTime(job.updated_at || job.created_at), urgent: false };
+}
+
+// ────────────────────────────────────────────────────────────
+// Render
+// ────────────────────────────────────────────────────────────
+
+function renderCard(job, lane) {
+  var pill = urgencyPill(job, lane);
+  var val = jobValue(job);
+  var meta = [];
+  if (job.site_suburb) meta.push(job.site_suburb);
+  meta.push(jobTypeLabel(job.type));
+  if (job.status) meta.push(job.status.replace(/_/g, ' '));
+
+  var card = document.createElement('article');
+  card.className = 'lcard' + (pill.urgent ? ' urgent' : '');
+  card.dataset.jobId = job.id;
+  card.innerHTML =
+    '<div class="lcard-top">' +
+      '<div class="lcard-name"></div>' +
+      '<div class="lcard-time"></div>' +
+    '</div>' +
+    '<div class="lcard-meta"></div>' +
+    '<div class="lcard-row">' +
+      '<div class="lcard-val"></div>' +
+      '<div class="lcard-pill"></div>' +
+    '</div>' +
+    '<div class="lcard-actions"></div>';
+
+  $('.lcard-name', card).textContent = job.client_name || 'Unknown';
+  $('.lcard-time', card).textContent = relTime(job.updated_at || job.created_at);
+  $('.lcard-meta', card).textContent = meta.join(' · ');
+  $('.lcard-val', card).textContent = val ? '$' + fmtMoney(val) : '—';
+  var pillEl = $('.lcard-pill', card);
+  pillEl.textContent = pill.label;
+  if (pill.urgent) pillEl.classList.add('urgent');
+
+  // Stub-only actions
+  var actions = $('.lcard-actions', card);
+  if (lane === 'call') {
+    if (job.client_phone) {
+      var dial = document.createElement('a');
+      dial.className = 'primary';
+      dial.href = 'tel:' + String(job.client_phone).replace(/[^+0-9]/g, '');
+      dial.textContent = 'Dial';
+      actions.appendChild(dial);
+    }
+    actions.appendChild(makeStubBtn('Log call'));
+    actions.appendChild(makeStubBtn('Open in Ops', function () { openInOps(job); }));
+  } else if (lane === 'book') {
+    actions.appendChild(makeStubBtn('Book site visit'));
+    actions.appendChild(makeStubBtn('Discovery call'));
+    actions.appendChild(makeStubBtn('Open in Ops', function () { openInOps(job); }));
+  } else if (lane === 'message') {
+    actions.appendChild(makeStubBtn('Send chase SMS'));
+    actions.appendChild(makeStubBtn('Send invoice'));
+    actions.appendChild(makeStubBtn('Open in Ops', function () { openInOps(job); }));
+  }
+
+  card.addEventListener('click', function (e) {
+    if (e.target.closest('a, button')) return;
+    card.classList.toggle('open');
+  });
+
+  return card;
+}
+
+function makeStubBtn(label, handler) {
+  var b = document.createElement('button');
+  b.className = 'stub';
+  b.type = 'button';
+  b.textContent = label;
+  b.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (handler) { handler(); return; }
+    showStubToast(label);
+  });
+  return b;
+}
+
+function openInOps(job) {
+  // Read-only navigation. ops.html will handle its own auth + read.
+  // We don't pass any mutation params.
+  if (!job || !job.id) return;
+  window.open('ops.html#job=' + encodeURIComponent(job.id), '_blank', 'noopener');
+}
+
+function showStubToast(label) {
+  var existing = document.getElementById('stubToast');
+  if (existing) existing.remove();
+  var t = document.createElement('div');
+  t.id = 'stubToast';
+  t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1F2A30;color:#fff;padding:14px 18px;border-left:3px solid #FFB554;font-size:12px;letter-spacing:0.5px;z-index:200;box-shadow:0 12px 30px rgba(0,0,0,0.5);max-width:90%;text-align:center;';
+  t.textContent = label + ' — coming next slice. v1 is read-only.';
+  document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2400);
+}
+
+function renderLane(laneKey, items) {
+  var rootMap = { call: 'laneCallCards', book: 'laneBookCards', message: 'laneMsgCards' };
+  var root = document.getElementById(rootMap[laneKey]);
+  if (!root) return;
+  root.innerHTML = '';
+  if (!items.length) {
+    var empty = document.createElement('div');
+    empty.className = 'lane-empty';
+    empty.textContent = laneKey === 'call' ? 'No calls queued.' :
+                        laneKey === 'book' ? 'Nothing to book.' :
+                                              'Nothing to send.';
+    root.appendChild(empty);
+    return;
+  }
+  items.forEach(function (job) { root.appendChild(renderCard(job, laneKey)); });
+}
+
+function renderCounts(buckets) {
+  var c = buckets.call.length, b = buckets.book.length, m = buckets.message.length;
+  document.getElementById('laneCallCount').textContent = c + ' LEAD' + (c === 1 ? '' : 'S');
+  document.getElementById('laneBookCount').textContent = b + ' LEAD' + (b === 1 ? '' : 'S');
+  document.getElementById('laneMsgCount').textContent  = m + ' LEAD' + (m === 1 ? '' : 'S');
+  document.getElementById('chipCallCount').textContent = c;
+  document.getElementById('chipBookCount').textContent = b;
+  document.getElementById('chipMsgCount').textContent  = m;
+  document.getElementById('laneBarMeta').textContent = (c + b + m) + ' LEADS';
+}
+
+function renderHero(jobs, buckets) {
+  var total = buckets.call.length + buckets.book.length + buckets.message.length;
+  document.getElementById('heroCount').textContent = total;
+  document.getElementById('heroSub').textContent = total === 0 ? 'You are clear.'
+    : (buckets.call.length + ' to call · ' + buckets.book.length + ' to book · ' + buckets.message.length + ' to send');
+
+  var pipeSum = jobs.reduce(function (acc, j) {
+    var v = jobValue(j);
+    return acc + (v && j.status !== 'complete' && j.status !== 'lost' ? v : 0);
+  }, 0);
+  document.getElementById('pipeVal').textContent = pipeSum ? fmtMoney(pipeSum) : '—';
+
+  var quotesOut = jobs.filter(function (j) { return (j.status || '').toLowerCase() === 'quoted'; }).length;
+  document.getElementById('quotesCount').textContent = quotesOut;
+  document.getElementById('quotesSub').textContent = quotesOut === 1 ? 'Awaiting reply' : 'Awaiting reply';
+
+  // Mobile rail
+  var now = new Date();
+  var wk = Math.ceil((((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + new Date(now.getFullYear(), 0, 1).getDay() + 1) / 7);
+  document.getElementById('mWk').textContent = wk;
+  document.getElementById('mQue').textContent = total;
+  document.getElementById('mPipe').textContent = pipeSum ? '$' + fmtMoney(pipeSum) : '—';
+}
+
+// ────────────────────────────────────────────────────────────
+// Mobile lane switcher + FAB
+// ────────────────────────────────────────────────────────────
+
+var FAB_LABELS_BY_LANE = {
+  call: function (top) { return top ? 'DIAL ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'CALL — CLEAR'; },
+  book: function (top) { return top ? 'BOOK ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'BOOK — CLEAR'; },
+  message: function (top) { return top ? 'MSG ' + (top.client_name || '').split(' ')[0].toUpperCase() : 'MSG — CLEAR'; },
+};
+
+var _activeLane = 'call';
+var _bucketCache = { call: [], book: [], message: [] };
+
+function setActiveLane(lane) {
+  _activeLane = lane;
+  $$('.m-chip').forEach(function (c) { c.dataset.active = (c.dataset.lane === lane); });
+  $$('.lane').forEach(function (l) { l.dataset.active = (l.dataset.lane === lane); });
+  refreshFab();
+}
+
+function refreshFab() {
+  var fab = document.getElementById('mFab');
+  if (!fab) return;
+  var top = (_bucketCache[_activeLane] || [])[0];
+  fab.textContent = FAB_LABELS_BY_LANE[_activeLane](top);
+  fab.dataset.disabled = top ? 'false' : 'true';
+  fab.onclick = function () {
+    if (!top) { showStubToast('No leads in lane'); return; }
+    if (_activeLane === 'call' && top.client_phone) {
+      window.location.href = 'tel:' + String(top.client_phone).replace(/[^+0-9]/g, '');
+    } else {
+      showStubToast(FAB_LABELS_BY_LANE[_activeLane](top));
+    }
+  };
+}
+
+$$('.m-chip').forEach(function (chip) {
+  chip.addEventListener('click', function () { setActiveLane(chip.dataset.lane); });
+});
+
+// ────────────────────────────────────────────────────────────
+// Boot
+// ────────────────────────────────────────────────────────────
+
+function bucketize(jobs) {
+  var b = { call: [], book: [], message: [] };
+  jobs.forEach(function (j) { b[laneFor(j)].push(j); });
+  // Sort each lane by urgency: oldest first for call/message, freshest first for book.
+  b.call.sort(function (a, x) { return hoursAgo(x.created_at) - hoursAgo(a.created_at); });
+  b.message.sort(function (a, x) { return hoursAgo(x.sent_at || x.quoted_at || x.created_at) - hoursAgo(a.sent_at || a.quoted_at || a.created_at); });
+  b.book.sort(function (a, x) { return hoursAgo(a.created_at) - hoursAgo(x.created_at); });
+  return b;
+}
+
+function loadAndRender(cloud) {
+  var laneCallCards = document.getElementById('laneCallCards');
+  laneCallCards.innerHTML = '<div class="state-msg">Loading your queue…</div>';
+
+  cloud.jobs.listJobs({ limit: 80 }).then(function (jobs) {
+    jobs = jobs || [];
+    // Filter out terminal states; keep anything still actionable.
+    var open = jobs.filter(function (j) {
+      var s = (j.status || '').toLowerCase();
+      return s !== 'complete' && s !== 'completed' && s !== 'lost' && s !== 'cancelled' && s !== 'archived';
+    });
+    var buckets = bucketize(open);
+    _bucketCache = buckets;
+    renderLane('call', buckets.call);
+    renderLane('book', buckets.book);
+    renderLane('message', buckets.message);
+    renderCounts(buckets);
+    renderHero(open, buckets);
+    refreshFab();
+  }).catch(function (err) {
+    console.error('[sale] load failed:', err);
+    var msg = 'Failed to load. ' + (err && err.message ? err.message : 'Unknown error');
+    ['laneCallCards','laneBookCards','laneMsgCards'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = '<div class="state-msg error">' + msg + '</div>';
+    });
+  });
+}
+
+function setOpRail(profile) {
+  var name = (profile && (profile.full_name || profile.name || profile.email)) || 'YOU';
+  var initials = name.split(/[\s@]/)[0].toUpperCase().slice(0, 8);
+  var d = new Date();
+  var days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  var hh = String(d.getHours()).padStart(2, '0');
+  var mm = String(d.getMinutes()).padStart(2, '0');
+  document.getElementById('opMeta').textContent = 'OP · ' + initials + ' · ' + days[d.getDay()] + ' ' + hh + ':' + mm;
+}
+
+function bindSignout(cloud) {
+  var btn = document.getElementById('signoutBtn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    try { cloud.auth.signOut(); } catch (e) {}
+    setTimeout(function () { window.location.reload(); }, 200);
+  });
+}
+
+function waitForCloud(cb, attempt) {
+  attempt = attempt || 0;
+  if (window.SECUREWORKS_CLOUD && window.SECUREWORKS_CLOUD.jobs) { cb(window.SECUREWORKS_CLOUD); return; }
+  if (attempt > 80) { console.error('[sale] cloud failed to initialise'); return; }
+  setTimeout(function () { waitForCloud(cb, attempt + 1); }, 100);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  // Default mobile lane = call
+  setActiveLane('call');
+
+  waitForCloud(function (cloud) {
+    bindSignout(cloud);
+
+    var profile = (cloud.auth && cloud.auth.getUser) ? cloud.auth.getUser() : null;
+    setOpRail(profile);
+
+    // Render now if logged in; otherwise wait for the auth-gate login event.
+    if (cloud.auth && cloud.auth.isLoggedIn && cloud.auth.isLoggedIn()) {
+      loadAndRender(cloud);
+    }
+    cloud.on('auth:login', function (p) {
+      setOpRail(p);
+      loadAndRender(cloud);
+    });
+    cloud.on('auth:logout', function () {
+      ['laneCallCards','laneBookCards','laneMsgCards'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+      });
+    });
+  });
+});
+</script>
+
+</body>
+</html>
